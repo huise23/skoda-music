@@ -1,6 +1,6 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-14 19:17:41
+Last Updated: 2026-04-14 20:13:05
 
 ## Priority
 - [ ] T-018: 实现 C3 音频焦点与前后台状态管理骨架
@@ -9,7 +9,7 @@ Last Updated: 2026-04-14 19:17:41
 - [ ] 维护状态文件并生成 handoff 摘要
 
 ## Backlog
-- [ ] T-015: 配置 GitHub Actions Android 打包流程（APK/AAB，后续执行）
+- [ ] T-019: GitHub Actions 增加签名与 Release 上传流程（AAB/APK）
 
 ## Requires Manual Confirmation
 - [ ] 系统首页音乐卡片是否支持调用三方播放器

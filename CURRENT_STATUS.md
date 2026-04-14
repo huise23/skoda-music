@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 19:17:41
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -78,6 +78,11 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 19:17:41
   - 新增 `src/platform/android/media_key_controller.cpp`
   - 新增 `src/platform/android/media_key_controller_example.cpp`
   - 实现 Android 媒体键码映射、上/下一曲切换与首页/队列状态同步输出
+- 完成 `T-015 GitHub Actions 打包流程配置并实测`:
+  - 新增 `.github/workflows/package-mvp.yml`
+  - 使用 `gh` 创建仓库 `https://github.com/huise23/skoda-music`
+  - 首次 push 自动触发 `Package MVP` 工作流并成功
+  - 产物 `skoda-music-mvp` 已生成（Actions artifact）
 
 ## In Progress
 - `T-018` 实现 C3 音频焦点与前后台状态管理骨架（下一最小任务，尚未开始）。
@@ -106,3 +111,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 19:17:41
 - 已落地 I-004 歌词链路最小骨架，具备嵌入优先、异步远程和切歌取消能力。
 - 已落地 I-005 媒体键联动骨架，方向盘上下曲可驱动播放队列并同步首页/队列状态。
 - 已完成 I-001 到 I-005，达到最小可用版本里程碑（骨架版）。
+- 已完成 GitHub 打包链路闭环（工作流配置、仓库推送、Actions 成功产物）。

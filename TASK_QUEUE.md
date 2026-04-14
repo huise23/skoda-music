@@ -1,9 +1,9 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-14 20:13:05
+Last Updated: 2026-04-14 20:29:51
 
 ## Ready
-- [ ] T-018 实现 C3 音频焦点与前后台状态管理骨架
+- [ ] T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）
 
 ## Backlog
 - [ ] T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）
@@ -32,6 +32,7 @@ Last Updated: 2026-04-14 20:13:05
 - [x] T-016 实现 I-004 歌词链路最小实现：新增 LyricsResolver（嵌入优先 + 异步远程 + 切歌取消）
 - [x] T-017 实现 I-005 方向盘媒体键联动：新增媒体键映射控制器与首页/队列同步状态输出
 - [x] T-015 GitHub Actions Android 打包流程配置：已创建仓库并实测 Actions 打包成功
+- [x] T-018 实现 C3 音频焦点与前后台状态管理骨架：新增 AudioFocusManager 状态机与动作回调
 - [x] B-004 已确认：设置页展示启动自愈字段明细
 
 ## Task Definition of Done

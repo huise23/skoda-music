@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -83,9 +83,16 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
   - 使用 `gh` 创建仓库 `https://github.com/huise23/skoda-music`
   - 首次 push 自动触发 `Package MVP` 工作流并成功
   - 产物 `skoda-music-mvp` 已生成（Actions artifact）
+- 完成 `T-018 实现 C3 音频焦点与前后台状态管理骨架`:
+  - 新增 `src/platform/android/audio_focus_manager.h`
+  - 新增 `src/platform/android/audio_focus_manager.cpp`
+  - 新增 `src/platform/android/audio_focus_manager_example.cpp`
+  - 实现前后台切换、焦点 gain/loss/transient/duck 状态流
+  - 通过动作回调输出 `request/abandon/pause/resume/duck/unduck`
+  - 将音频焦点示例纳入 CI 打包 workflow 构建清单
 
 ## In Progress
-- `T-018` 实现 C3 音频焦点与前后台状态管理骨架（下一最小任务，尚未开始）。
+- `T-020` 实现 Qt 应用主入口与模块装配（MVP 可运行壳，下一最小任务，尚未开始）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -112,3 +119,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
 - 已落地 I-005 媒体键联动骨架，方向盘上下曲可驱动播放队列并同步首页/队列状态。
 - 已完成 I-001 到 I-005，达到最小可用版本里程碑（骨架版）。
 - 已完成 GitHub 打包链路闭环（工作流配置、仓库推送、Actions 成功产物）。
+- 已落地 C3 音频焦点与前后台骨架，补齐播放系统控制基础状态流。

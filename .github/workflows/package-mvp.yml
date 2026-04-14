@@ -48,6 +48,11 @@ jobs:
             src/platform/android/media_key_controller_example.cpp \
             -o dist/bin/media_key_controller_example
 
+          g++ -std=c++17 -O2 -I. \
+            src/platform/android/audio_focus_manager.cpp \
+            src/platform/android/audio_focus_manager_example.cpp \
+            -o dist/bin/audio_focus_manager_example
+
       - name: Build package bundle
         shell: bash
         run: |

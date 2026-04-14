@@ -1,9 +1,9 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-14 20:13:05
+Last Updated: 2026-04-14 20:29:51
 
 ## Priority
-- [ ] T-018: 实现 C3 音频焦点与前后台状态管理骨架
+- [ ] T-020: 实现 Qt 应用主入口与模块装配（MVP 可运行壳）
 
 ## Delegatable To AI
 - [ ] 维护状态文件并生成 handoff 摘要

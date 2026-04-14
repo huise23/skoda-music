@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -28,15 +28,16 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
 - 已完成 `T-016 实现 I-004 歌词链路最小实现`（嵌入优先、异步远程、切歌取消防串歌）。
 - 已完成 `T-017 实现 I-005 方向盘媒体键联动`（媒体键映射、上/下一曲、首页/队列状态同步）。
 - 已完成 `T-015 GitHub Actions 打包流程配置并实测成功`（仓库创建、push 触发、artifact 产出）。
+- 已完成 `T-018 实现 C3 音频焦点与前后台状态管理骨架`（前后台切换与焦点状态流）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待执行 `T-018 实现 C3 音频焦点与前后台状态管理骨架`（尚未开始）。
+- 等待执行 `T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）`（尚未开始）。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 执行 T-018：实现 C3 音频焦点与前后台状态管理骨架
+- [ ] 执行 T-020：实现 Qt 应用主入口与模块装配（MVP 可运行壳）
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made
@@ -85,6 +86,9 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:13:05
 - `src/platform/android/media_key_controller.h`
 - `src/platform/android/media_key_controller.cpp`
 - `src/platform/android/media_key_controller_example.cpp`
+- `src/platform/android/audio_focus_manager.h`
+- `src/platform/android/audio_focus_manager.cpp`
+- `src/platform/android/audio_focus_manager_example.cpp`
 - `.github/workflows/package-mvp.yml`
 <!-- AUTO:CHANGED_FILES_END -->
 

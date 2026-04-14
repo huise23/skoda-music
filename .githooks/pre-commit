@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check_context.ps1

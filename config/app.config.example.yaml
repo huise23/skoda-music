@@ -1,0 +1,32 @@
+# Example config for skoda-music
+# Copy to config/app.config.yaml and fill real values.
+
+emby:
+  base_url: "http://your-emby-host:8096"
+  user_id: "REPLACE_ME"
+  access_token: "REPLACE_ME"
+  request_timeout_ms: 5000
+
+lyrics:
+  lrcapi:
+    base_url: "http://your-lrcapi-host:28883"
+  fetch_timeout_ms: 2000
+  cache_ttl_days: 30
+  prefer_language: "zh"
+
+ui:
+  theme_mode: "dual"          # dark | light | dual
+  nav_layout: "left"          # left
+  glass_intensity: "light"    # light | medium
+  motion_level: "low"         # low | medium
+  orientation: "landscape"    # landscape
+
+player:
+  streaming_only: true
+  recommendation_mode: "server_first"
+
+controls:
+  steering_mapping: "media_key"
+
+log:
+  level: "info"               # debug | info | warn | error

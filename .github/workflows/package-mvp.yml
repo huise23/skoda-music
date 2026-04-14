@@ -1,0 +1,68 @@
+name: Package MVP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build MVP examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/bin
+
+          g++ -std=c++17 -O2 -I. \
+            src/config/config_runtime.cpp \
+            src/config/runtime_bootstrap_example.cpp \
+            -o dist/bin/config_runtime_example
+
+          g++ -std=c++17 -O2 -I. \
+            src/config/config_runtime.cpp \
+            src/ui/settings/settings_flow.cpp \
+            src/ui/settings/settings_flow_example.cpp \
+            -o dist/bin/settings_flow_example
+
+          g++ -std=c++17 -O2 -I. \
+            src/config/config_runtime.cpp \
+            src/ui/home/home_shell.cpp \
+            src/ui/home/home_shell_example.cpp \
+            -o dist/bin/home_shell_example
+
+          g++ -std=c++17 -O2 -pthread -I. \
+            src/lyrics/lyrics_resolver.cpp \
+            src/lyrics/lyrics_resolver_example.cpp \
+            -o dist/bin/lyrics_resolver_example
+
+          g++ -std=c++17 -O2 -I. \
+            src/playback/playback_queue.cpp \
+            src/platform/android/media_key_controller.cpp \
+            src/platform/android/media_key_controller_example.cpp \
+            -o dist/bin/media_key_controller_example
+
+      - name: Build package bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          cp -r docs dist/package/docs
+          cp -r config dist/package/config
+          cp -r src dist/package/src
+          cp PROJECT_BRIEF.md PLAN.md CURRENT_STATUS.md NEXT_STEPS.md HANDOFF.md dist/package/
+          tar -czf dist/skoda-music-mvp.tar.gz -C dist/package .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: skoda-music-mvp
+          path: |
+            dist/bin
+            dist/skoda-music-mvp.tar.gz

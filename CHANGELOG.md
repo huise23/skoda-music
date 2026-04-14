@@ -1,0 +1,45 @@
+# CHANGELOG
+
+## 2026-04-13
+- Initialized AI collaboration memory files.
+
+## 2026-04-14
+- Completed T-002: added config loader interface draft document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-003: added lyrics state machine draft document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-005: added config error classification policy document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-007: revised config policy to non-blocking boot with self-heal and aggregated toast.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan, decisions).
+- Completed T-004: added UI information architecture low-fidelity document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-006: added config runtime integration example document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-008: added lyrics abnormal scenario test checklist document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-009: added config and UI integration acceptance checklist document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-010: added startup self-heal and settings copy guidelines document.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-011: added minimum implementation entrypoints document.
+- Confirmed B-004: show startup self-heal details in settings page.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan, decisions).
+- Completed T-012: implemented I-001 config runtime skeleton (`LoadAndSelfHeal + RepairReport`).
+- Added source files for config runtime and startup toast trigger example under `src/config/`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-013: implemented I-002 settings minimal loop (`Test + Save Gate` state logic).
+- Added settings flow source files under `src/ui/settings/`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Added backlog task T-015: GitHub Actions Android packaging workflow (deferred).
+- Updated planning and handoff files for deferred CI packaging.
+- Completed T-014: implemented I-003 home minimal shell (`Home status + Emby not-ready placeholder`).
+- Added home shell source files under `src/ui/home/`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-016: implemented I-004 lyrics minimal chain (`embedded-first + async remote + cancellation`).
+- Added lyrics resolver source files under `src/lyrics/`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-017: implemented I-005 steering/media key linkage (`next/previous + home/queue sync`).
+- Added playback queue and android media key controller source files under `src/playback/` and `src/platform/android/`.
+- Reached minimum viable milestone (I-001 to I-005 skeleton completed).
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

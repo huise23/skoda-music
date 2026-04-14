@@ -1,0 +1,108 @@
+# CURRENT_STATUS
+
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 19:17:41
+
+## Completed
+- 初始化并完善 AI 协作核心文档:
+  - `PROJECT_BRIEF.md`
+  - `PLAN.md`
+  - `CURRENT_STATUS.md`
+  - `NEXT_STEPS.md`
+  - `DECISIONS.md`
+  - `HANDOFF.md`
+  - `EXECUTION_RULES.md`
+  - `TASK_QUEUE.md`
+- 完成首个最小闭环任务 `T-001 配置骨架`:
+  - 新增 `docs/CONFIG_SPEC.md`
+  - 新增 `config/app.config.example.yaml`
+- 完成 `T-002 配置加载接口草案`:
+  - 新增 `docs/CONFIG_LOADER_INTERFACE.md`
+  - 明确配置加载顺序、结构化输出对象、错误码与校验规则
+- 完成 `T-003 歌词链路状态机文档`:
+  - 新增 `docs/LYRICS_STATE_MACHINE.md`
+  - 明确状态、事件、转移、异步取消、缓存与降级规则
+- 完成 `T-005 配置加载错误分级说明`:
+  - 新增 `docs/CONFIG_ERROR_POLICY.md`
+  - 明确 Fatal/Degradable 分类、处理动作和错误码映射
+- 完成 `T-007 配置策略修订落盘`:
+  - 启动改为零阻断，自愈修复后继续启动
+  - 自愈仅内存生效，不覆写配置文件
+  - 启动显示一条聚合 toast
+  - 保存门槛确认为 Emby 连通+鉴权通过
+- 完成 `T-004 UI 信息架构低保真草图说明`:
+  - 新增 `docs/UI_IA_LOW_FIDELITY.md`
+  - 固化导航结构、页面信息分区、关键流程与空态处理
+- 完成 `T-006 配置加载接口与错误策略联动示例`:
+  - 新增 `docs/CONFIG_RUNTIME_INTEGRATION_EXAMPLE.md`
+  - 给出启动自愈、保存门槛、能力降级的端到端联动流程
+- 完成 `T-008 歌词异常场景测试清单`:
+  - 新增 `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md`
+  - 覆盖嵌入、远程、缓存、并发切歌、UI降级、日志脱敏等异常路径
+- 完成 `T-009 配置与UI串联验收用例清单`:
+  - 新增 `docs/CONFIG_UI_INTEGRATION_ACCEPTANCE.md`
+  - 覆盖启动自愈、保存门槛、首页可用性、歌词降级、提示与持久化规则验收
+- 完成 `T-010 启动自愈与设置页提示文案规范`:
+  - 新增 `docs/SELF_HEAL_AND_SETTINGS_COPY_GUIDELINES.md`
+  - 固化启动toast、设置页测试结果、保存提示与降级提示文案规范
+- 完成 `T-011 最小实现切入点建议`:
+  - 新增 `docs/MIN_IMPLEMENTATION_ENTRYPOINTS.md`
+  - 给出从文档到代码的最小实现顺序（I-001 到 I-005）
+- 完成 `T-012 实现 I-001 配置运行时骨架`:
+  - 新增 `src/config/config_runtime.h`
+  - 新增 `src/config/config_runtime.cpp`
+  - 新增 `src/config/runtime_bootstrap_example.cpp`
+  - 实现 `LoadAndSelfHeal + RepairReport`（缺失/非法配置自愈、`persisted=false`、聚合 toast 摘要）
+  - 补齐 `TestEmbyConnection/TestLrcApiConnection/CanSaveConfig` 的最小骨架逻辑
+- 完成 `T-013 实现 I-002 设置页最小闭环`:
+  - 新增 `src/ui/settings/settings_flow.h`
+  - 新增 `src/ui/settings/settings_flow.cpp`
+  - 新增 `src/ui/settings/settings_flow_example.cpp`
+  - 实现设置页 Test 与 Save Gate 逻辑（Emby 阻断保存、LrcApi 告警不阻断）
+  - 对齐设置页提示文案规范与启动自愈明细行构建入口
+- 完成 `T-014 实现 I-003 首页最小播放壳`:
+  - 新增 `src/ui/home/home_shell.h`
+  - 新增 `src/ui/home/home_shell.cpp`
+  - 新增 `src/ui/home/home_shell_example.cpp`
+  - 实现 Home 状态壳层（播放卡状态、推荐占位区、Emby 未就绪提示）
+  - 对齐“未就绪时首页提示 + 配置就绪后可进入播放链路”验收约束
+- 完成 `T-016 实现 I-004 歌词链路最小实现`:
+  - 新增 `src/lyrics/lyrics_resolver.h`
+  - 新增 `src/lyrics/lyrics_resolver.cpp`
+  - 新增 `src/lyrics/lyrics_resolver_example.cpp`
+  - 实现嵌入歌词优先、异步 LrcApi 请求与切歌取消防串歌
+  - 远程失败统一降级“暂无歌词”，按当前决策不做自动重试
+- 完成 `T-017 实现 I-005 方向盘媒体键联动`:
+  - 新增 `src/playback/playback_queue.h`
+  - 新增 `src/playback/playback_queue.cpp`
+  - 新增 `src/platform/android/media_key_controller.h`
+  - 新增 `src/platform/android/media_key_controller.cpp`
+  - 新增 `src/platform/android/media_key_controller_example.cpp`
+  - 实现 Android 媒体键码映射、上/下一曲切换与首页/队列状态同步输出
+
+## In Progress
+- `T-018` 实现 C3 音频焦点与前后台状态管理骨架（下一最小任务，尚未开始）。
+
+## Blockers
+- B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
+- B-002 目标分辨率细节: 当前只确认横屏，具体尺寸待确认。
+- B-003 歌词失败回退策略: 待确认是否回退过期缓存/是否快速重试。
+
+## Recent Updates
+- 已将“嵌入歌词优先、缺失异步 LrcApi”写入决策与计划。
+- 已将“每轮单任务闭环 + 结束强制回写状态文件”写入执行规则。
+- 已把配置骨架从“配置项定义”推进到“加载接口约定”层。
+- 已输出歌词链路状态机，后续实现可直接按文档落地。
+- 已将配置策略从“启动失败阻断”修订为“零阻断启动 + 自愈修复”。
+- 已完成 UI 信息架构低保真基线，后续可按模块切入实现。
+- 已补齐配置接口与错误策略联动示例，后续可直接据此编码。
+- 已补齐歌词异常测试清单，可直接用于实现后联调与回归。
+- 已补齐配置与UI串联验收清单，可作为首版功能验收入口。
+- 已补齐启动自愈与设置页提示文案规范，减少后续交互返工。
+- 已确认 B-004：设置页展示启动自愈明细，并同步到相关文档。
+- 已落地 I-001 代码骨架，启动阶段可按文档策略执行“自愈继续启动 + 单条聚合 toast”。
+- 已落地 I-002 设置页最小逻辑，保存门槛与提示文案可直接供 UI 层绑定。
+- 已将 `T-015 GitHub Actions Android 打包流程配置` 登记为后续 backlog 任务。
+- 已落地 I-003 首页最小播放壳逻辑，首页可根据 Emby 就绪状态切换提示与推荐占位。
+- 已落地 I-004 歌词链路最小骨架，具备嵌入优先、异步远程和切歌取消能力。
+- 已落地 I-005 媒体键联动骨架，方向盘上下曲可驱动播放队列并同步首页/队列状态。
+- 已完成 I-001 到 I-005，达到最小可用版本里程碑（骨架版）。

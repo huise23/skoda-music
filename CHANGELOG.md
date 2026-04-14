@@ -51,3 +51,7 @@
 - Added audio focus manager source files under `src/platform/android/`.
 - Updated package workflow to build `audio_focus_manager_example`.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-020: added runnable MVP app shell (`src/app/mvp_app.cpp`) to assemble modules.
+- Updated package workflow to build `skoda_music_mvp_app` and run smoke test.
+- Verified workflow run success (`24401923637`) with artifact output.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

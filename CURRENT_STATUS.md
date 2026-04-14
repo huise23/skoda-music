@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 21:34:25
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -90,9 +90,14 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
   - 实现前后台切换、焦点 gain/loss/transient/duck 状态流
   - 通过动作回调输出 `request/abandon/pause/resume/duck/unduck`
   - 将音频焦点示例纳入 CI 打包 workflow 构建清单
+- 完成 `T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）`:
+  - 新增 `src/app/mvp_app.cpp`
+  - 串联配置/设置/首页/歌词/队列/媒体键/音频焦点为单一可执行程序
+  - 支持命令行交互（status/home/queue/settings-save/lyrics/focus/next/prev）
+  - 将 `skoda_music_mvp_app` 加入 CI 构建并增加 smoke test
 
 ## In Progress
-- `T-020` 实现 Qt 应用主入口与模块装配（MVP 可运行壳，下一最小任务，尚未开始）。
+- `T-021` 实现 Qt/QML 前台 UI 壳与现有模块桥接（下一最小任务，尚未开始）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -120,3 +125,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 - 已完成 I-001 到 I-005，达到最小可用版本里程碑（骨架版）。
 - 已完成 GitHub 打包链路闭环（工作流配置、仓库推送、Actions 成功产物）。
 - 已落地 C3 音频焦点与前后台骨架，补齐播放系统控制基础状态流。
+- 已产出“最小可用 App（控制台壳）”并通过 CI 烟测，可执行端到端主流程演示。

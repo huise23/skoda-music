@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 21:34:25
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -29,15 +29,17 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 - 已完成 `T-017 实现 I-005 方向盘媒体键联动`（媒体键映射、上/下一曲、首页/队列状态同步）。
 - 已完成 `T-015 GitHub Actions 打包流程配置并实测成功`（仓库创建、push 触发、artifact 产出）。
 - 已完成 `T-018 实现 C3 音频焦点与前后台状态管理骨架`（前后台切换与焦点状态流）。
+- 已完成 `T-020 实现主入口与模块装配`（`mvp_app` 可执行壳 + CI smoke test）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
+- 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待执行 `T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）`（尚未开始）。
+- 等待执行 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`（尚未开始）。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 执行 T-020：实现 Qt 应用主入口与模块装配（MVP 可运行壳）
+- [ ] 执行 T-021：实现 Qt/QML 前台 UI 壳与现有模块桥接
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made
@@ -89,6 +91,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 - `src/platform/android/audio_focus_manager.h`
 - `src/platform/android/audio_focus_manager.cpp`
 - `src/platform/android/audio_focus_manager_example.cpp`
+- `src/app/mvp_app.cpp`
 - `.github/workflows/package-mvp.yml`
 <!-- AUTO:CHANGED_FILES_END -->
 
@@ -99,7 +102,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 20:29:51
 - 歌词远程失败时是否回退过期缓存/是否快速重试: 待确认（见 `docs/LYRICS_STATE_MACHINE.md`）。
 - 当前 YAML 解析为最小骨架实现（自研简化解析），后续可替换为成熟 YAML 库实现以提升鲁棒性。
 - GitHub 仓库: `https://github.com/huise23/skoda-music`
-- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24398126964`（success）
+- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24401923637`（success，含 mvp_app smoke test）
 
 ## Instructions For Next AI Session
 - 先读: `PROJECT_BRIEF.md` `PLAN.md` `CURRENT_STATUS.md` `DECISIONS.md` `HANDOFF.md` `TASK_QUEUE.md`。

@@ -53,6 +53,33 @@ jobs:
             src/platform/android/audio_focus_manager_example.cpp \
             -o dist/bin/audio_focus_manager_example
 
+          g++ -std=c++17 -O2 -pthread -I. \
+            src/config/config_runtime.cpp \
+            src/ui/settings/settings_flow.cpp \
+            src/ui/home/home_shell.cpp \
+            src/lyrics/lyrics_resolver.cpp \
+            src/playback/playback_queue.cpp \
+            src/platform/android/media_key_controller.cpp \
+            src/platform/android/audio_focus_manager.cpp \
+            src/app/mvp_app.cpp \
+            -o dist/bin/skoda_music_mvp_app
+
+      - name: Smoke test MVP app
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "status"
+            echo "home"
+            echo "queue"
+            echo "lyrics"
+            echo "focus fg"
+            echo "focus gain"
+            echo "next"
+            echo "settings-test"
+            echo "quit"
+          } | dist/bin/skoda_music_mvp_app > dist/bin/mvp_app_smoke.txt
+
       - name: Build package bundle
         shell: bash
         run: |

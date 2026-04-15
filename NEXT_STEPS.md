@@ -1,9 +1,8 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 08:56:37
+Last Updated: 2026-04-15 09:14:11
 
 ## Priority
-- [ ] T-022: 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）
 - [ ] T-019: GitHub Actions 增加签名与 Release 上传流程（AAB/APK）
 
 ## Delegatable To AI

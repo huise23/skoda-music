@@ -1,6 +1,6 @@
 # PLAN
 
-Last Updated: 2026-04-15 08:56:37
+Last Updated: 2026-04-15 09:14:11
 
 ## Plan Principle
 - 先建设 AI 协作工作台，再做功能实现。
@@ -61,6 +61,7 @@ Last Updated: 2026-04-15 08:56:37
 - 已完成 `T-018 实现 C3 音频焦点与前后台状态管理骨架`。
 - 已完成 `T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）`。
 - 已完成 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`。
+- 已完成 `T-022 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）`。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成。
 - 已达成“最小可用 App（含 QML 桥接壳）”里程碑并完成 CI 烟测。
-- 下一最小任务: `T-022 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）`。
+- 下一最小任务: `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`。

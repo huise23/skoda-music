@@ -1,9 +1,8 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 08:56:37
+Last Updated: 2026-04-15 09:14:11
 
 ## Ready
-- [ ] T-022 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）
 - [ ] T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）
 
 ## Backlog
@@ -36,6 +35,7 @@ Last Updated: 2026-04-15 08:56:37
 - [x] T-018 实现 C3 音频焦点与前后台状态管理骨架：新增 AudioFocusManager 状态机与动作回调
 - [x] T-020 实现主入口与模块装配：新增 `mvp_app` 可执行壳并通过 CI smoke test
 - [x] T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接：新增桥接层、QML 壳与 CI smoke test
+- [x] T-022 升级 actions 运行时兼容 Node.js 24：升级 `checkout/upload-artifact` 并通过 Node24 强制运行验证
 - [x] B-004 已确认：设置页展示启动自愈字段明细
 
 ## Task Definition of Done

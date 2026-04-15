@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:14:11
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -102,9 +102,15 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
   - 新增 `src/ui/qml/Main.qml`
   - 将 `qml_frontend_bridge_example` 加入 CI 构建并新增 smoke test
   - GitHub Actions `24430693274` 成功（含 mvp_app 与 qml bridge 双 smoke）
+- 完成 `T-022 升级 actions 运行时兼容 Node.js 24`:
+  - 更新 `.github/workflows/package-mvp.yml`
+  - `actions/checkout` 升级到 `v6.0.2`
+  - `actions/upload-artifact` 升级到 `v7.0.1`
+  - 增加 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` 强制 Node24 运行验证
+  - GitHub Actions `24431208389` 成功（无 Node20 弃用告警）
 
 ## In Progress
-- `T-022` 升级 actions 运行时兼容 Node.js 24（下一最小任务，尚未开始）。
+- `T-019` GitHub Actions 增加签名与 Release 上传流程（AAB/APK）（下一最小任务，尚未开始）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -134,4 +140,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
 - 已落地 C3 音频焦点与前后台骨架，补齐播放系统控制基础状态流。
 - 已产出“最小可用 App（控制台壳）”并通过 CI 烟测，可执行端到端主流程演示。
 - 已落地 Qt/QML 前台桥接壳与低保真 QML 页面，并通过 CI 烟测验证桥接链路可运行。
-- 最新 CI 运行出现 Node.js 20 弃用告警，已将 `T-022` 提升为下一优先任务。
+- 已完成 Node.js 24 兼容升级并验证通过，CI 不再出现 Node.js 20 弃用告警。

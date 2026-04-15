@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:14:11
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -31,16 +31,16 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
 - 已完成 `T-018 实现 C3 音频焦点与前后台状态管理骨架`（前后台切换与焦点状态流）。
 - 已完成 `T-020 实现主入口与模块装配`（`mvp_app` 可执行壳 + CI smoke test）。
 - 已完成 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`（桥接层 + QML 壳 + CI smoke test）。
+- 已完成 `T-022 升级 actions 运行时兼容 Node.js 24`（升级 action 版本并通过强制 Node24 验证）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待执行 `T-022 升级 actions 运行时兼容 Node.js 24`（尚未开始）。
+- 等待执行 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`（尚未开始）。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 执行 T-022：升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）
 - [ ] 执行 T-019：GitHub Actions 增加签名与 Release 上传流程（AAB/APK）
 <!-- AUTO:NEXT_ACTIONS_END -->
 
@@ -108,8 +108,8 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
 - 歌词远程失败时是否回退过期缓存/是否快速重试: 待确认（见 `docs/LYRICS_STATE_MACHINE.md`）。
 - 当前 YAML 解析为最小骨架实现（自研简化解析），后续可替换为成熟 YAML 库实现以提升鲁棒性。
 - GitHub 仓库: `https://github.com/huise23/skoda-music`
-- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24430693274`（success，含 mvp_app 与 qml bridge 双 smoke）
-- CI 注记: Node.js 20 actions 弃用告警已出现，需尽快完成 `T-022`。
+- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24431208389`（success，Node24 强制运行 + 双 smoke）
+- CI 注记: Node.js 20 弃用告警已消除。
 
 ## Instructions For Next AI Session
 - 先读: `PROJECT_BRIEF.md` `PLAN.md` `CURRENT_STATUS.md` `DECISIONS.md` `HANDOFF.md` `TASK_QUEUE.md`。

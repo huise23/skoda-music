@@ -63,3 +63,7 @@
 - Updated package workflow to build `qml_frontend_bridge_example` and run smoke test.
 - Verified workflow run success (`24430693274`) with dual smoke tests.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-022: upgraded workflow actions for Node.js 24 compatibility.
+- Updated `actions/checkout` to `v6.0.2`, `actions/upload-artifact` to `v7.0.1`.
+- Enabled `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` and validated workflow success (`24431208389`) without Node20 deprecation warning.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

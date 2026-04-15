@@ -28,6 +28,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
       - name: Build MVP examples
         shell: bash
         run: |
@@ -131,23 +153,27 @@ jobs:
           cp PROJECT_BRIEF.md PLAN.md CURRENT_STATUS.md NEXT_STEPS.md HANDOFF.md dist/package/
           tar -czf dist/skoda-music-mvp.tar.gz -C dist/package .
 
-      - name: Build unsigned APK/AAB placeholders
+      - name: Build real unsigned APK and AAB
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/release/apk dist/release/aab
-          cp dist/skoda-music-mvp.tar.gz dist/release/apk/payload.tar.gz
-          cp dist/skoda-music-mvp.tar.gz dist/release/aab/payload.tar.gz
-          cp -r dist/bin dist/release/apk/bin
-          cp -r dist/bin dist/release/aab/bin
-          (
-            cd dist/release/apk
-            zip -q -r ../skoda-music-mvp-unsigned.apk .
-          )
-          (
-            cd dist/release/aab
-            zip -q -r ../skoda-music-mvp-unsigned.aab .
-          )
+          gradle --no-daemon :app:assembleRelease :app:bundleRelease
+
+          mkdir -p dist/release
+          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
+          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n1)"
+          test -n "${APK_PATH}"
+          test -n "${AAB_PATH}"
+          cp "${APK_PATH}" dist/release/skoda-music-mvp-unsigned.apk
+          cp "${AAB_PATH}" dist/release/skoda-music-mvp-unsigned.aab
+
+      - name: Inspect unsigned APK metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS_DIR="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
+          "$BUILD_TOOLS_DIR/aapt" dump badging dist/release/skoda-music-mvp-unsigned.apk \
+            > dist/release/apk_badging.txt
 
       - name: Restore Android keystore
         if: env.HAS_SIGNING_SECRETS == 'true'
@@ -169,16 +195,20 @@ jobs:
         run: |
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/keystore/release.jks"
-          jarsigner -verbose \
-            -sigalg SHA256withRSA \
-            -digestalg SHA-256 \
-            -keystore "$KEYSTORE" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -keypass "$ANDROID_KEY_PASSWORD" \
-            -signedjar dist/release/skoda-music-mvp-signed.apk \
+          BUILD_TOOLS_DIR="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
+
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 \
             dist/release/skoda-music-mvp-unsigned.apk \
-            "$ANDROID_KEY_ALIAS"
-          jarsigner -verify -verbose -certs dist/release/skoda-music-mvp-signed.apk
+            dist/release/skoda-music-mvp-aligned.apk
+
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out dist/release/skoda-music-mvp-signed.apk \
+            dist/release/skoda-music-mvp-aligned.apk
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose dist/release/skoda-music-mvp-signed.apk
 
           jarsigner -verbose \
             -sigalg SHA256withRSA \

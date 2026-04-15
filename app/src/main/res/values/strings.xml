@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skoda Music</string>
+    <string name="app_title">Skoda Music MVP</string>
+    <string name="app_subtitle">Android shell installed successfully</string>
+</resources>

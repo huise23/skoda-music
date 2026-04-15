@@ -295,6 +295,49 @@ jobs:
               --notes "${NOTES}"
           fi
 
+      - name: Publish Fixed Latest Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="mvp-latest"
+          NOTES="Latest automated build from ${GITHUB_SHA}"
+
+          APK_ASSET="dist/release/skoda-music-mvp-unsigned.apk"
+          AAB_ASSET="dist/release/skoda-music-mvp-unsigned.aab"
+          if [[ -f "dist/release/skoda-music-mvp-signed.apk" ]]; then
+            APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
+          fi
+          if [[ -f "dist/release/skoda-music-mvp-signed.aab" ]]; then
+            AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
+          fi
+
+          RELEASE_ASSETS=("${APK_ASSET}")
+          if [[ -f "${AAB_ASSET}" ]]; then
+            RELEASE_ASSETS+=("${AAB_ASSET}")
+          fi
+
+          if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${TAG_NAME}" \
+              "${RELEASE_ASSETS[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+            gh release edit "${TAG_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${TAG_NAME}" \
+              --notes "${NOTES}"
+          else
+            gh release create "${TAG_NAME}" \
+              "${RELEASE_ASSETS[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "${TAG_NAME}" \
+              --notes "${NOTES}" \
+              --prerelease
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7.0.1
         with:

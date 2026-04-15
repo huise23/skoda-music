@@ -8,6 +8,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStream
@@ -288,25 +289,42 @@ class MainActivity : AppCompatActivity() {
 
             logger("auth success user=${shortId(auth.userId)}")
 
-            val endpoint = buildEmbyItemsUrl(embyBase, auth.userId)
-            val response = executeGet(
-                endpoint = endpoint,
+            val recommendedEndpoint = buildEmbyRecommendedItemsUrl(embyBase, auth.userId)
+            val recommendedResponse = executeGet(
+                endpoint = recommendedEndpoint,
                 token = auth.accessToken,
-                requestLabel = "GET /Users/{id}/Items",
+                requestLabel = "GET /Users/{id}/Items/Latest",
                 log = logger
             )
-
-            if (response.code !in 200..299) {
-                return failedResult(
-                    headline = "Action feedback: Emby items request failed (HTTP ${response.code})",
-                    logs = logs
-                )
+            var source = "recommended"
+            var tracks = if (recommendedResponse.code in 200..299) {
+                parseTrackNames(recommendedResponse.payload)
+            } else {
+                logger("recommended endpoint failed, fallback to full library")
+                emptyList()
             }
 
-            val tracks = parseTrackNames(response.payload)
+            if (tracks.isEmpty()) {
+                val libraryEndpoint = buildEmbyItemsUrl(embyBase, auth.userId)
+                val libraryResponse = executeGet(
+                    endpoint = libraryEndpoint,
+                    token = auth.accessToken,
+                    requestLabel = "GET /Users/{id}/Items",
+                    log = logger
+                )
+                if (libraryResponse.code !in 200..299) {
+                    return failedResult(
+                        headline = "Action feedback: Emby items request failed (HTTP ${libraryResponse.code})",
+                        logs = logs
+                    )
+                }
+                tracks = parseTrackNames(libraryResponse.payload)
+                source = "library-fallback"
+            }
+
             logger("tracks=${tracks.size}")
             if (tracks.isNotEmpty()) {
-                logger("tracks-source=emby-api")
+                logger("tracks-source=$source")
                 logger("tracks-sample=${tracks.take(3).joinToString(" | ")}")
             }
             if (tracks.isEmpty()) {
@@ -318,7 +336,7 @@ class MainActivity : AppCompatActivity() {
 
             EmbyLoadResult(
                 success = true,
-                statusText = getString(R.string.emby_status_connected) + " (${tracks.size})",
+                statusText = getString(R.string.emby_status_connected) + " (${tracks.size}, $source)",
                 feedbackText = formatFeedback(
                     headline = getString(R.string.feedback_emby_connected),
                     logs = logs
@@ -425,6 +443,15 @@ class MainActivity : AppCompatActivity() {
         return "$embyBase/Users/AuthenticateByName?${buildCommonEmbyQuery()}"
     }
 
+    private fun buildEmbyRecommendedItemsUrl(embyBase: String, userId: String): String {
+        val params = mutableListOf(
+            "IncludeItemTypes=Audio",
+            "Limit=50"
+        )
+        params.addAll(commonEmbyQueryParams())
+        return "$embyBase/Users/${urlEncode(userId)}/Items/Latest?${params.joinToString("&")}"
+    }
+
     private fun buildEmbyItemsUrl(embyBase: String, userId: String): String {
         val params = mutableListOf(
             "IncludeItemTypes=Audio",
@@ -450,15 +477,42 @@ class MainActivity : AppCompatActivity() {
 
     private fun parseTrackNames(jsonText: String): List<String> {
         val out = mutableListOf<String>()
-        val root = JSONObject(jsonText)
+        val trimmed = jsonText.trim()
+        if (trimmed.isEmpty()) {
+            return out
+        }
+        if (trimmed.startsWith("[")) {
+            val items = JSONArray(trimmed)
+            for (i in 0 until items.length()) {
+                val name = extractTrackName(items.optJSONObject(i))
+                if (name.isNotEmpty()) {
+                    out.add(name)
+                }
+            }
+            return out
+        }
+
+        val root = JSONObject(trimmed)
         val items = root.optJSONArray("Items") ?: return out
         for (i in 0 until items.length()) {
-            val name = items.optJSONObject(i)?.optString("Name")?.trim().orEmpty()
+            val name = extractTrackName(items.optJSONObject(i))
             if (name.isNotEmpty()) {
                 out.add(name)
             }
         }
         return out
+    }
+
+    private fun extractTrackName(item: JSONObject?): String {
+        if (item == null) {
+            return ""
+        }
+        val candidates = listOf(
+            item.optString("Name").trim(),
+            item.optString("SortName").trim(),
+            item.optString("Album").trim()
+        )
+        return candidates.firstOrNull { it.isNotEmpty() }.orEmpty()
     }
 
     private fun readAll(stream: InputStream?): String {

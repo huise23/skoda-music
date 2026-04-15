@@ -55,42 +55,6 @@
                 android:textColorHint="#90A4B8" />
 
             <EditText
-                android:id="@+id/emby_user_id_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:hint="@string/hint_emby_user_id"
-                android:imeOptions="actionNext"
-                android:inputType="text"
-                android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
-
-            <EditText
-                android:id="@+id/emby_token_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:hint="@string/hint_emby_token"
-                android:imeOptions="actionDone"
-                android:inputType="textVisiblePassword"
-                android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
-
-            <EditText
-                android:id="@+id/emby_api_key_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:hint="@string/hint_emby_api_key"
-                android:imeOptions="actionNext"
-                android:inputType="textVisiblePassword"
-                android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
-
-            <EditText
                 android:id="@+id/emby_username_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

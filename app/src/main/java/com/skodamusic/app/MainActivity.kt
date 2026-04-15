@@ -31,18 +31,8 @@ class MainActivity : AppCompatActivity() {
 
     private data class EmbyCredentials(
         val baseUrl: String,
-        val userId: String,
-        val token: String,
-        val apiKey: String,
         val username: String,
         val password: String
-    )
-
-    private data class ResolvedAuth(
-        val mode: String,
-        val userId: String,
-        val token: String?,
-        val apiKey: String?
     )
 
     private data class AuthByNameResult(
@@ -63,9 +53,6 @@ class MainActivity : AppCompatActivity() {
     )
 
     private lateinit var embyBaseUrlInput: EditText
-    private lateinit var embyUserIdInput: EditText
-    private lateinit var embyTokenInput: EditText
-    private lateinit var embyApiKeyInput: EditText
     private lateinit var embyUsernameInput: EditText
     private lateinit var embyPasswordInput: EditText
     private lateinit var embyStatusValue: TextView
@@ -84,9 +71,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
-        embyUserIdInput = findViewById(R.id.emby_user_id_input)
-        embyTokenInput = findViewById(R.id.emby_token_input)
-        embyApiKeyInput = findViewById(R.id.emby_api_key_input)
         embyUsernameInput = findViewById(R.id.emby_username_input)
         embyPasswordInput = findViewById(R.id.emby_password_input)
         embyStatusValue = findViewById(R.id.emby_status_value)
@@ -115,11 +99,7 @@ class MainActivity : AppCompatActivity() {
     private fun bindActions() {
         playPauseButton.setOnClickListener {
             if (loadedTracks.isEmpty()) {
-                updateState {
-                    it.copy(
-                        feedbackText = getString(R.string.feedback_need_emby)
-                    )
-                }
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
                 return@setOnClickListener
             }
 
@@ -141,14 +121,9 @@ class MainActivity : AppCompatActivity() {
 
         nextButton.setOnClickListener {
             if (loadedTracks.isEmpty()) {
-                updateState {
-                    it.copy(
-                        feedbackText = getString(R.string.feedback_need_emby)
-                    )
-                }
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
                 return@setOnClickListener
             }
-
             if (!NativePlaybackBridge.isAvailable()) {
                 updateState {
                     it.copy(
@@ -185,9 +160,6 @@ class MainActivity : AppCompatActivity() {
         testEmbyButton.setOnClickListener {
             val credentials = EmbyCredentials(
                 baseUrl = embyBaseUrlInput.text.toString().trim(),
-                userId = embyUserIdInput.text.toString().trim(),
-                token = embyTokenInput.text.toString().trim(),
-                apiKey = embyApiKeyInput.text.toString().trim(),
                 username = embyUsernameInput.text.toString().trim(),
                 password = embyPasswordInput.text.toString().trim()
             )
@@ -203,25 +175,7 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val hasToken = credentials.token.isNotEmpty()
-            val hasApiKey = credentials.apiKey.isNotEmpty()
-            val hasUsernamePassword =
-                credentials.username.isNotEmpty() && credentials.password.isNotEmpty()
-            val hasPartialLogin =
-                credentials.username.isNotEmpty().xor(credentials.password.isNotEmpty())
-
-            if (hasPartialLogin) {
-                updateState {
-                    it.copy(
-                        embyStatusText = getString(R.string.emby_status_failed),
-                        feedbackText = "Action feedback: username and password must both be set"
-                    )
-                }
-                Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            if (!hasToken && !hasApiKey && !hasUsernamePassword) {
+            if (credentials.username.isEmpty() || credentials.password.isEmpty()) {
                 updateState {
                     it.copy(
                         embyStatusText = getString(R.string.emby_status_failed),
@@ -318,25 +272,29 @@ class MainActivity : AppCompatActivity() {
         return try {
             val embyBase = normalizeEmbyBase(credentials.baseUrl)
             logger("base=$embyBase")
+            logger("auth-mode=username-password")
 
-            val auth = resolveAuth(embyBase, credentials, logger)
-                ?: return failedResult(
-                    headline = "Action feedback: Emby authentication failed",
-                    logs = logs
-                )
+            val auth = authenticateByName(
+                embyBase = embyBase,
+                username = credentials.username,
+                password = credentials.password,
+                log = logger
+            ) ?: return failedResult(
+                headline = "Action feedback: Emby authentication failed",
+                logs = logs
+            )
 
-            logger("auth=${auth.mode}, user=${shortId(auth.userId)}")
+            logger("auth success user=${shortId(auth.userId)}")
 
-            val endpoint = buildEmbyItemsUrl(embyBase, auth.userId, auth.apiKey)
+            val endpoint = buildEmbyItemsUrl(embyBase, auth.userId)
             val response = executeGet(
                 endpoint = endpoint,
-                token = auth.token,
+                token = auth.accessToken,
                 requestLabel = "GET /Users/{id}/Items",
                 log = logger
             )
 
             if (response.code !in 200..299) {
-                logger("items-request failed")
                 return failedResult(
                     headline = "Action feedback: Emby items request failed (HTTP ${response.code})",
                     logs = logs
@@ -370,93 +328,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun resolveAuth(
-        embyBase: String,
-        credentials: EmbyCredentials,
-        log: (String) -> Unit
-    ): ResolvedAuth? {
-        val explicitUserId = credentials.userId.trim()
-        if (credentials.token.isNotEmpty()) {
-            log("auth-mode=token")
-            val resolvedUserId = if (explicitUserId.isNotEmpty()) {
-                explicitUserId
-            } else {
-                queryUserId(embyBase, token = credentials.token, apiKey = null, log = log)
-            } ?: return null
-            return ResolvedAuth(
-                mode = "token",
-                userId = resolvedUserId,
-                token = credentials.token,
-                apiKey = null
-            )
-        }
-
-        if (credentials.apiKey.isNotEmpty()) {
-            log("auth-mode=api-key")
-            val resolvedUserId = if (explicitUserId.isNotEmpty()) {
-                explicitUserId
-            } else {
-                queryUserId(embyBase, token = null, apiKey = credentials.apiKey, log = log)
-            } ?: return null
-            return ResolvedAuth(
-                mode = "api-key",
-                userId = resolvedUserId,
-                token = null,
-                apiKey = credentials.apiKey
-            )
-        }
-
-        if (credentials.username.isNotEmpty() && credentials.password.isNotEmpty()) {
-            log("auth-mode=username-password")
-            val auth = authenticateByName(
-                embyBase = embyBase,
-                username = credentials.username,
-                password = credentials.password,
-                log = log
-            ) ?: return null
-            return ResolvedAuth(
-                mode = "username-password",
-                userId = auth.userId,
-                token = auth.accessToken,
-                apiKey = null
-            )
-        }
-
-        return null
-    }
-
-    private fun queryUserId(
-        embyBase: String,
-        token: String?,
-        apiKey: String?,
-        log: (String) -> Unit
-    ): String? {
-        val endpoint = buildUsersMeUrl(embyBase, apiKey)
-        val response = executeGet(
-            endpoint = endpoint,
-            token = token,
-            requestLabel = "GET /Users/Me",
-            log = log
-        )
-        if (response.code !in 200..299) {
-            log("users-me failed")
-            return null
-        }
-        return try {
-            val userId = JSONObject(response.payload).optString("Id").trim()
-            if (userId.isEmpty()) {
-                log("users-me missing Id")
-                null
-            } else {
-                log("users-me resolved user=${shortId(userId)}")
-                userId
-            }
-        } catch (e: Exception) {
-            log("users-me parse error: ${e.javaClass.simpleName}")
-            null
-        }
-    }
-
     private fun authenticateByName(
         embyBase: String,
         username: String,
@@ -465,7 +336,7 @@ class MainActivity : AppCompatActivity() {
     ): AuthByNameResult? {
         var connection: HttpURLConnection? = null
         return try {
-            val endpoint = "$embyBase/Users/AuthenticateByName"
+            val endpoint = buildAuthenticateByNameUrl(embyBase)
             connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 6000
@@ -473,10 +344,6 @@ class MainActivity : AppCompatActivity() {
                 doOutput = true
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                setRequestProperty("X-Emby-Client", EMBY_CLIENT_NAME)
-                setRequestProperty("X-Emby-Device", EMBY_DEVICE_NAME)
-                setRequestProperty("X-Emby-Device-Id", EMBY_DEVICE_ID)
-                setRequestProperty("X-Emby-Version", EMBY_CLIENT_VERSION)
             }
 
             val body = JSONObject()
@@ -490,9 +357,9 @@ class MainActivity : AppCompatActivity() {
             val code = connection.responseCode
             val payload = readAll(if (code in 200..299) connection.inputStream else connection.errorStream)
             log("POST /Users/AuthenticateByName -> HTTP $code")
+            log("auth body=${previewPayload(payload)}")
 
             if (code !in 200..299) {
-                log("auth body=${previewPayload(payload)}")
                 return null
             }
 
@@ -503,7 +370,6 @@ class MainActivity : AppCompatActivity() {
                 log("auth response missing token/user")
                 return null
             }
-            log("auth success user=${shortId(userId)}")
             AuthByNameResult(accessToken = token, userId = userId)
         } catch (e: Exception) {
             log("auth exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
@@ -515,7 +381,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun executeGet(
         endpoint: String,
-        token: String?,
+        token: String,
         requestLabel: String,
         log: (String) -> Unit
     ): HttpResult {
@@ -526,13 +392,7 @@ class MainActivity : AppCompatActivity() {
                 connectTimeout = 6000
                 readTimeout = 10000
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("X-Emby-Client", EMBY_CLIENT_NAME)
-                setRequestProperty("X-Emby-Device", EMBY_DEVICE_NAME)
-                setRequestProperty("X-Emby-Device-Id", EMBY_DEVICE_ID)
-                setRequestProperty("X-Emby-Version", EMBY_CLIENT_VERSION)
-                if (!token.isNullOrEmpty()) {
-                    setRequestProperty("X-Emby-Token", token)
-                }
+                setRequestProperty("X-Emby-Token", token)
             }
             val code = connection.responseCode
             val payload = readAll(if (code in 200..299) connection.inputStream else connection.errorStream)
@@ -555,24 +415,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildUsersMeUrl(embyBase: String, apiKey: String?): String {
-        if (apiKey.isNullOrBlank()) {
-            return "$embyBase/Users/Me"
-        }
-        return "$embyBase/Users/Me?api_key=${urlEncode(apiKey)}"
+    private fun buildAuthenticateByNameUrl(embyBase: String): String {
+        return "$embyBase/Users/AuthenticateByName?${buildCommonEmbyQuery()}"
     }
 
-    private fun buildEmbyItemsUrl(embyBase: String, userId: String, apiKey: String?): String {
-        val query = mutableListOf(
+    private fun buildEmbyItemsUrl(embyBase: String, userId: String): String {
+        val params = mutableListOf(
             "IncludeItemTypes=Audio",
             "Recursive=true",
             "SortBy=SortName",
             "Limit=50"
         )
-        if (!apiKey.isNullOrBlank()) {
-            query.add("api_key=${urlEncode(apiKey)}")
-        }
-        return "$embyBase/Users/${urlEncode(userId)}/Items?${query.joinToString("&")}"
+        params.addAll(commonEmbyQueryParams())
+        return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
+    }
+
+    private fun buildCommonEmbyQuery(): String = commonEmbyQueryParams().joinToString("&")
+
+    private fun commonEmbyQueryParams(): List<String> {
+        return listOf(
+            "X-Emby-Client=${urlEncode(EMBY_QUERY_CLIENT)}",
+            "X-Emby-Device-Name=${urlEncode(EMBY_QUERY_DEVICE_NAME)}",
+            "X-Emby-Device-Id=${urlEncode(EMBY_QUERY_DEVICE_ID)}",
+            "X-Emby-Client-Version=${urlEncode(EMBY_QUERY_CLIENT_VERSION)}",
+            "X-Emby-Language=${urlEncode(EMBY_QUERY_LANGUAGE)}"
+        )
     }
 
     private fun parseTrackNames(jsonText: String): List<String> {
@@ -633,11 +500,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun shortId(value: String): String {
-        return if (value.length <= 8) {
-            value
-        } else {
-            value.take(4) + "..." + value.takeLast(4)
-        }
+        return if (value.length <= 8) value else value.take(4) + "..." + value.takeLast(4)
     }
 
     private fun urlEncode(value: String): String = URLEncoder.encode(value, "UTF-8")
@@ -660,9 +523,10 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val LOG_TAG = "SkodaMusicEmby"
-        const val EMBY_CLIENT_NAME = "SkodaMusic"
-        const val EMBY_DEVICE_NAME = "AndroidShell"
-        const val EMBY_DEVICE_ID = "skoda-music-shell"
-        const val EMBY_CLIENT_VERSION = "0.1.0"
+        const val EMBY_QUERY_CLIENT = "Emby Web"
+        const val EMBY_QUERY_DEVICE_NAME = "Google Chrome Windows"
+        const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
+        const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
+        const val EMBY_QUERY_LANGUAGE = "zh-cn"
     }
 }

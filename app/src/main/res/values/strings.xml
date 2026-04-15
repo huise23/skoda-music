@@ -5,12 +5,9 @@
     <string name="app_subtitle">Android interactive shell (real Emby path)</string>
     <string name="label_emby">Emby Connection</string>
     <string name="hint_emby_base_url">Base URL (e.g. http://192.168.1.2:8096)</string>
-    <string name="hint_emby_user_id">User ID (optional, auto-detect if blank)</string>
-    <string name="hint_emby_token">Access Token (optional)</string>
-    <string name="hint_emby_api_key">API Key (optional)</string>
-    <string name="hint_emby_username">Username (optional)</string>
-    <string name="hint_emby_password">Password (optional)</string>
-    <string name="label_emby_auth_note">Auth: Token OR API Key OR Username+Password</string>
+    <string name="hint_emby_username">Username</string>
+    <string name="hint_emby_password">Password</string>
+    <string name="label_emby_auth_note">Auth: Username + Password only</string>
     <string name="action_test_emby">Test Emby &amp; Load Tracks</string>
     <string name="emby_status_not_tested">Emby status: not tested</string>
     <string name="emby_status_testing">Emby status: testing...</string>
@@ -32,7 +29,7 @@
     <string name="feedback_emby_connected">Action feedback: tracks loaded from Emby</string>
     <string name="feedback_emby_failed">Action feedback: failed to load tracks from Emby</string>
     <string name="feedback_emby_missing">Action feedback: fill base url first</string>
-    <string name="feedback_emby_need_auth">Action feedback: provide token or api key or username+password</string>
+    <string name="feedback_emby_need_auth">Action feedback: provide username and password</string>
     <string name="feedback_native_unavailable">Action feedback: native playback bridge unavailable</string>
     <string name="feedback_end_of_queue">Action feedback: reached end of queue</string>
     <string name="toast_playing">Playback changed to Playing</string>

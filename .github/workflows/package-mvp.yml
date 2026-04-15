@@ -10,9 +10,11 @@ on:
 jobs:
   package:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Build MVP examples
         shell: bash
@@ -118,7 +120,7 @@ jobs:
           tar -czf dist/skoda-music-mvp.tar.gz -C dist/package .
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: skoda-music-mvp
           path: |

@@ -1,0 +1,18 @@
+# NEXT_STEPS
+
+Last Updated: 2026-04-15 19:10:40
+
+## Highest Priority
+- [ ] 执行 `T-S1-006`：更新 API 17 实机交互回归清单与结果模板。
+
+## Immediate Actions
+- [ ] 触发一次 CI 打包，验证 `T-S1-001~005 + T-S1-004` 改动后 APK 构建稳定。
+- [ ] 在 Android 4.2.2 实机验证 Emby 拉曲目 + Next(native) + 播放状态切换。
+
+## Pending Confirmation
+- [ ] 实机安装并回传 Android 4.2.2 行为结果（安装/启动/前后台/交互）。
+- [ ] 系统首页音乐卡片第三方入口能力确认。
+- [ ] 歌词失败回退策略口径确认。
+
+## Deferred
+- [ ] 复杂视觉动效与大规模 UI 重构（非当前阶段重点）。

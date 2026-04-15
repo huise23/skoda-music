@@ -93,3 +93,18 @@
 - Completed T-029: fixed false-negative in CI minSdk verification step.
 - Updated workflow check to accept both `sdkVersion:'17'` and `minSdkVersion:'17'` from `aapt dump badging`.
 - Added failure diagnostics by printing `apk_badging.txt` when minSdk check fails.
+- Completed T-S1-001: replaced Android static cover page with interactive shell UI.
+- Added minimal status area (`Current Track`, `Playback Status`) and action buttons (`Play/Pause`, `Next`) with visible click feedback.
+- Updated `.ai/context` execution files (current status, next steps, task queue, handoff) for single-task closure.
+- Completed T-S1-002: introduced minimal `UiState` in Android `MainActivity`.
+- Refactored UI updates to a single path: `updateState -> render`, including button enabled state rendering.
+- Updated `.ai/context` execution files for next task handoff (`T-S1-003`).
+- Completed T-S1-003: implemented local mock playback loop in Android UI.
+- `Next` action now cycles through in-memory mock tracks and updates `currentTrack` visibly.
+- Updated `.ai/context` execution files for next task handoff (`T-S1-005`).
+- Completed T-S1-005: added real Emby connectivity test and audio item loading in Android UI.
+- Added Emby credentials inputs (BaseURL/UserId/Token), network request flow, and status feedback rendering.
+- Replaced mock track source with Emby-loaded track list for `Next` action.
+- Completed T-S1-004: wired Android UI to C++ `playback_queue` via JNI bridge (`NativePlaybackBridge`).
+- Added NDK/CMake integration in Android module and installed matching NDK in CI workflow.
+- `Next` action and current track status now read from native queue state instead of Kotlin-only state.

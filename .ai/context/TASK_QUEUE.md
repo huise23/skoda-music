@@ -1,9 +1,9 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 22:04:57
+Last Updated: 2026-04-15 22:41:00
 
 ## Ready
-- [ ] `T-S1-006` API 17 实机交互回归脚本化清单
+- [ ] （空）
 
 ## In Progress
 - [ ] （空）
@@ -26,6 +26,7 @@ Last Updated: 2026-04-15 22:04:57
 - [x] `T-HF-EMBY-002` Emby 曲名显示诊断增强（UTF-8 解码 + 曲名样例日志）
 - [x] `T-HF-PLY-001` Android 实际播放接线（MediaPlayer + Emby Stream URL）
 - [x] `T-HF-PLY-002` Emby 推荐拉取优先与全量回退策略接线
+- [x] `T-S1-006` API 17 实机交互回归脚本化清单
 
 ## Queue Notes
 - `Ready` 仅包含当前阶段可独立闭环并可验证的任务。

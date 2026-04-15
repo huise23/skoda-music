@@ -1,9 +1,9 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 22:04:57
+Last Updated: 2026-04-15 22:41:00
 
 ## Highest Priority
-- [ ] 执行 `T-S1-006`：更新 API 17 实机交互回归清单与结果模板。
+- [ ] 按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行一轮 Android 4.2.2 实机回归并回传结果。
 
 ## Immediate Actions
 - [ ] 触发一次 CI 打包，验证 `T-S1-001~005 + T-S1-004` 改动后 APK 构建稳定。

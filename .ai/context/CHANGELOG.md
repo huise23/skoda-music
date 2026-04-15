@@ -112,3 +112,5 @@
 - Completed T-HF-EMBY-002: forced UTF-8 decoding for Emby HTTP response and added `tracks-sample` diagnostic logging to distinguish server metadata from client-side parse/display issues.
 - Completed T-HF-PLY-001: integrated real playback via Android `MediaPlayer` using Emby stream URL; `Play/Pause` now controls actual streaming and `Next` continues playback when already playing.
 - Completed T-HF-PLY-002: switched track loading strategy to recommended-first (`Items/Latest`) with fallback to full library (`Items`), including source diagnostics in status/logs.
+- Completed T-S1-006: added `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` with API17 real-device verification steps and result template.
+- Updated CI release runbook to reference API17 interaction regression checklist.

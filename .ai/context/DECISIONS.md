@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-15 22:04:57
+Last Updated: 2026-04-15 22:41:00
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -49,3 +49,7 @@ Last Updated: 2026-04-15 22:04:57
 ## 2026-04-15 - Emby 曲目拉取策略调整为推荐优先
 - 决策: 曲目列表优先请求 `Items/Latest`（音频推荐），失败或为空时回退 `Items` 全量查询。
 - 影响: 当前曲目更贴近推荐场景，且可通过来源标记快速判断服务端返回路径。
+
+## 2026-04-15 - API17 实机回归口径文档化
+- 决策: 实机回归统一以 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 为执行与回传模板。
+- 影响: 后续人工验证将有固定条目与结果结构，便于快速定位回归失败点与阻塞项。

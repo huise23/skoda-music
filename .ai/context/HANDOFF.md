@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-04-15 22:04:57
+Last Updated: 2026-04-15 22:41:00
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -24,11 +24,12 @@ Last Updated: 2026-04-15 22:04:57
 - 本轮新增: `T-HF-EMBY-002` 已完成，Emby 响应改为 UTF-8 解码，并新增 `tracks-sample` 日志用于中文曲名排障。
 - 本轮新增: `T-HF-PLY-001` 已完成，`Play/Pause` 已接入 `MediaPlayer` 真实播放 Emby 音频流，`Next` 在播放态可切歌并继续播放。
 - 本轮新增: `T-HF-PLY-002` 已完成，曲目请求改为推荐优先（`Items/Latest`）并在失败时回退全量库（`Items`）。
+- 本轮新增: `T-S1-006` 已完成，新增 API 17 实机交互回归清单与结果模板文档。
 
 ## Recommended Next Steps
-1. 执行 `T-S1-006`：更新实机交互回归清单模板。
-2. 在 Android 4.2.2 实机确认真实流播放链路（Play/Pause/Next）与推荐来源标识。
-3. 触发一次 CI 打包并完成 Android 4.2.2 实机安装与交互回归记录。
+1. 按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 在 Android 4.2.2 实机执行回归。
+2. 回传失败条目、关键日志（`statusText/actionFeedback/tracks-source/tracks-sample`）和截图。
+3. 根据回归结果决定是否进入下一轮 planning（新增 Ready 任务）。
 
 ## Read First In New Session
 1. `.ai/context/PROJECT_BRIEF.md`

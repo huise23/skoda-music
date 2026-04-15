@@ -10,6 +10,9 @@ Status: Draft v2 (T-028)
 - 验证发布产物
 - 验证 APK 最低系统版本与目标车机一致
 
+配套实机交互回归清单见：
+- `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+
 ## Current Workflow Scope
 - 工作流文件: `.github/workflows/package-mvp.yml`
 - 触发方式:

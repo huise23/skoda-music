@@ -78,6 +78,51 @@
                 android:textColor="@android:color/white"
                 android:textColorHint="#90A4B8" />
 
+            <EditText
+                android:id="@+id/emby_api_key_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="@string/hint_emby_api_key"
+                android:imeOptions="actionNext"
+                android:inputType="textVisiblePassword"
+                android:maxLines="1"
+                android:textColor="@android:color/white"
+                android:textColorHint="#90A4B8" />
+
+            <EditText
+                android:id="@+id/emby_username_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="@string/hint_emby_username"
+                android:imeOptions="actionNext"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textColor="@android:color/white"
+                android:textColorHint="#90A4B8" />
+
+            <EditText
+                android:id="@+id/emby_password_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="@string/hint_emby_password"
+                android:imeOptions="actionDone"
+                android:inputType="textPassword"
+                android:maxLines="1"
+                android:textColor="@android:color/white"
+                android:textColorHint="#90A4B8" />
+
+            <TextView
+                android:id="@+id/emby_auth_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/label_emby_auth_note"
+                android:textColor="#90A4B8"
+                android:textSize="12sp" />
+
             <Button
                 android:id="@+id/btn_test_emby"
                 android:layout_width="match_parent"
@@ -141,7 +186,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
+                android:fontFamily="monospace"
+                android:lineSpacingExtra="2dp"
+                android:maxLines="12"
                 android:text="@string/feedback_need_emby"
+                android:textIsSelectable="true"
                 android:textColor="#D0D6DC"
                 android:textSize="13sp" />
         </LinearLayout>

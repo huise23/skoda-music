@@ -163,19 +163,28 @@ jobs:
           done
           tar -czf dist/skoda-music-mvp.tar.gz -C dist/package .
 
-      - name: Build real unsigned APK and AAB
+      - name: Build real unsigned release APK (default) and optional AAB
         shell: bash
+        env:
+          BUILD_AAB: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release) }}
         run: |
           set -euo pipefail
-          gradle --no-daemon :app:assembleRelease :app:bundleRelease
+          if [[ "${BUILD_AAB}" == "true" ]]; then
+            gradle --no-daemon :app:assembleRelease :app:bundleRelease
+          else
+            gradle --no-daemon :app:assembleRelease
+          fi
 
           mkdir -p dist/release
           APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
-          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n1)"
           test -n "${APK_PATH}"
-          test -n "${AAB_PATH}"
           cp "${APK_PATH}" dist/release/skoda-music-mvp-unsigned.apk
-          cp "${AAB_PATH}" dist/release/skoda-music-mvp-unsigned.aab
+
+          if [[ "${BUILD_AAB}" == "true" ]]; then
+            AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n1)"
+            test -n "${AAB_PATH}"
+            cp "${AAB_PATH}" dist/release/skoda-music-mvp-unsigned.aab
+          fi
 
       - name: Inspect unsigned APK metadata
         shell: bash
@@ -208,7 +217,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/keystore"
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore/release.jks"
 
-      - name: Sign APK and AAB
+      - name: Sign APK and optional AAB
         if: env.HAS_SIGNING_SECRETS == 'true'
         shell: bash
         env:
@@ -233,16 +242,18 @@ jobs:
             dist/release/skoda-music-mvp-aligned.apk
           "$BUILD_TOOLS_DIR/apksigner" verify --verbose dist/release/skoda-music-mvp-signed.apk
 
-          jarsigner -verbose \
-            -sigalg SHA256withRSA \
-            -digestalg SHA-256 \
-            -keystore "$KEYSTORE" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -keypass "$ANDROID_KEY_PASSWORD" \
-            -signedjar dist/release/skoda-music-mvp-signed.aab \
-            dist/release/skoda-music-mvp-unsigned.aab \
-            "$ANDROID_KEY_ALIAS"
-          jarsigner -verify -verbose -certs dist/release/skoda-music-mvp-signed.aab
+          if [[ -f "dist/release/skoda-music-mvp-unsigned.aab" ]]; then
+            jarsigner -verbose \
+              -sigalg SHA256withRSA \
+              -digestalg SHA-256 \
+              -keystore "$KEYSTORE" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -keypass "$ANDROID_KEY_PASSWORD" \
+              -signedjar dist/release/skoda-music-mvp-signed.aab \
+              dist/release/skoda-music-mvp-unsigned.aab \
+              "$ANDROID_KEY_ALIAS"
+            jarsigner -verify -verbose -certs dist/release/skoda-music-mvp-signed.aab
+          fi
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
@@ -264,18 +275,20 @@ jobs:
           if [[ -f "dist/release/skoda-music-mvp-signed.aab" ]]; then
             AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
           fi
+          RELEASE_ASSETS=("${APK_ASSET}")
+          if [[ -f "${AAB_ASSET}" ]]; then
+            RELEASE_ASSETS+=("${AAB_ASSET}")
+          fi
 
           NOTES="Automated release from ${GITHUB_SHA}"
           if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "${TAG_NAME}" \
-              "${APK_ASSET}" \
-              "${AAB_ASSET}" \
+              "${RELEASE_ASSETS[@]}" \
               --repo "${GITHUB_REPOSITORY}" \
               --clobber
           else
             gh release create "${TAG_NAME}" \
-              "${APK_ASSET}" \
-              "${AAB_ASSET}" \
+              "${RELEASE_ASSETS[@]}" \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${GITHUB_SHA}" \
               --title "${TAG_NAME}" \

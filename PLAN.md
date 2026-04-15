@@ -1,6 +1,6 @@
 # PLAN
 
-Last Updated: 2026-04-15 09:14:11
+Last Updated: 2026-04-15 09:21:02
 
 ## Plan Principle
 - 先建设 AI 协作工作台，再做功能实现。
@@ -62,6 +62,7 @@ Last Updated: 2026-04-15 09:14:11
 - 已完成 `T-020 实现 Qt 应用主入口与模块装配（MVP 可运行壳）`。
 - 已完成 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`。
 - 已完成 `T-022 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）`。
+- 已完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成。
 - 已达成“最小可用 App（含 QML 桥接壳）”里程碑并完成 CI 烟测。
-- 下一最小任务: `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`。
+- 下一最小任务: `T-023 签名发布操作文档与密钥检查清单（Secrets 配置 + 手动触发说明）`。

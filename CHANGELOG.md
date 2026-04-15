@@ -67,3 +67,8 @@
 - Updated `actions/checkout` to `v6.0.2`, `actions/upload-artifact` to `v7.0.1`.
 - Enabled `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` and validated workflow success (`24431208389`) without Node20 deprecation warning.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-019: added APK/AAB signing and conditional GitHub Release upload flow in CI.
+- Added `workflow_dispatch.publish_release` input, tag trigger, keystore restore, and `jarsigner` verification steps.
+- Added release publish step using `gh release create/upload` (tag/manual trigger only).
+- Verified workflow success (`24431410125`) with expected conditional-step behavior.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:14:11
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:21:02
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -108,9 +108,15 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:14:11
   - `actions/upload-artifact` 升级到 `v7.0.1`
   - 增加 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` 强制 Node24 运行验证
   - GitHub Actions `24431208389` 成功（无 Node20 弃用告警）
+- 完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`:
+  - `.github/workflows/package-mvp.yml` 增加 `workflow_dispatch.publish_release` 入参
+  - 增加 APK/AAB 占位产物构建、keystore 还原、`jarsigner` 签名与校验步骤
+  - 增加基于 tag/手动触发的 GitHub Release 创建/上传流程
+  - 默认分支 push 下自动跳过签名与 release，保留常规 CI 通过
+  - GitHub Actions `24431410125` 成功（签名/release 条件步骤按预期 skip）
 
 ## In Progress
-- `T-019` GitHub Actions 增加签名与 Release 上传流程（AAB/APK）（下一最小任务，尚未开始）。
+- `T-023` 签名发布操作文档与密钥检查清单（下一最小任务，尚未开始）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -141,3 +147,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:14:11
 - 已产出“最小可用 App（控制台壳）”并通过 CI 烟测，可执行端到端主流程演示。
 - 已落地 Qt/QML 前台桥接壳与低保真 QML 页面，并通过 CI 烟测验证桥接链路可运行。
 - 已完成 Node.js 24 兼容升级并验证通过，CI 不再出现 Node.js 20 弃用告警。
+- 已补齐 CI 签名与 Release 上传流程骨架，等待配置真实签名 secrets 后做手动发布验证。

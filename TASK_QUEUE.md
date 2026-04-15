@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 12:51:57
+Last Updated: 2026-04-15 14:22:45
 
 ## Ready
 - [ ] （空）
@@ -43,6 +43,7 @@ Last Updated: 2026-04-15 12:51:57
 - [x] T-026 回写实机参数确认结果：已记录 Android `4.2.2` / `1024x600` / CPU `autochips ac83xx`，并同步状态文件
 - [x] T-027 Android 4.2.2 兼容改造：`minSdk` 下调到 `17`，依赖收敛为 `appcompat`，字节码目标降为 Java/Kotlin `1.8`，CI 增加 `minSdkVersion:'17'` 校验
 - [x] T-028 发布 runbook 对齐 API 17 基线：补齐 `minSdk=17`/`apk_badging` 校验与 `mvp-r18` 实机验收步骤
+- [x] T-029 修复 CI 最低版本校验误报：兼容 `aapt` 的 `sdkVersion`/`minSdkVersion` 输出格式
 - [x] B-004 已确认：设置页展示启动自愈字段明细
 - [x] B-005 已完成：Android 签名 Secrets 已配置并完成手动发布验收
 - [x] B-002 已确认：目标分辨率为 `1024x600`（横屏）

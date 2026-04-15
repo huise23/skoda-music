@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 14:22:45
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -137,6 +137,10 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
   - 更新 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 到 v2
   - 增加 `minSdk=17`、`apk_badging minSdkVersion:'17'` 校验说明
   - 补齐 `mvp-r18` 实机验收发布建议与排障项
+- 完成 `T-029 修复 CI 最低版本校验误报`:
+  - 更新 `.github/workflows/package-mvp.yml` 的 `Verify APK minSdk is API 17` 脚本
+  - 校验条件改为兼容 `aapt` 输出的 `sdkVersion:'17'` 与 `minSdkVersion:'17'`
+  - 失败时回显 `apk_badging.txt`，便于快速定位
 
 ## In Progress
 - `M-002` 目标车机实机安装与兼容性验收（Android `4.2.2` 环境，等待人工执行）。
@@ -177,3 +181,4 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
 - 已完成 API 17 兼容改造：`minSdk=17` + `AppCompat` 主题 + Java/Kotlin `1.8` 目标。
 - 待通过新 release 安装验证确认最终兼容性结论。
 - 已完成发布 runbook v2 对齐，后续可按文档直接触发 `mvp-r18` 验收发布。
+- 已修复 CI `minSdk` 校验误报，下一次 push/workflow_dispatch 应可正常通过该步骤。

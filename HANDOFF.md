@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 14:22:45
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -38,6 +38,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
 - 已完成 `T-026 实机参数确认回写`（已确认 Android `4.2.2` / `1024x600` / `autochips ac83xx`）。
 - 已完成 `T-027 Android 4.2.2 兼容改造`（`minSdk=17` + `AppCompat` 主题 + Java/Kotlin `1.8` 目标 + CI 最低版本校验）。
 - 已完成 `T-028 发布 runbook 对齐 API 17 基线`（`docs/CI_SIGNING_RELEASE_RUNBOOK.md` v2）。
+- 已完成 `T-029 修复 CI 最低版本校验误报`（兼容 `sdkVersion/minSdkVersion` 两种 badging 输出）。
 - 已解除 `B-002`（目标分辨率待确认）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
@@ -51,6 +52,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
 - [ ] 触发发布包含 `minSdk=17` 的新版本（建议 `mvp-r18`）
 - [ ] 安装 release `mvp-r18`（或最新）的 `skoda-music-mvp-signed.apk` 到目标车机
 - [ ] 回传安装/启动结果（成功、解析失败/版本过低、闪退、权限问题）
+- [ ] 确认最新 `Package MVP` run 中 `Verify APK minSdk is API 17` 步骤通过
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made

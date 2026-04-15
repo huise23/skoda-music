@@ -178,7 +178,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "minSdkVersion:'17'" dist/release/apk_badging.txt
+          # aapt badging usually reports "sdkVersion", some toolchains may expose "minSdkVersion".
+          if grep -Eq "sdkVersion:'17'|minSdkVersion:'17'" dist/release/apk_badging.txt; then
+            echo "minSdk verification passed (API 17)."
+          else
+            echo "minSdk verification failed. Expected API 17 in apk_badging.txt."
+            cat dist/release/apk_badging.txt
+            exit 1
+          fi
 
       - name: Restore Android keystore
         if: env.HAS_SIGNING_SECRETS == 'true'

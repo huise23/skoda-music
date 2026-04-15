@@ -90,3 +90,6 @@
 - Completed T-028: updated release runbook to v2 for API 17 baseline validation.
 - Added explicit operator checks for `minSdk=17`, `apk_badging minSdkVersion:'17'`, and `mvp-r18` release validation path.
 - Updated project memory files after execution (status, next steps, handoff, task queue).
+- Completed T-029: fixed false-negative in CI minSdk verification step.
+- Updated workflow check to accept both `sdkVersion:'17'` and `minSdkVersion:'17'` from `aapt dump badging`.
+- Added failure diagnostics by printing `apk_badging.txt` when minSdk check fails.

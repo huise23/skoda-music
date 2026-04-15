@@ -20,7 +20,7 @@ Status: Draft v2 (T-028)
 - 当前兼容性基线:
   - 目标实机：Android `4.2.2`（API 17）
   - 应用配置：`app/build.gradle.kts` 中 `minSdk = 17`
-  - CI 校验：`aapt dump badging` 输出必须包含 `minSdkVersion:'17'`
+  - CI 校验：`aapt dump badging` 输出必须包含 `sdkVersion:'17'` 或 `minSdkVersion:'17'`
 
 ## Required Secrets
 在 GitHub 仓库 `Settings -> Secrets and variables -> Actions -> New repository secret` 中新增：
@@ -92,7 +92,7 @@ $bytes = [System.IO.File]::ReadAllBytes(".\release.jks")
 3. release 附件包含：
   - `skoda-music-mvp-signed.apk`（或 unsigned 回退）
   - `skoda-music-mvp-signed.aab`（或 unsigned 回退）
-4. `dist/release/apk_badging.txt` 中包含 `minSdkVersion:'17'`（CI 已内置校验，缺失会直接失败）。
+4. `dist/release/apk_badging.txt` 中包含 `sdkVersion:'17'` 或 `minSdkVersion:'17'`（CI 已内置校验，缺失会直接失败）。
 5. 在 Android `4.2.2` 实机安装 APK，不出现“解析包时出现问题/版本过低”。
 
 ## Optional: Tag Release Flow

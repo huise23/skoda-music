@@ -1,8 +1,9 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 12:51:57
+Last Updated: 2026-04-15 14:22:45
 
 ## Priority
+- [ ] M-005: 复跑 `Package MVP`，确认 `Verify APK minSdk is API 17` 步骤通过
 - [ ] M-004: 按 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 触发包含 `minSdk=17` 的新 APK/AAB（建议 tag: `mvp-r18`）
 - [ ] M-002: 在 Android `4.2.2` 目标车机实机安装新版本并记录结果（安装提示/启动/前后台）
 

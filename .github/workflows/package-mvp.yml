@@ -150,7 +150,16 @@ jobs:
           cp -r docs dist/package/docs
           cp -r config dist/package/config
           cp -r src dist/package/src
-          cp PROJECT_BRIEF.md PLAN.md CURRENT_STATUS.md NEXT_STEPS.md HANDOFF.md dist/package/
+          for f in PROJECT_BRIEF.md PLAN.md CURRENT_STATUS.md NEXT_STEPS.md HANDOFF.md; do
+            if [[ -f "$f" ]]; then
+              cp "$f" dist/package/
+            elif [[ -f ".ai/context/$f" ]]; then
+              cp ".ai/context/$f" dist/package/
+            else
+              echo "Missing required context file: $f"
+              exit 1
+            fi
+          done
           tar -czf dist/skoda-music-mvp.tar.gz -C dist/package .
 
       - name: Build real unsigned APK and AAB

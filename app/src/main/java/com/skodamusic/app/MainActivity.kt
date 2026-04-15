@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -60,6 +62,7 @@ class MainActivity : AppCompatActivity() {
         val feedbackText: String,
         val tracks: List<EmbyTrack> = emptyList(),
         val embyBase: String? = null,
+        val embyUserId: String? = null,
         val accessToken: String? = null
     )
 
@@ -77,9 +80,11 @@ class MainActivity : AppCompatActivity() {
 
     private var loadedTracks: List<EmbyTrack> = emptyList()
     private var embySessionBaseUrl: String? = null
+    private var embySessionUserId: String? = null
     private var embyAccessToken: String? = null
     private var currentTrackIndex: Int = 0
     private var mediaPlayer: MediaPlayer? = null
+    private var playbackRequestId: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,6 +119,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        playbackRequestId += 1
         releasePlayer()
     }
 
@@ -174,6 +180,7 @@ class MainActivity : AppCompatActivity() {
             if (wasPlaying) {
                 playTrackAtCurrentIndex()
             } else {
+                playbackRequestId += 1
                 releasePlayer()
             }
         }
@@ -227,8 +234,10 @@ class MainActivity : AppCompatActivity() {
                 if (result.success) {
                     loadedTracks = result.tracks
                     embySessionBaseUrl = result.embyBase
+                    embySessionUserId = result.embyUserId
                     embyAccessToken = result.accessToken
                     currentTrackIndex = 0
+                    playbackRequestId += 1
                     releasePlayer()
                     val nativeReady = NativePlaybackBridge.isAvailable()
                     val firstTrack = if (nativeReady) {
@@ -251,9 +260,11 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         embySessionBaseUrl = null
+                        embySessionUserId = null
                         embyAccessToken = null
                         loadedTracks = emptyList()
                         currentTrackIndex = 0
+                        playbackRequestId += 1
                         releasePlayer()
                         Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
                         return@runOnUiThread
@@ -275,8 +286,10 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     loadedTracks = emptyList()
                     embySessionBaseUrl = null
+                    embySessionUserId = null
                     embyAccessToken = null
                     currentTrackIndex = 0
+                    playbackRequestId += 1
                     releasePlayer()
                     updateState {
                         it.copy(
@@ -319,6 +332,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pausePlayback() {
+        playbackRequestId += 1
         try {
             mediaPlayer?.pause()
         } catch (_: Exception) {
@@ -339,8 +353,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val base = embySessionBaseUrl
+        val userId = embySessionUserId
         val token = embyAccessToken
-        if (base.isNullOrBlank() || token.isNullOrBlank()) {
+        if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
             updateState {
                 it.copy(
                     isPlaying = false,
@@ -354,7 +369,8 @@ class MainActivity : AppCompatActivity() {
 
         currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val track = loadedTracks[currentTrackIndex]
-        val streamUrl = buildEmbyStreamUrl(base, track.id)
+        val streamUrl = buildEmbyStreamUrl(base, track.id, userId, token)
+        val requestId = ++playbackRequestId
         releasePlayer()
 
         try {
@@ -362,6 +378,10 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer = player
             player.setAudioStreamType(AudioManager.STREAM_MUSIC)
             player.setOnPreparedListener { prepared ->
+                if (requestId != playbackRequestId) {
+                    prepared.release()
+                    return@setOnPreparedListener
+                }
                 prepared.start()
                 runOnUiThread {
                     updateState {
@@ -375,6 +395,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             player.setOnCompletionListener {
+                if (requestId != playbackRequestId) {
+                    return@setOnCompletionListener
+                }
                 runOnUiThread {
                     if (NativePlaybackBridge.hasNext()) {
                         NativePlaybackBridge.nextTitle()
@@ -400,20 +423,24 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             player.setOnErrorListener { _, what, extra ->
+                if (requestId != playbackRequestId) {
+                    return@setOnErrorListener true
+                }
+                releasePlayer()
                 runOnUiThread {
                     updateState {
                         it.copy(
                             isPlaying = false,
                             playbackStatusRes = R.string.status_paused,
                             playPauseLabelRes = R.string.action_play,
-                            feedbackText = "Action feedback: playback error ($what/$extra)"
+                            feedbackText = "Action feedback: stream error ($what/$extra), trying cached file"
                         )
                     }
                 }
-                releasePlayer()
+                downloadAndPlayTrack(track, base, userId, token, requestId)
                 true
             }
-            player.setDataSource(this, Uri.parse(streamUrl), mapOf("X-Emby-Token" to token))
+            player.setDataSource(this, Uri.parse(streamUrl))
             player.prepareAsync()
             updateState {
                 it.copy(
@@ -430,9 +457,154 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: cannot play track (${e.javaClass.simpleName})"
+                    feedbackText = "Action feedback: stream setup failed (${e.javaClass.simpleName}), trying cached file"
                 )
             }
+            downloadAndPlayTrack(track, base, userId, token, requestId)
+        }
+    }
+
+    private fun downloadAndPlayTrack(
+        track: EmbyTrack,
+        embyBase: String,
+        userId: String,
+        token: String,
+        requestId: Int
+    ) {
+        Thread {
+            val cacheFile = downloadTrackToCache(track, embyBase, userId, token)
+            runOnUiThread {
+                if (requestId != playbackRequestId) {
+                    return@runOnUiThread
+                }
+                if (cacheFile == null || !cacheFile.exists()) {
+                    updateState {
+                        it.copy(
+                            isPlaying = false,
+                            playbackStatusRes = R.string.status_paused,
+                            playPauseLabelRes = R.string.action_play,
+                            feedbackText = "Action feedback: download fallback failed"
+                        )
+                    }
+                    return@runOnUiThread
+                }
+
+                try {
+                    releasePlayer()
+                    val player = MediaPlayer()
+                    mediaPlayer = player
+                    player.setAudioStreamType(AudioManager.STREAM_MUSIC)
+                    player.setDataSource(cacheFile.absolutePath)
+                    player.setOnPreparedListener { prepared ->
+                        if (requestId != playbackRequestId) {
+                            prepared.release()
+                            return@setOnPreparedListener
+                        }
+                        prepared.start()
+                        runOnUiThread {
+                            updateState {
+                                it.copy(
+                                    isPlaying = true,
+                                    playbackStatusRes = R.string.status_playing,
+                                    playPauseLabelRes = R.string.action_pause,
+                                    feedbackText = "Action feedback: playing cached ${track.title}"
+                                )
+                            }
+                        }
+                    }
+                    player.setOnCompletionListener {
+                        if (requestId != playbackRequestId) {
+                            return@setOnCompletionListener
+                        }
+                        runOnUiThread {
+                            if (NativePlaybackBridge.hasNext()) {
+                                NativePlaybackBridge.nextTitle()
+                                currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+                                updateState { s ->
+                                    s.copy(
+                                        currentTrack = loadedTracks[currentTrackIndex].title,
+                                        nextEnabled = NativePlaybackBridge.hasNext()
+                                    )
+                                }
+                                playTrackAtCurrentIndex()
+                            } else {
+                                updateState { s ->
+                                    s.copy(
+                                        isPlaying = false,
+                                        playbackStatusRes = R.string.status_paused,
+                                        playPauseLabelRes = R.string.action_play,
+                                        nextEnabled = false,
+                                        feedbackText = getString(R.string.feedback_end_of_queue)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    player.prepareAsync()
+                    updateState {
+                        it.copy(
+                            isPlaying = true,
+                            playbackStatusRes = R.string.status_playing,
+                            playPauseLabelRes = R.string.action_pause,
+                            feedbackText = "Action feedback: buffering cached ${track.title}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    releasePlayer()
+                    updateState {
+                        it.copy(
+                            isPlaying = false,
+                            playbackStatusRes = R.string.status_paused,
+                            playPauseLabelRes = R.string.action_play,
+                            feedbackText = "Action feedback: cached play failed (${e.javaClass.simpleName})"
+                        )
+                    }
+                }
+            }
+        }.start()
+    }
+
+    private fun downloadTrackToCache(
+        track: EmbyTrack,
+        embyBase: String,
+        userId: String,
+        token: String
+    ): File? {
+        var connection: HttpURLConnection? = null
+        return try {
+            val streamUrl = buildEmbyStreamUrl(embyBase, track.id, userId, token)
+            connection = (URL(streamUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 20000
+                setRequestProperty("Accept", "audio/*")
+                setRequestProperty("X-Emby-Token", token)
+            }
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                Log.e(LOG_TAG, "downloadTrackToCache HTTP $code")
+                return null
+            }
+            val file = File(cacheDir, "emby_${track.id}.mp3")
+            connection.inputStream.use { input ->
+                FileOutputStream(file, false).use { out ->
+                    val buffer = ByteArray(8192)
+                    var len = input.read(buffer)
+                    while (len >= 0) {
+                        if (len > 0) {
+                            out.write(buffer, 0, len)
+                        }
+                        len = input.read(buffer)
+                    }
+                    out.flush()
+                }
+            }
+            file
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "downloadTrackToCache failed: ${e.javaClass.simpleName} ${e.message}")
+            null
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -527,6 +699,7 @@ class MainActivity : AppCompatActivity() {
                 ),
                 tracks = tracks,
                 embyBase = embyBase,
+                embyUserId = auth.userId,
                 accessToken = auth.accessToken
             )
         } catch (e: Exception) {
@@ -649,8 +822,19 @@ class MainActivity : AppCompatActivity() {
         return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
     }
 
-    private fun buildEmbyStreamUrl(embyBase: String, trackId: String): String {
-        return "$embyBase/Audio/${urlEncode(trackId)}/stream?static=true&${buildCommonEmbyQuery()}"
+    private fun buildEmbyStreamUrl(
+        embyBase: String,
+        trackId: String,
+        userId: String,
+        token: String
+    ): String {
+        val params = mutableListOf(
+            "UserId=${urlEncode(userId)}",
+            "api_key=${urlEncode(token)}",
+            "static=true"
+        )
+        params.addAll(commonEmbyQueryParams())
+        return "$embyBase/Audio/${urlEncode(trackId)}/stream.mp3?${params.joinToString("&")}"
     }
 
     private fun buildCommonEmbyQuery(): String = commonEmbyQueryParams().joinToString("&")

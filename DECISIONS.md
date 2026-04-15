@@ -62,3 +62,10 @@
 - Alternatives considered: 不展示明细，仅toast提示。
 - Why this option: 提升可维护性与可诊断性，减少用户重复排障成本。
 - Follow-up impact: 文案规范与验收清单需包含明细展示要求。
+
+## 2026-04-15 - 引入最小 Android 原生壳用于真实 APK 交付
+- Context: 现有 C++ 控制台与占位包无法在 Android 设备安装验证，发布链路需要真实 APK/AAB 产物。
+- Decision: 在不改动核心 C++ 模块边界的前提下，引入最小 Android Gradle/Kotlin 壳（仅承载启动页），用于产出可安装 APK/AAB 与签名发布验证。
+- Alternatives considered: 继续使用占位包；一次性接入完整 Qt Android 工程。
+- Why this option: 改动最小、验证最快，可先确保“可安装交付链路”成立，再逐步桥接到 Qt 前台。
+- Follow-up impact: 后续需规划“Qt 前台壳并入 Android 工程”的迁移任务，避免双入口长期并存。

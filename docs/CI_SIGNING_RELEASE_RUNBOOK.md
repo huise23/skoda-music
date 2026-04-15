@@ -1,6 +1,6 @@
 # CI_SIGNING_RELEASE_RUNBOOK
 
-Last Updated: 2026-04-15 09:21:02  
+Last Updated: 2026-04-15 10:34:12  
 Status: Draft v1 (T-023)
 
 ## Purpose
@@ -15,7 +15,7 @@ Status: Draft v1 (T-023)
   - `push` 到 `main/master`（仅构建，不发 release）
   - `push tag v*`（可发 release）
   - `workflow_dispatch` + `publish_release=true`（可发 release）
-- 当前 APK/AAB 为 CI 打包占位产物（zip 容器），用于验证签名与发布链路，不代表最终 Android 安装包格式。
+- 当前 APK/AAB 为 Gradle 真实构建产物（`assembleRelease` + `bundleRelease`），可用于 Android 安装与分发。
 
 ## Required Secrets
 在 GitHub 仓库 `Settings -> Secrets and variables -> Actions -> New repository secret` 中新增：
@@ -85,6 +85,7 @@ $bytes = [System.IO.File]::ReadAllBytes(".\release.jks")
 3. release 附件包含：
   - `skoda-music-mvp-signed.apk`（或 unsigned 回退）
   - `skoda-music-mvp-signed.aab`（或 unsigned 回退）
+4. 安装 APK 时不再出现“解析失败”（如出现，优先检查下载完整性和设备安装来源权限）。
 
 ## Optional: Tag Release Flow
 如果你想按版本号发版（而不是 run 编号）：

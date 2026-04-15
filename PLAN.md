@@ -1,6 +1,6 @@
 # PLAN
 
-Last Updated: 2026-04-15 09:33:40
+Last Updated: 2026-04-15 10:34:12
 
 ## Plan Principle
 - 先建设 AI 协作工作台，再做功能实现。
@@ -64,6 +64,7 @@ Last Updated: 2026-04-15 09:33:40
 - 已完成 `T-022 升级 actions 运行时兼容 Node.js 24（替换/验证 action 版本）`。
 - 已完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`。
 - 已完成 `T-023 签名发布操作文档与密钥检查清单（Secrets 配置 + 手动触发说明）`。
+- 已完成 `T-024 真实可用 APK 产出（Android Gradle 工程 + 真实签名发布）`。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成。
 - 已达成“最小可用 App（含 QML 桥接壳）”里程碑并完成 CI 烟测。
-- 下一最小任务: `M-001 维护者手动执行签名 secrets 配置与 release 验收`。
+- 下一最小任务: `M-002 维护者实机安装 mvp-r17 并回传兼容性结果`。

@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -34,17 +34,18 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 - 已完成 `T-022 升级 actions 运行时兼容 Node.js 24`（升级 action 版本并通过强制 Node24 验证）。
 - 已完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`（签名步骤 + 条件 release 上传）。
 - 已完成 `T-023 签名发布操作文档与密钥检查清单`（新增维护者可执行 runbook）。
+- 已完成 `T-024 真实可用 APK 产出`（Android Gradle 工程 + 真实签名发布）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待维护者执行 `M-001`：配置签名 secrets 并手动触发发布验收。
+- 等待维护者执行 `M-002`：车机实机安装与兼容性验收。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 按 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 配置签名 secrets
-- [ ] 手动触发 `Package MVP`（`publish_release=true`）并确认 release 产物
+- [ ] 安装 release `mvp-r17` 的 `skoda-music-mvp-signed.apk` 到目标车机
+- [ ] 回传安装/启动结果（成功、解析失败、闪退、权限问题）
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made
@@ -103,6 +104,15 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 - `src/ui/qml/Main.qml`
 - `.github/workflows/package-mvp.yml`
 - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
+- `settings.gradle.kts`
+- `build.gradle.kts`
+- `gradle.properties`
+- `app/build.gradle.kts`
+- `app/src/main/AndroidManifest.xml`
+- `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- `app/src/main/res/layout/activity_main.xml`
+- `app/src/main/res/values/strings.xml`
+- `app/src/main/res/values/themes.xml`
 <!-- AUTO:CHANGED_FILES_END -->
 
 ## Risks / Open Questions
@@ -112,8 +122,8 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 - 歌词远程失败时是否回退过期缓存/是否快速重试: 待确认（见 `docs/LYRICS_STATE_MACHINE.md`）。
 - 当前 YAML 解析为最小骨架实现（自研简化解析），后续可替换为成熟 YAML 库实现以提升鲁棒性。
 - GitHub 仓库: `https://github.com/huise23/skoda-music`
-- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24431410125`（success，签名/release 条件步骤已接入）
-- CI 注记: 当前仓库未配置 Android 签名 secrets，签名与 release 发布步骤在 push 场景下按预期跳过。
+- Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24433338344`（success，签名与 release 发布已执行）
+- 最新发布: `https://github.com/huise23/skoda-music/releases/tag/mvp-r17`
 - 维护者操作文档: `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
 
 ## Instructions For Next AI Session

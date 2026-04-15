@@ -75,3 +75,8 @@
 - Completed T-023: added signing/release runbook and maintainer checklist.
 - Added `docs/CI_SIGNING_RELEASE_RUNBOOK.md` with secrets setup and manual release validation steps.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-024: switched CI from placeholder packages to real Android Gradle APK/AAB outputs.
+- Added Android app module (`app/`) and root Gradle config files.
+- Verified push build success (`24433231656`) and manual release success (`24433338344`).
+- Published signed artifacts in release `mvp-r17`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

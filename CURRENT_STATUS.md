@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -117,10 +117,15 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 - 完成 `T-023 签名发布操作文档与密钥检查清单`:
   - 新增 `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
   - 固化 secrets 名称、PowerShell 操作步骤、手动触发发布与验收检查项
-  - 明确当前 APK/AAB 为占位产物，避免误判为最终 Android 安装包
+  - 已更新为真实 Android 构建流程说明
+- 完成 `T-024 产出真实可用 APK`:
+  - 新增 Android Gradle 工程（`app/` + `settings.gradle.kts` + `build.gradle.kts`）
+  - CI 改为 Gradle 产出真实 `app-release` APK/AAB，并执行签名
+  - 手动发布 run `24433338344` 成功，Release `mvp-r17` 已上传签名 APK/AAB
+  - 最新 push run `24433231656` 成功，默认分支构建链路稳定
 
 ## In Progress
-- `M-001` 维护者按 runbook 配置签名 secrets 并完成一次手动发布验收（等待人工执行）。
+- `M-002` 目标车机实机安装与兼容性验收（等待人工执行）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -151,5 +156,6 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 - 已产出“最小可用 App（控制台壳）”并通过 CI 烟测，可执行端到端主流程演示。
 - 已落地 Qt/QML 前台桥接壳与低保真 QML 页面，并通过 CI 烟测验证桥接链路可运行。
 - 已完成 Node.js 24 兼容升级并验证通过，CI 不再出现 Node.js 20 弃用告警。
-- 已补齐 CI 签名与 Release 上传流程骨架，等待配置真实签名 secrets 后做手动发布验证。
+- 已补齐并验证 CI 签名与 Release 上传流程（secrets 已配置，手动发布已通过）。
 - 已补齐签名发布 Runbook，可直接按步骤完成 secrets 配置与 release 验收。
+- 已完成真实 APK/AAB 构建与发布，待车机实机安装反馈决定是否调整 `minSdk`。

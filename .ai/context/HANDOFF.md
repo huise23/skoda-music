@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-04-15 19:10:40
+Last Updated: 2026-04-15 21:19:46
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -20,11 +20,13 @@ Last Updated: 2026-04-15 19:10:40
 - 本轮新增: `T-S1-003` 已完成，Android 前台“下一曲”已具备本地 mock 队列循环切换。
 - 本轮新增: `T-S1-005` 已完成，Android 前台新增 Emby 实时连通测试与曲目拉取；曲目展示不再依赖 mock 数据。
 - 本轮新增: `T-S1-004` 已完成，Android 前台已通过 JNI 调用真实 `playback_queue` 处理下一曲与当前曲目状态。
+- 本轮新增: `T-HF-EMBY-001` 已完成，`BaseURL/用户名/密码` 已持久化到 `SharedPreferences` 并在启动时回填。
+- 本轮新增: `T-HF-EMBY-002` 已完成，Emby 响应改为 UTF-8 解码，并新增 `tracks-sample` 日志用于中文曲名排障。
 
 ## Recommended Next Steps
 1. 执行 `T-S1-006`：更新实机交互回归清单模板。
-2. 触发一次 CI 打包并完成 Android 4.2.2 实机安装与交互回归记录。
-3. 根据实机反馈决定是否进入下一阶段功能开发。
+2. 在 Android 4.2.2 实机确认配置持久化（重启后回填）与中文曲名显示。
+3. 触发一次 CI 打包并完成 Android 4.2.2 实机安装与交互回归记录。
 
 ## Read First In New Session
 1. `.ai/context/PROJECT_BRIEF.md`

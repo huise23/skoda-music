@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 19:10:40
+Last Updated: 2026-04-15 21:19:46
 
 ## Ready
 - [ ] `T-S1-006` API 17 实机交互回归脚本化清单
@@ -22,7 +22,10 @@ Last Updated: 2026-04-15 19:10:40
 - [x] `T-S1-003` 播放动作最小闭环（本地 mock）
 - [x] `T-S1-005` Emby 连接状态可视化
 - [x] `T-S1-004` Android-C++ 桥接最小接线
+- [x] `T-HF-EMBY-001` Emby 信息本地持久化（含密码）与启动回填
+- [x] `T-HF-EMBY-002` Emby 曲名显示诊断增强（UTF-8 解码 + 曲名样例日志）
 
 ## Queue Notes
 - `Ready` 仅包含当前阶段可独立闭环并可验证的任务。
 - Android 前台已移除本地 mock 曲目源，当前曲目来源改为 Emby 实时请求结果。
+- `T-HF-EMBY-001/002` 为用户显式指令触发的最小热修复，已并入 Done 供后续追踪。

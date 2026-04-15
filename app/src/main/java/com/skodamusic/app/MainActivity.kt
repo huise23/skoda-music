@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
         testEmbyButton = findViewById(R.id.btn_test_emby)
+        loadSavedCredentials()
 
         uiState = UiState(
             currentTrack = getString(R.string.track_not_loaded),
@@ -163,6 +164,7 @@ class MainActivity : AppCompatActivity() {
                 username = embyUsernameInput.text.toString().trim(),
                 password = embyPasswordInput.text.toString().trim()
             )
+            persistCredentials(credentials)
 
             if (credentials.baseUrl.isEmpty()) {
                 updateState {
@@ -303,6 +305,10 @@ class MainActivity : AppCompatActivity() {
 
             val tracks = parseTrackNames(response.payload)
             logger("tracks=${tracks.size}")
+            if (tracks.isNotEmpty()) {
+                logger("tracks-source=emby-api")
+                logger("tracks-sample=${tracks.take(3).joinToString(" | ")}")
+            }
             if (tracks.isEmpty()) {
                 return failedResult(
                     headline = "Action feedback: no audio items returned",
@@ -459,7 +465,7 @@ class MainActivity : AppCompatActivity() {
         if (stream == null) {
             return ""
         }
-        BufferedReader(InputStreamReader(stream)).use { reader ->
+        BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
             val sb = StringBuilder()
             var line = reader.readLine()
             while (line != null) {
@@ -505,6 +511,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun urlEncode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
+    private fun loadSavedCredentials() {
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        embyBaseUrlInput.setText(prefs.getString(KEY_BASE_URL, "").orEmpty())
+        embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
+        embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
+    }
+
+    private fun persistCredentials(credentials: EmbyCredentials) {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_BASE_URL, credentials.baseUrl)
+            .putString(KEY_USERNAME, credentials.username)
+            .putString(KEY_PASSWORD, credentials.password)
+            .apply()
+    }
+
     private fun updateState(reducer: (UiState) -> UiState) {
         uiState = reducer(uiState)
         render(uiState)
@@ -523,6 +545,10 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val LOG_TAG = "SkodaMusicEmby"
+        const val PREFS_EMBY = "emby_credentials"
+        const val KEY_BASE_URL = "base_url"
+        const val KEY_USERNAME = "username"
+        const val KEY_PASSWORD = "password"
         const val EMBY_QUERY_CLIENT = "Emby Web"
         const val EMBY_QUERY_DEVICE_NAME = "Google Chrome Windows"
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"

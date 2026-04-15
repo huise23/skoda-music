@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-15 19:10:40
+Last Updated: 2026-04-15 21:19:46
 
 ## Stage
 - 阶段判断: 已完成 bootstrap 基础与打包链路，处于“实机回归 + 前台功能开发起步”阶段。
@@ -16,9 +16,10 @@ Last Updated: 2026-04-15 19:10:40
 - 已完成 `T-S1-003`：本地 mock 队列切换已生效，点击“下一曲”会循环更新当前曲目显示。
 - 已完成 `T-S1-005`：接入真实 Emby 测试/拉曲目能力（BaseURL/UserId/Token），并将曲目来源切到 Emby 请求结果。
 - 已完成 `T-S1-004`：接入 Android-C++ 最小桥接（JNI + CMake + NDK），`Next` 动作与当前曲目状态由 `src/playback/playback_queue` 驱动。
+- 已完成 `T-HF-EMBY-001`：Emby 登录信息本地持久化（含密码）并在启动时自动回填。
+- 已完成 `T-HF-EMBY-002`：Emby 响应读取强制 UTF-8 解码，并追加曲名样例日志用于判断“测试数据 vs 实际返回数据”。
 
 ## Not Started / Unknown
-- Emby 最小可用链路尚未落到 Android 前台页面。
 - 实机回归结果（安装后功能行为）尚未形成闭环记录。
 
 ## Current Blockers

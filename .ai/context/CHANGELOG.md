@@ -108,3 +108,5 @@
 - Completed T-S1-004: wired Android UI to C++ `playback_queue` via JNI bridge (`NativePlaybackBridge`).
 - Added NDK/CMake integration in Android module and installed matching NDK in CI workflow.
 - `Next` action and current track status now read from native queue state instead of Kotlin-only state.
+- Completed T-HF-EMBY-001: persisted Emby credentials (`BaseURL/username/password`) in Android `SharedPreferences` and auto-filled on app start.
+- Completed T-HF-EMBY-002: forced UTF-8 decoding for Emby HTTP response and added `tracks-sample` diagnostic logging to distinguish server metadata from client-side parse/display issues.

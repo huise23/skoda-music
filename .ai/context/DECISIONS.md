@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-15 19:10:40
+Last Updated: 2026-04-15 21:19:46
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -33,3 +33,11 @@ Last Updated: 2026-04-15 19:10:40
 ## 2026-04-15 - Android 最小桥接采用 JNI + playback_queue
 - 决策: Android 前台通过 `NativePlaybackBridge`（JNI）直接调用 `src/playback/playback_queue` 实现最小接线。
 - 影响: Android 构建新增 CMake/NDK 依赖，CI 需安装匹配 NDK（`26.3.11579264`）。
+
+## 2026-04-15 - Emby 登录信息持久化（含密码）
+- 决策: 按用户明确要求，Android 前台将 Emby `BaseURL/用户名/密码` 持久化到 `SharedPreferences` 并在启动自动回填。
+- 影响: 提升实机反复测试效率，但密码为明文持久化，后续如需上线应切换加密存储方案。
+
+## 2026-04-15 - Emby 响应统一 UTF-8 解码
+- 决策: 读取 Emby HTTP 响应时显式使用 UTF-8，避免设备默认字符集导致中文乱码。
+- 影响: “非中文曲名”排障时可优先判断服务端元数据本身，而非客户端默认编码。

@@ -72,3 +72,6 @@
 - Added release publish step using `gh release create/upload` (tag/manual trigger only).
 - Verified workflow success (`24431410125`) with expected conditional-step behavior.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-023: added signing/release runbook and maintainer checklist.
+- Added `docs/CI_SIGNING_RELEASE_RUNBOOK.md` with secrets setup and manual release validation steps.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

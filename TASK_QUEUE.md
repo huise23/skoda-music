@@ -1,9 +1,9 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 09:21:02
+Last Updated: 2026-04-15 09:33:40
 
 ## Ready
-- [ ] T-023 签名发布操作文档与密钥检查清单（Secrets 配置 + 手动触发说明）
+- [ ] （空）
 
 ## Backlog
 - [ ] （空）
@@ -12,6 +12,7 @@ Last Updated: 2026-04-15 09:21:02
 - [ ] B-001 系统首页音乐卡片调用能力验证（缺少车机系统对三方入口的可用性结论）
 - [ ] B-002 目标分辨率细节收敛（当前仅确认横屏，具体尺寸待确认）
 - [ ] B-003 歌词失败回退策略确认（远程失败时是否回退过期缓存、是否快速重试）
+- [ ] B-005 待维护者配置 Android 签名 Secrets 并手动触发发布验收
 
 ## Done
 - [x] T-000 初始化 AI 协作核心文档（PROJECT_BRIEF/PLAN/STATUS/HANDOFF/RULES/QUEUE）
@@ -37,6 +38,7 @@ Last Updated: 2026-04-15 09:21:02
 - [x] T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接：新增桥接层、QML 壳与 CI smoke test
 - [x] T-022 升级 actions 运行时兼容 Node.js 24：升级 `checkout/upload-artifact` 并通过 Node24 强制运行验证
 - [x] T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）：新增签名步骤、Release 上传步骤与触发条件
+- [x] T-023 签名发布操作文档与密钥检查清单：新增可执行 runbook 与维护者操作步骤
 - [x] B-004 已确认：设置页展示启动自愈字段明细
 
 ## Task Definition of Done

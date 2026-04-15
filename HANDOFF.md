@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:21:02
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:33:40
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -33,16 +33,18 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:21:02
 - 已完成 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`（桥接层 + QML 壳 + CI smoke test）。
 - 已完成 `T-022 升级 actions 运行时兼容 Node.js 24`（升级 action 版本并通过强制 Node24 验证）。
 - 已完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`（签名步骤 + 条件 release 上传）。
+- 已完成 `T-023 签名发布操作文档与密钥检查清单`（新增维护者可执行 runbook）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待执行 `T-023 签名发布操作文档与密钥检查清单`（尚未开始）。
+- 等待维护者执行 `M-001`：配置签名 secrets 并手动触发发布验收。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 执行 T-023：签名发布操作文档与密钥检查清单（Secrets 配置 + 手动触发说明）
+- [ ] 按 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 配置签名 secrets
+- [ ] 手动触发 `Package MVP`（`publish_release=true`）并确认 release 产物
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made
@@ -100,6 +102,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:21:02
 - `src/app/qml_frontend_bridge_example.cpp`
 - `src/ui/qml/Main.qml`
 - `.github/workflows/package-mvp.yml`
+- `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
 <!-- AUTO:CHANGED_FILES_END -->
 
 ## Risks / Open Questions
@@ -111,6 +114,7 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 09:21:02
 - GitHub 仓库: `https://github.com/huise23/skoda-music`
 - Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24431410125`（success，签名/release 条件步骤已接入）
 - CI 注记: 当前仓库未配置 Android 签名 secrets，签名与 release 发布步骤在 push 场景下按预期跳过。
+- 维护者操作文档: `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
 
 ## Instructions For Next AI Session
 - 先读: `PROJECT_BRIEF.md` `PLAN.md` `CURRENT_STATUS.md` `DECISIONS.md` `HANDOFF.md` `TASK_QUEUE.md`。

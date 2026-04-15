@@ -55,3 +55,11 @@
 - Updated package workflow to build `skoda_music_mvp_app` and run smoke test.
 - Verified workflow run success (`24401923637`) with artifact output.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+
+## 2026-04-15
+- Completed T-021: added Qt/QML frontend bridge shell (`qml_frontend_bridge`) and low-fidelity QML page.
+- Added source files under `src/app/` for frontend bridge API and CLI smoke entry.
+- Added `src/ui/qml/Main.qml` as MVP foreground shell structure.
+- Updated package workflow to build `qml_frontend_bridge_example` and run smoke test.
+- Verified workflow run success (`24430693274`) with dual smoke tests.
+- Updated project memory files after execution (status, next steps, handoff, task queue, plan).

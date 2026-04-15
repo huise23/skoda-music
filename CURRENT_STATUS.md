@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 21:34:25
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 08:56:37
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -95,9 +95,16 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 21:34:25
   - 串联配置/设置/首页/歌词/队列/媒体键/音频焦点为单一可执行程序
   - 支持命令行交互（status/home/queue/settings-save/lyrics/focus/next/prev）
   - 将 `skoda_music_mvp_app` 加入 CI 构建并增加 smoke test
+- 完成 `T-021 实现 Qt/QML 前台 UI 壳与现有模块桥接`:
+  - 新增 `src/app/qml_frontend_bridge.h`
+  - 新增 `src/app/qml_frontend_bridge.cpp`
+  - 新增 `src/app/qml_frontend_bridge_example.cpp`
+  - 新增 `src/ui/qml/Main.qml`
+  - 将 `qml_frontend_bridge_example` 加入 CI 构建并新增 smoke test
+  - GitHub Actions `24430693274` 成功（含 mvp_app 与 qml bridge 双 smoke）
 
 ## In Progress
-- `T-021` 实现 Qt/QML 前台 UI 壳与现有模块桥接（下一最小任务，尚未开始）。
+- `T-022` 升级 actions 运行时兼容 Node.js 24（下一最小任务，尚未开始）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
@@ -126,3 +133,5 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-14 21:34:25
 - 已完成 GitHub 打包链路闭环（工作流配置、仓库推送、Actions 成功产物）。
 - 已落地 C3 音频焦点与前后台骨架，补齐播放系统控制基础状态流。
 - 已产出“最小可用 App（控制台壳）”并通过 CI 烟测，可执行端到端主流程演示。
+- 已落地 Qt/QML 前台桥接壳与低保真 QML 页面，并通过 CI 烟测验证桥接链路可运行。
+- 最新 CI 运行出现 Node.js 20 弃用告警，已将 `T-022` 提升为下一优先任务。

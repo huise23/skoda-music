@@ -2,6 +2,9 @@ package com.skodamusic.app
 
 import android.os.Bundle
 import android.util.Log
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.net.Uri
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -36,6 +39,11 @@ class MainActivity : AppCompatActivity() {
         val password: String
     )
 
+    private data class EmbyTrack(
+        val id: String,
+        val title: String
+    )
+
     private data class AuthByNameResult(
         val accessToken: String,
         val userId: String
@@ -50,7 +58,9 @@ class MainActivity : AppCompatActivity() {
         val success: Boolean,
         val statusText: String,
         val feedbackText: String,
-        val tracks: List<String> = emptyList()
+        val tracks: List<EmbyTrack> = emptyList(),
+        val embyBase: String? = null,
+        val accessToken: String? = null
     )
 
     private lateinit var embyBaseUrlInput: EditText
@@ -65,7 +75,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var testEmbyButton: Button
     private lateinit var uiState: UiState
 
-    private var loadedTracks: List<String> = emptyList()
+    private var loadedTracks: List<EmbyTrack> = emptyList()
+    private var embySessionBaseUrl: String? = null
+    private var embyAccessToken: String? = null
+    private var currentTrackIndex: Int = 0
+    private var mediaPlayer: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +112,11 @@ class MainActivity : AppCompatActivity() {
         bindActions()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        releasePlayer()
+    }
+
     private fun bindActions() {
         playPauseButton.setOnClickListener {
             if (loadedTracks.isEmpty()) {
@@ -105,19 +124,12 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val nextPlaying = !uiState.isPlaying
-            updateState {
-                it.copy(
-                    isPlaying = nextPlaying,
-                    playbackStatusRes = if (nextPlaying) R.string.status_playing else R.string.status_paused,
-                    playPauseLabelRes = if (nextPlaying) R.string.action_pause else R.string.action_play,
-                    feedbackText = getString(R.string.feedback_play_pressed)
-                )
-            }
-            if (nextPlaying) {
-                Toast.makeText(this, R.string.toast_playing, Toast.LENGTH_SHORT).show()
-            } else {
+            if (uiState.isPlaying) {
+                pausePlayback()
                 Toast.makeText(this, R.string.toast_paused, Toast.LENGTH_SHORT).show()
+            } else {
+                startOrResumePlayback()
+                Toast.makeText(this, R.string.toast_playing, Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -137,6 +149,7 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            val wasPlaying = uiState.isPlaying
             val nextTitle = NativePlaybackBridge.nextTitle()
             if (nextTitle == null) {
                 updateState {
@@ -157,6 +170,12 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             Toast.makeText(this, R.string.toast_next, Toast.LENGTH_SHORT).show()
+            currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+            if (wasPlaying) {
+                playTrackAtCurrentIndex()
+            } else {
+                releasePlayer()
+            }
         }
 
         testEmbyButton.setOnClickListener {
@@ -207,9 +226,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (result.success) {
                     loadedTracks = result.tracks
+                    embySessionBaseUrl = result.embyBase
+                    embyAccessToken = result.accessToken
+                    currentTrackIndex = 0
+                    releasePlayer()
                     val nativeReady = NativePlaybackBridge.isAvailable()
                     val firstTrack = if (nativeReady) {
-                        NativePlaybackBridge.initializeQueue(loadedTracks)
+                        NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
                     } else {
                         null
                     }
@@ -227,6 +250,11 @@ class MainActivity : AppCompatActivity() {
                                 feedbackText = result.feedbackText + "\n- native playback unavailable"
                             )
                         }
+                        embySessionBaseUrl = null
+                        embyAccessToken = null
+                        loadedTracks = emptyList()
+                        currentTrackIndex = 0
+                        releasePlayer()
                         Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
                         return@runOnUiThread
                     }
@@ -246,6 +274,10 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
                 } else {
                     loadedTracks = emptyList()
+                    embySessionBaseUrl = null
+                    embyAccessToken = null
+                    currentTrackIndex = 0
+                    releasePlayer()
                     updateState {
                         it.copy(
                             currentTrack = getString(R.string.track_not_loaded),
@@ -263,6 +295,158 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun startOrResumePlayback() {
+        val existing = mediaPlayer
+        if (existing != null) {
+            try {
+                existing.start()
+                updateState {
+                    it.copy(
+                        isPlaying = true,
+                        playbackStatusRes = R.string.status_playing,
+                        playPauseLabelRes = R.string.action_pause,
+                        feedbackText = getString(R.string.feedback_play_pressed)
+                    )
+                }
+                return
+            } catch (_: Exception) {
+                releasePlayer()
+            }
+        }
+        playTrackAtCurrentIndex()
+    }
+
+    private fun pausePlayback() {
+        try {
+            mediaPlayer?.pause()
+        } catch (_: Exception) {
+            releasePlayer()
+        }
+        updateState {
+            it.copy(
+                isPlaying = false,
+                playbackStatusRes = R.string.status_paused,
+                playPauseLabelRes = R.string.action_play,
+                feedbackText = getString(R.string.feedback_play_pressed)
+            )
+        }
+    }
+
+    private fun playTrackAtCurrentIndex() {
+        if (loadedTracks.isEmpty()) {
+            return
+        }
+        val base = embySessionBaseUrl
+        val token = embyAccessToken
+        if (base.isNullOrBlank() || token.isNullOrBlank()) {
+            updateState {
+                it.copy(
+                    isPlaying = false,
+                    playbackStatusRes = R.string.status_paused,
+                    playPauseLabelRes = R.string.action_play,
+                    feedbackText = "Action feedback: missing playback session"
+                )
+            }
+            return
+        }
+
+        currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
+        val track = loadedTracks[currentTrackIndex]
+        val streamUrl = buildEmbyStreamUrl(base, track.id)
+        releasePlayer()
+
+        try {
+            val player = MediaPlayer()
+            mediaPlayer = player
+            player.setAudioStreamType(AudioManager.STREAM_MUSIC)
+            player.setOnPreparedListener { prepared ->
+                prepared.start()
+                runOnUiThread {
+                    updateState {
+                        it.copy(
+                            isPlaying = true,
+                            playbackStatusRes = R.string.status_playing,
+                            playPauseLabelRes = R.string.action_pause,
+                            feedbackText = "Action feedback: streaming ${track.title}"
+                        )
+                    }
+                }
+            }
+            player.setOnCompletionListener {
+                runOnUiThread {
+                    if (NativePlaybackBridge.hasNext()) {
+                        NativePlaybackBridge.nextTitle()
+                        currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+                        updateState { s ->
+                            s.copy(
+                                currentTrack = loadedTracks[currentTrackIndex].title,
+                                nextEnabled = NativePlaybackBridge.hasNext()
+                            )
+                        }
+                        playTrackAtCurrentIndex()
+                    } else {
+                        updateState { s ->
+                            s.copy(
+                                isPlaying = false,
+                                playbackStatusRes = R.string.status_paused,
+                                playPauseLabelRes = R.string.action_play,
+                                nextEnabled = false,
+                                feedbackText = getString(R.string.feedback_end_of_queue)
+                            )
+                        }
+                    }
+                }
+            }
+            player.setOnErrorListener { _, what, extra ->
+                runOnUiThread {
+                    updateState {
+                        it.copy(
+                            isPlaying = false,
+                            playbackStatusRes = R.string.status_paused,
+                            playPauseLabelRes = R.string.action_play,
+                            feedbackText = "Action feedback: playback error ($what/$extra)"
+                        )
+                    }
+                }
+                releasePlayer()
+                true
+            }
+            player.setDataSource(this, Uri.parse(streamUrl), mapOf("X-Emby-Token" to token))
+            player.prepareAsync()
+            updateState {
+                it.copy(
+                    isPlaying = true,
+                    playbackStatusRes = R.string.status_playing,
+                    playPauseLabelRes = R.string.action_pause,
+                    feedbackText = "Action feedback: buffering ${track.title}"
+                )
+            }
+        } catch (e: Exception) {
+            releasePlayer()
+            updateState {
+                it.copy(
+                    isPlaying = false,
+                    playbackStatusRes = R.string.status_paused,
+                    playPauseLabelRes = R.string.action_play,
+                    feedbackText = "Action feedback: cannot play track (${e.javaClass.simpleName})"
+                )
+            }
+        }
+    }
+
+    private fun releasePlayer() {
+        val player = mediaPlayer ?: return
+        try {
+            player.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            player.release()
+        } catch (_: Exception) {
+        }
+        mediaPlayer = null
     }
 
     private fun fetchTracksFromEmby(credentials: EmbyCredentials): EmbyLoadResult {
@@ -298,7 +482,7 @@ class MainActivity : AppCompatActivity() {
             )
             var source = "recommended"
             var tracks = if (recommendedResponse.code in 200..299) {
-                parseTrackNames(recommendedResponse.payload)
+                parseTrackItems(recommendedResponse.payload)
             } else {
                 logger("recommended endpoint failed, fallback to full library")
                 emptyList()
@@ -318,14 +502,14 @@ class MainActivity : AppCompatActivity() {
                         logs = logs
                     )
                 }
-                tracks = parseTrackNames(libraryResponse.payload)
+                tracks = parseTrackItems(libraryResponse.payload)
                 source = "library-fallback"
             }
 
             logger("tracks=${tracks.size}")
             if (tracks.isNotEmpty()) {
                 logger("tracks-source=$source")
-                logger("tracks-sample=${tracks.take(3).joinToString(" | ")}")
+                logger("tracks-sample=${tracks.take(3).joinToString(" | ") { it.title }}")
             }
             if (tracks.isEmpty()) {
                 return failedResult(
@@ -341,7 +525,9 @@ class MainActivity : AppCompatActivity() {
                     headline = getString(R.string.feedback_emby_connected),
                     logs = logs
                 ),
-                tracks = tracks
+                tracks = tracks,
+                embyBase = embyBase,
+                accessToken = auth.accessToken
             )
         } catch (e: Exception) {
             logger("exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
@@ -463,6 +649,10 @@ class MainActivity : AppCompatActivity() {
         return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
     }
 
+    private fun buildEmbyStreamUrl(embyBase: String, trackId: String): String {
+        return "$embyBase/Audio/${urlEncode(trackId)}/stream?static=true&${buildCommonEmbyQuery()}"
+    }
+
     private fun buildCommonEmbyQuery(): String = commonEmbyQueryParams().joinToString("&")
 
     private fun commonEmbyQueryParams(): List<String> {
@@ -475,8 +665,8 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun parseTrackNames(jsonText: String): List<String> {
-        val out = mutableListOf<String>()
+    private fun parseTrackItems(jsonText: String): List<EmbyTrack> {
+        val out = mutableListOf<EmbyTrack>()
         val trimmed = jsonText.trim()
         if (trimmed.isEmpty()) {
             return out
@@ -484,9 +674,9 @@ class MainActivity : AppCompatActivity() {
         if (trimmed.startsWith("[")) {
             val items = JSONArray(trimmed)
             for (i in 0 until items.length()) {
-                val name = extractTrackName(items.optJSONObject(i))
-                if (name.isNotEmpty()) {
-                    out.add(name)
+                val track = extractTrack(items.optJSONObject(i))
+                if (track != null) {
+                    out.add(track)
                 }
             }
             return out
@@ -495,24 +685,29 @@ class MainActivity : AppCompatActivity() {
         val root = JSONObject(trimmed)
         val items = root.optJSONArray("Items") ?: return out
         for (i in 0 until items.length()) {
-            val name = extractTrackName(items.optJSONObject(i))
-            if (name.isNotEmpty()) {
-                out.add(name)
+            val track = extractTrack(items.optJSONObject(i))
+            if (track != null) {
+                out.add(track)
             }
         }
         return out
     }
 
-    private fun extractTrackName(item: JSONObject?): String {
+    private fun extractTrack(item: JSONObject?): EmbyTrack? {
         if (item == null) {
-            return ""
+            return null
         }
+        val trackId = item.optString("Id").trim()
         val candidates = listOf(
             item.optString("Name").trim(),
             item.optString("SortName").trim(),
             item.optString("Album").trim()
         )
-        return candidates.firstOrNull { it.isNotEmpty() }.orEmpty()
+        val title = candidates.firstOrNull { it.isNotEmpty() }.orEmpty()
+        if (trackId.isEmpty() || title.isEmpty()) {
+            return null
+        }
+        return EmbyTrack(id = trackId, title = title)
     }
 
     private fun readAll(stream: InputStream?): String {

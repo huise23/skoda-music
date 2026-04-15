@@ -1,6 +1,6 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 21:19:46
+Last Updated: 2026-04-15 22:04:57
 
 ## Highest Priority
 - [ ] 执行 `T-S1-006`：更新 API 17 实机交互回归清单与结果模板。
@@ -10,6 +10,8 @@ Last Updated: 2026-04-15 21:19:46
 - [ ] 在 Android 4.2.2 实机验证 Emby 拉曲目 + Next(native) + 播放状态切换。
 - [ ] 验证 Emby 登录信息重启后自动回填（BaseURL/用户名/密码）。
 - [ ] 对比 `tracks-sample` 日志与界面显示，确认“非中文曲名”来自服务端元数据还是客户端解码问题。
+- [ ] 实机验证真实流播放链路：`登录 -> Play -> Pause -> Next(播放态)`。
+- [ ] 实机核对 `statusText` 中的来源标识（`recommended` / `library-fallback`）是否符合服务端返回。
 
 ## Pending Confirmation
 - [ ] 实机安装并回传 Android 4.2.2 行为结果（安装/启动/前后台/交互）。

@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-15 21:19:46
+Last Updated: 2026-04-15 22:04:57
 
 ## Stage
 - 阶段判断: 已完成 bootstrap 基础与打包链路，处于“实机回归 + 前台功能开发起步”阶段。
@@ -18,6 +18,8 @@ Last Updated: 2026-04-15 21:19:46
 - 已完成 `T-S1-004`：接入 Android-C++ 最小桥接（JNI + CMake + NDK），`Next` 动作与当前曲目状态由 `src/playback/playback_queue` 驱动。
 - 已完成 `T-HF-EMBY-001`：Emby 登录信息本地持久化（含密码）并在启动时自动回填。
 - 已完成 `T-HF-EMBY-002`：Emby 响应读取强制 UTF-8 解码，并追加曲名样例日志用于判断“测试数据 vs 实际返回数据”。
+- 已完成 `T-HF-PLY-001`：Android `Play/Pause` 接入 `MediaPlayer` 真实播放 Emby 流，`Next` 在播放态可连续切歌播放。
+- 已完成 `T-HF-PLY-002`：Emby 拉曲目改为“推荐优先（Items/Latest）+ 全量回退（Items）”，并记录来源标识。
 
 ## Not Started / Unknown
 - 实机回归结果（安装后功能行为）尚未形成闭环记录。

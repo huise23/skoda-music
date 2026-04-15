@@ -64,6 +64,18 @@ jobs:
             src/app/mvp_app.cpp \
             -o dist/bin/skoda_music_mvp_app
 
+          g++ -std=c++17 -O2 -pthread -I. \
+            src/config/config_runtime.cpp \
+            src/ui/settings/settings_flow.cpp \
+            src/ui/home/home_shell.cpp \
+            src/lyrics/lyrics_resolver.cpp \
+            src/playback/playback_queue.cpp \
+            src/platform/android/media_key_controller.cpp \
+            src/platform/android/audio_focus_manager.cpp \
+            src/app/qml_frontend_bridge.cpp \
+            src/app/qml_frontend_bridge_example.cpp \
+            -o dist/bin/qml_frontend_bridge_example
+
       - name: Smoke test MVP app
         shell: bash
         run: |
@@ -79,6 +91,20 @@ jobs:
             echo "settings-test"
             echo "quit"
           } | dist/bin/skoda_music_mvp_app > dist/bin/mvp_app_smoke.txt
+
+      - name: Smoke test QML bridge shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "status"
+            echo "nav queue"
+            echo "next"
+            echo "test"
+            echo "lyrics"
+            echo "focus gain"
+            echo "quit"
+          } | dist/bin/qml_frontend_bridge_example > dist/bin/qml_bridge_smoke.txt
 
       - name: Build package bundle
         shell: bash

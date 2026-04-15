@@ -174,6 +174,12 @@ jobs:
           "$BUILD_TOOLS_DIR/aapt" dump badging dist/release/skoda-music-mvp-unsigned.apk \
             > dist/release/apk_badging.txt
 
+      - name: Verify APK minSdk is API 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "minSdkVersion:'17'" dist/release/apk_badging.txt
+
       - name: Restore Android keystore
         if: env.HAS_SIGNING_SECRETS == 'true'
         shell: bash

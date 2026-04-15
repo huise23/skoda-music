@@ -80,3 +80,13 @@
 - Verified push build success (`24433231656`) and manual release success (`24433338344`).
 - Published signed artifacts in release `mvp-r17`.
 - Updated project memory files after execution (status, next steps, handoff, task queue, plan).
+- Completed T-026: recorded confirmed head-unit parameters (`Android 4.2.2`, `1024x600`, `autochips ac83xx`).
+- Closed blocker B-002 (target resolution details confirmed) and added blocker B-007 (`minSdk=21` vs API 17 compatibility risk).
+- Updated project memory files after execution (status, next steps, handoff, task queue, decisions).
+- Completed T-027: aligned Android shell with head-unit runtime (`minSdk=17` for Android 4.2.2/API 17).
+- Optimized Android module for legacy compatibility: removed `core-ktx/material`, kept `appcompat`, switched theme to `AppCompat`, and lowered Java/Kotlin bytecode targets to `1.8`.
+- Added CI guard: fail workflow when APK badging does not contain `minSdkVersion:'17'`.
+- Updated project memory files after execution (status, next steps, handoff, task queue, decisions).
+- Completed T-028: updated release runbook to v2 for API 17 baseline validation.
+- Added explicit operator checks for `minSdk=17`, `apk_badging minSdkVersion:'17'`, and `mvp-r18` release validation path.
+- Updated project memory files after execution (status, next steps, handoff, task queue).

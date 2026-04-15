@@ -1,20 +1,20 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 10:34:12
+Last Updated: 2026-04-15 12:51:57
 
 ## Priority
-- [ ] M-002: 在目标车机实机安装 `mvp-r17` 并记录兼容性结果（安装/启动/前后台）
+- [ ] M-004: 按 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 触发包含 `minSdk=17` 的新 APK/AAB（建议 tag: `mvp-r18`）
+- [ ] M-002: 在 Android `4.2.2` 目标车机实机安装新版本并记录结果（安装提示/启动/前后台）
 
 ## Delegatable To AI
 - [ ] 维护状态文件并生成 handoff 摘要
+- [ ] 校对 `apk_badging.txt` 中 `minSdkVersion` 是否为 `17`
 
 ## Backlog
 - [ ] （空）
 
 ## Requires Manual Confirmation
-- [ ] 在目标车机安装 `skoda-music-mvp-signed.apk`（release: `mvp-r17`）
-- [ ] 记录是否可启动、是否闪退、是否出现权限/解析错误
-- [ ] 反馈设备 Android 版本与安装结果，决定是否下调 `minSdk`
+- [ ] 在目标车机安装 `skoda-music-mvp-signed.apk`（release: `mvp-r18` 或最新）
+- [ ] 记录是否可启动、是否闪退、是否出现“解析包时出现问题/版本过低”等安装错误
 - [ ] 系统首页音乐卡片是否支持调用三方播放器
-- [ ] 车机目标分辨率范围（仅横屏已确认）
 - [ ] 歌词远程失败回退策略（是否回退过期缓存，是否快速重试）

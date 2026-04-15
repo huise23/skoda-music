@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
 
 ## Project
 - `skoda-music`: 车机端音乐播放器（个人/vibe 项目），目标是支持 AI 持续接手。
@@ -35,17 +35,22 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 - 已完成 `T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）`（签名步骤 + 条件 release 上传）。
 - 已完成 `T-023 签名发布操作文档与密钥检查清单`（新增维护者可执行 runbook）。
 - 已完成 `T-024 真实可用 APK 产出`（Android Gradle 工程 + 真实签名发布）。
+- 已完成 `T-026 实机参数确认回写`（已确认 Android `4.2.2` / `1024x600` / `autochips ac83xx`）。
+- 已完成 `T-027 Android 4.2.2 兼容改造`（`minSdk=17` + `AppCompat` 主题 + Java/Kotlin `1.8` 目标 + CI 最低版本校验）。
+- 已完成 `T-028 发布 runbook 对齐 API 17 基线`（`docs/CI_SIGNING_RELEASE_RUNBOOK.md` v2）。
+- 已解除 `B-002`（目标分辨率待确认）。
 - 已达成最小可用版本里程碑：`I-001` 到 `I-005` 全部完成（骨架版）。
 - 已达成“最小可用 App（控制台壳）”里程碑，可端到端演示主流程。
 - 已确认 `B-004`：设置页展示启动自愈字段明细。
 
 ## In Progress
-- 等待维护者执行 `M-002`：车机实机安装与兼容性验收。
+- 等待维护者执行 `M-002`：Android `4.2.2` 车机实机安装与兼容性验收。
 
 ## Next Actions
 <!-- AUTO:NEXT_ACTIONS_START -->
-- [ ] 安装 release `mvp-r17` 的 `skoda-music-mvp-signed.apk` 到目标车机
-- [ ] 回传安装/启动结果（成功、解析失败、闪退、权限问题）
+- [ ] 触发发布包含 `minSdk=17` 的新版本（建议 `mvp-r18`）
+- [ ] 安装 release `mvp-r18`（或最新）的 `skoda-music-mvp-signed.apk` 到目标车机
+- [ ] 回传安装/启动结果（成功、解析失败/版本过低、闪退、权限问题）
 <!-- AUTO:NEXT_ACTIONS_END -->
 
 ## Decisions Already Made
@@ -53,7 +58,8 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 
 ## Constraints
 - 设备资源有限（ARMv7/2G RAM，可用约 0.95G），优先稳定和低卡顿。
-- 仅横屏车机，分辨率细节待确认。
+- 目标设备已确认：Android `4.2.2`、`1024x600` 横屏、CPU `autochips ac83xx`。
+- 当前代码已将 Android 壳 `minSdk` 下调为 `17` 以覆盖 Android `4.2.2`（API 17）。
 - LrcApi 已自建，项目侧只提供配置与调用能力。
 
 ## Important Files
@@ -121,10 +127,11 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 - 配置错误在启动阶段统一走“自愈继续启动”，不再阻断。
 - 歌词远程失败时是否回退过期缓存/是否快速重试: 待确认（见 `docs/LYRICS_STATE_MACHINE.md`）。
 - 当前 YAML 解析为最小骨架实现（自研简化解析），后续可替换为成熟 YAML 库实现以提升鲁棒性。
+- Android 4.2.2 兼容性仍需实机回归验证（安装、启动、前后台切换）。
 - GitHub 仓库: `https://github.com/huise23/skoda-music`
 - Actions 运行: `https://github.com/huise23/skoda-music/actions/runs/24433338344`（success，签名与 release 发布已执行）
 - 最新发布: `https://github.com/huise23/skoda-music/releases/tag/mvp-r17`
-- 维护者操作文档: `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
+- 维护者操作文档: `docs/CI_SIGNING_RELEASE_RUNBOOK.md`（v2，已对齐 API 17）
 
 ## Instructions For Next AI Session
 - 先读: `PROJECT_BRIEF.md` `PLAN.md` `CURRENT_STATUS.md` `DECISIONS.md` `HANDOFF.md` `TASK_QUEUE.md`。

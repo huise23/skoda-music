@@ -1,13 +1,14 @@
 # CI_SIGNING_RELEASE_RUNBOOK
 
-Last Updated: 2026-04-15 10:34:12  
-Status: Draft v1 (T-023)
+Last Updated: 2026-04-15 12:51:57
+Status: Draft v2 (T-028)
 
 ## Purpose
 给出“签名 + Release 上传”在当前仓库中的可执行操作手册，确保维护者可一次完成：
 - 配置签名 Secrets
 - 手动触发发布
 - 验证发布产物
+- 验证 APK 最低系统版本与目标车机一致
 
 ## Current Workflow Scope
 - 工作流文件: `.github/workflows/package-mvp.yml`
@@ -16,6 +17,10 @@ Status: Draft v1 (T-023)
   - `push tag v*`（可发 release）
   - `workflow_dispatch` + `publish_release=true`（可发 release）
 - 当前 APK/AAB 为 Gradle 真实构建产物（`assembleRelease` + `bundleRelease`），可用于 Android 安装与分发。
+- 当前兼容性基线:
+  - 目标实机：Android `4.2.2`（API 17）
+  - 应用配置：`app/build.gradle.kts` 中 `minSdk = 17`
+  - CI 校验：`aapt dump badging` 输出必须包含 `minSdkVersion:'17'`
 
 ## Required Secrets
 在 GitHub 仓库 `Settings -> Secrets and variables -> Actions -> New repository secret` 中新增：
@@ -78,14 +83,17 @@ $bytes = [System.IO.File]::ReadAllBytes(".\release.jks")
 
 点击 `Run workflow`。
 
+建议本轮发布标签使用：`mvp-r18`（用于区分 `minSdk=17` 兼容改造后的首个实机验收版本）。
+
 ### 5. 验证结果
 运行成功后检查：
 1. Actions job 中 `Restore Android keystore`、`Sign APK and AAB`、`Publish GitHub Release` 不是 `skipped`。
-2. `Releases` 页面出现新 release（tag 默认为 `mvp-r<run_number>`，若 tag 触发则为实际 tag）。
+2. `Releases` 页面出现新 release（workflow_dispatch 默认为 `mvp-r<run_number>`，若 tag 触发则为实际 tag）。
 3. release 附件包含：
   - `skoda-music-mvp-signed.apk`（或 unsigned 回退）
   - `skoda-music-mvp-signed.aab`（或 unsigned 回退）
-4. 安装 APK 时不再出现“解析失败”（如出现，优先检查下载完整性和设备安装来源权限）。
+4. `dist/release/apk_badging.txt` 中包含 `minSdkVersion:'17'`（CI 已内置校验，缺失会直接失败）。
+5. 在 Android `4.2.2` 实机安装 APK，不出现“解析包时出现问题/版本过低”。
 
 ## Optional: Tag Release Flow
 如果你想按版本号发版（而不是 run 编号）：
@@ -106,6 +114,9 @@ git push origin v0.1.0
   - 核对 `ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 是否匹配 keystore。
 - 发布步骤被跳过:
   - 确认是 `publish_release=true` 或 tag 触发。
+- CI 报 `Verify APK minSdk is API 17` 失败:
+  - 检查 `app/build.gradle.kts` 是否仍为 `minSdk = 17`。
+  - 检查是否被其他构建变体覆盖了 `minSdkVersion`。
 
 ## Security Notes
 - 不要把 `release.jks`、密码、Base64 文本提交进仓库。

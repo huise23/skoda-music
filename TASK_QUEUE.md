@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-15 10:34:12
+Last Updated: 2026-04-15 12:51:57
 
 ## Ready
 - [ ] （空）
@@ -10,7 +10,6 @@ Last Updated: 2026-04-15 10:34:12
 
 ## Blocked
 - [ ] B-001 系统首页音乐卡片调用能力验证（缺少车机系统对三方入口的可用性结论）
-- [ ] B-002 目标分辨率细节收敛（当前仅确认横屏，具体尺寸待确认）
 - [ ] B-003 歌词失败回退策略确认（远程失败时是否回退过期缓存、是否快速重试）
 - [ ] B-006 待车机实机安装验证（目标设备兼容性与启动稳定性）
 
@@ -40,8 +39,14 @@ Last Updated: 2026-04-15 10:34:12
 - [x] T-019 GitHub Actions 增加签名与 Release 上传流程（AAB/APK）：新增签名步骤、Release 上传步骤与触发条件
 - [x] T-023 签名发布操作文档与密钥检查清单：新增可执行 runbook 与维护者操作步骤
 - [x] T-024 产出真实可用 APK：新增 Android Gradle 工程并在 CI 中构建/签名真实 APK+AAB，发布 `mvp-r17`
+- [x] T-025 升级 CI setup actions 到 Node24-ready 版本并验证无弃用注记
+- [x] T-026 回写实机参数确认结果：已记录 Android `4.2.2` / `1024x600` / CPU `autochips ac83xx`，并同步状态文件
+- [x] T-027 Android 4.2.2 兼容改造：`minSdk` 下调到 `17`，依赖收敛为 `appcompat`，字节码目标降为 Java/Kotlin `1.8`，CI 增加 `minSdkVersion:'17'` 校验
+- [x] T-028 发布 runbook 对齐 API 17 基线：补齐 `minSdk=17`/`apk_badging` 校验与 `mvp-r18` 实机验收步骤
 - [x] B-004 已确认：设置页展示启动自愈字段明细
 - [x] B-005 已完成：Android 签名 Secrets 已配置并完成手动发布验收
+- [x] B-002 已确认：目标分辨率为 `1024x600`（横屏）
+- [x] B-007 已处理：版本门槛已从 `minSdk=21` 下调到 `17`，待实机安装回归验证
 
 ## Task Definition of Done
 - 任务产出必须可被下一会话直接接手。

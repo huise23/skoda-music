@@ -37,6 +37,7 @@
 - CPU: ARMv7 Processor rev 3(v7), 1001MHz。
 - RAM: 2G（可用约 0.95G）。
 - Model/Firmware: `shoda_mqb`, `3.0.1-R-20210524.9004`, MCU `1.31release`。
+- Confirmed Device Runtime: Android `4.2.2`（API 17）, 分辨率 `1024x600`, CPU `autochips ac83xx`。
 
 ## Collaboration Rules
 - Markdown 文件是项目主上下文载体。
@@ -47,7 +48,7 @@
 
 ## Open Items
 - 系统首页卡片是否可调用三方播放器: 待确认。
-- 车机实际目标分辨率细节: 待确认（当前仅确认“横屏”）。
+- Android `4.2.2` 实机回归结论: 待确认（代码已下调 `minSdk=17`，待安装验证）。
 
 ## References
 - Emby: 待补充官方 API 链接。

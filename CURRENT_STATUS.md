@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
+Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 12:51:57
 
 ## Completed
 - 初始化并完善 AI 协作核心文档:
@@ -123,13 +123,26 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
   - CI 改为 Gradle 产出真实 `app-release` APK/AAB，并执行签名
   - 手动发布 run `24433338344` 成功，Release `mvp-r17` 已上传签名 APK/AAB
   - 最新 push run `24433231656` 成功，默认分支构建链路稳定
+- 完成 `T-026 实机参数确认回写`:
+  - 已确认目标车机参数：Android `4.2.2`、分辨率 `1024x600`、CPU `autochips ac83xx`
+  - 已解除 `B-002`（分辨率细节待确认）
+  - 新增兼容性阻塞 `B-007`（当前 APK `minSdk=21`）
+- 完成 `T-027 Android 4.2.2 兼容改造`:
+  - `app/build.gradle.kts` 已将 `minSdk` 下调为 `17`
+  - Android 依赖收敛为 `androidx.appcompat:1.6.1`（移除 `core-ktx/material`）
+  - Java/Kotlin 目标字节码下调到 `1.8`，降低 API 17 设备兼容风险
+  - 主题从 `MaterialComponents` 切换为 `AppCompat`
+  - CI 新增 APK badging 校验：`minSdkVersion` 必须为 `17`
+- 完成 `T-028 发布 runbook 对齐 API 17 基线`:
+  - 更新 `docs/CI_SIGNING_RELEASE_RUNBOOK.md` 到 v2
+  - 增加 `minSdk=17`、`apk_badging minSdkVersion:'17'` 校验说明
+  - 补齐 `mvp-r18` 实机验收发布建议与排障项
 
 ## In Progress
-- `M-002` 目标车机实机安装与兼容性验收（等待人工执行）。
+- `M-002` 目标车机实机安装与兼容性验收（Android `4.2.2` 环境，等待人工执行）。
 
 ## Blockers
 - B-001 系统首页卡片调用能力: 待确认系统是否支持三方入口。
-- B-002 目标分辨率细节: 当前只确认横屏，具体尺寸待确认。
 - B-003 歌词失败回退策略: 待确认是否回退过期缓存/是否快速重试。
 
 ## Recent Updates
@@ -159,3 +172,8 @@ Last Updated: <!-- AUTO:LAST_UPDATED --> 2026-04-15 10:34:12
 - 已补齐并验证 CI 签名与 Release 上传流程（secrets 已配置，手动发布已通过）。
 - 已补齐签名发布 Runbook，可直接按步骤完成 secrets 配置与 release 验收。
 - 已完成真实 APK/AAB 构建与发布，待车机实机安装反馈决定是否调整 `minSdk`。
+- 已确认实机参数：Android `4.2.2` / `1024x600` / `autochips ac83xx`，分辨率阻塞已解除。
+- 已识别并处理版本门槛风险：`app/build.gradle.kts` 已从 `minSdk=21` 下调到 `17`。
+- 已完成 API 17 兼容改造：`minSdk=17` + `AppCompat` 主题 + Java/Kotlin `1.8` 目标。
+- 待通过新 release 安装验证确认最终兼容性结论。
+- 已完成发布 runbook v2 对齐，后续可按文档直接触发 `mvp-r18` 验收发布。

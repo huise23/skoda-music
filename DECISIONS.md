@@ -69,3 +69,17 @@
 - Alternatives considered: 继续使用占位包；一次性接入完整 Qt Android 工程。
 - Why this option: 改动最小、验证最快，可先确保“可安装交付链路”成立，再逐步桥接到 Qt 前台。
 - Follow-up impact: 后续需规划“Qt 前台壳并入 Android 工程”的迁移任务，避免双入口长期并存。
+
+## 2026-04-15 - 锁定首台实机参数并升级为兼容性基线
+- Context: 维护者已确认目标车机实机参数为 Android `4.2.2`、分辨率 `1024x600`、CPU `autochips ac83xx`。
+- Decision: 将该设备参数作为当前兼容性验收基线；分辨率阻塞 `B-002` 关闭；版本兼容风险升级为独立阻塞（当前 APK `minSdk=21`）。
+- Alternatives considered: 继续以“横屏待细化”作为模糊输入；忽略 Android 版本差异先推进功能。
+- Why this option: 先固化真实设备约束，避免后续实现偏离目标硬件；可尽早暴露版本门槛风险。
+- Follow-up impact: 需要产出 API 17 兼容方案评估（下调 `minSdk` 或维护 legacy 分支）并结合实机安装结果决策。
+
+## 2026-04-15 - 直接执行 API 17 兼容降级方案
+- Context: 目标设备 Android `4.2.2`（API 17）已确认，且维护者要求“直接按车机版本设置 minSdk，并优化相关代码”。
+- Decision: Android 壳直接下调到 `minSdk=17`，依赖收敛为 `appcompat`，并将 Java/Kotlin 目标字节码统一为 `1.8`。
+- Alternatives considered: 继续维持 `minSdk=21`；拆分 legacy 分支单独维护。
+- Why this option: 直接对齐实机系统版本，改动面小，可最快验证“可安装+可启动”主目标。
+- Follow-up impact: 需产出新 release（建议 `mvp-r18`）并做实机回归验证确认最终兼容性结论。

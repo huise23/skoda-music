@@ -524,6 +524,7 @@ class MainActivity : AppCompatActivity() {
                     else -> false
                 }
             }
+            appendRuntimeLog("play stream mode=request-only-url requestId=$requestId")
             player.setDataSource(this, Uri.parse(streamUrl))
             player.prepareAsync()
             appendRuntimeLog("play prepareAsync requestId=$requestId")
@@ -1183,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
         const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
         const val EMBY_QUERY_LANGUAGE = "zh-cn"
-        const val STREAM_PREPARE_TIMEOUT_MS = 10_000L
+        const val STREAM_PREPARE_TIMEOUT_MS = 30_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
     }

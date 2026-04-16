@@ -1,13 +1,14 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-16 18:47
+Last Updated: 2026-04-16 20:47
 
 ## Highest Priority
-- [ ] 执行 `T-S2-003`：日志面板增加复制/清理，提升现场回传效率。
+- [ ] 推进 `T-S2-004`：执行 API17 全量回归并回填结构化证据。
 
 ## Immediate Actions
-- [ ] 触发一次 CI 打包并验证 Queue 推荐替换逻辑（保留当前播放、替换未播放段）与首页图卡残留文案清理后的 APK 构建稳定。
-- [ ] 为 `T-S2-004` 准备 API17 实机回归输入（最新 APK、回归记录模板、截图位）。
+- [ ] 触发一次 CI 打包，验证最近两次改动（Queue 推荐替换 + 日志复制/清理 + 5.0 启动修复）无回归。
+- [ ] 将“Android 5.0 启动通过”结果补充到回归记录，区分 API17 与 API21 验证口径。
+- [ ] 若 API17 设备就绪，开始 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` A-F 项逐条回填。
 
 ## Pending Confirmation
 - [ ] 系统首页音乐卡片第三方入口能力确认（`T-BLK-001`）。

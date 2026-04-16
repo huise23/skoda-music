@@ -65,6 +65,10 @@
     <string name="toast_queue_recommend_success">Queue recommendations applied</string>
     <string name="toast_queue_recommend_failed">Queue recommendation failed</string>
     <string name="runtime_logs_empty">No runtime logs yet.</string>
+    <string name="toast_runtime_logs_copied">Runtime logs copied</string>
+    <string name="toast_runtime_logs_cleared">Runtime logs cleared</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_clear">Clear</string>
     <string name="action_close">Close</string>
     <string name="label_nav">Navigation</string>
     <string name="nav_home">Home</string>

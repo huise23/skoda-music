@@ -162,3 +162,6 @@
 - Completed T-S2-UI-008: wired Queue `Recommend 20` action to Emby random items endpoint and implemented “keep current, replace unplayed segment”.
 - Added queue recommendation failure guards: keep existing queue on HTTP failure/empty result/apply failure.
 - Removed residual Home hero wording resources (`Skoda Music MVP`, `Android interactive shell`, `MVP • Real Emby`) per user request.
+- Completed Android 5.0 startup crash hotfix: changed `bg_main_gradient.xml` angle from `140` to API-safe `135`.
+- Completed T-S2-003: full-screen runtime logs now support `Copy` and `Clear`, and preview/fullscreen views stay synchronized after clear.
+- Captured user validation result: Android 5.0 startup test passed.

@@ -1,6 +1,8 @@
 package com.skodamusic.app
 
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
 import android.util.Log
 import android.media.AudioManager
@@ -1563,21 +1565,8 @@ class MainActivity : AppCompatActivity() {
         if (!this::runtimeLogPreview.isInitialized) {
             return
         }
-        val preview = if (snapshot.isBlank()) {
-            getString(R.string.runtime_logs_empty)
-        } else {
-            snapshot
-                .split('\n')
-                .takeLast(RUNTIME_LOG_PREVIEW_LINES)
-                .joinToString("\n")
-        }
         runOnUiThread {
-            runtimeLogPreview.text = preview
-            runtimeLogDialogText?.text = if (snapshot.isBlank()) {
-                getString(R.string.runtime_logs_empty)
-            } else {
-                snapshot
-            }
+            renderRuntimeLogSnapshot(snapshot)
         }
     }
 
@@ -1590,6 +1579,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun renderRuntimeLogSnapshot(snapshot: String) {
+        val preview = if (snapshot.isBlank()) {
+            getString(R.string.runtime_logs_empty)
+        } else {
+            snapshot
+                .split('\n')
+                .takeLast(RUNTIME_LOG_PREVIEW_LINES)
+                .joinToString("\n")
+        }
+        runtimeLogPreview.text = preview
+        runtimeLogDialogText?.text = if (snapshot.isBlank()) {
+            getString(R.string.runtime_logs_empty)
+        } else {
+            snapshot
+        }
+    }
+
+    private fun copyRuntimeLogsToClipboard() {
+        val snapshot = snapshotRuntimeLogs()
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("Skoda Runtime Logs", snapshot))
+        appendRuntimeLog("runtime logs copied to clipboard")
+        Toast.makeText(this, R.string.toast_runtime_logs_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearRuntimeLogs() {
+        synchronized(runtimeLogLock) {
+            runtimeLogLines.clear()
+        }
+        renderRuntimeLogSnapshot("")
+        Toast.makeText(this, R.string.toast_runtime_logs_cleared, Toast.LENGTH_SHORT).show()
+    }
+
     private fun showRuntimeLogsFullscreen() {
         if (runtimeLogDialog?.isShowing == true) {
             return
@@ -1597,6 +1619,12 @@ class MainActivity : AppCompatActivity() {
         val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setContentView(R.layout.dialog_runtime_logs)
         val fullText = dialog.findViewById<TextView>(R.id.runtime_log_fullscreen_text)
+        dialog.findViewById<Button>(R.id.btn_copy_runtime_logs).setOnClickListener {
+            copyRuntimeLogsToClipboard()
+        }
+        dialog.findViewById<Button>(R.id.btn_clear_runtime_logs).setOnClickListener {
+            clearRuntimeLogs()
+        }
         dialog.findViewById<Button>(R.id.btn_close_runtime_logs).setOnClickListener {
             dialog.dismiss()
         }

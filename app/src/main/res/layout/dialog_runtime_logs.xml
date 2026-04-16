@@ -29,6 +29,28 @@
                 android:textSize="18sp" />
 
             <Button
+                android:id="@+id/btn_copy_runtime_logs"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
+                android:layout_marginRight="8dp"
+                android:background="@drawable/button_secondary"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/action_copy"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/btn_clear_runtime_logs"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
+                android:layout_marginRight="8dp"
+                android:background="@drawable/button_secondary"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/action_clear"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary" />
+
+            <Button
                 android:id="@+id/btn_close_runtime_logs"
                 android:layout_width="wrap_content"
                 android:layout_height="42dp"

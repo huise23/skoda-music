@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-16 18:47
+Last Updated: 2026-04-16 20:47
 
 ## Stage
 - 阶段判断: S1 最小播放闭环已验证通过，当前处于 S2「IA v2 落地与交互闭环」阶段。
@@ -21,6 +21,9 @@ Last Updated: 2026-04-16 18:47
 - 已按用户要求移除 Home 顶部标题图卡（截图对应区域）。
 - 已完成 `T-S2-UI-008`：Queue “Recommend 20” 按钮接线；保留当前播放项，仅替换未播放段；请求失败保持原队列并提示。
 - 已清理 `[Image #1]` 对应残留文案资源（`Skoda Music MVP / Android interactive shell / MVP • Real Emby`）。
+- 已完成 `T-S2-003`：全屏日志面板新增“复制/清理”，并保持预览区与全屏区同步刷新。
+- 已完成 Android 5.0 启动闪退修复：`bg_main_gradient.xml` 角度改为 API 兼容值（`140 -> 135`）。
+- 用户回传验证：Android 5.0 启动测试已通过。
 
 ## Not Started / Unknown
 - API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。
@@ -34,5 +37,5 @@ Last Updated: 2026-04-16 18:47
 ## Notes
 - `.ai/context/SCOPE.md` 仍缺失。
 - `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
-- 当前 Ready 主线: `T-S2-003`。
+- 当前 Ready 主线: （空，待人工推进 `T-S2-004`）。
 - 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。

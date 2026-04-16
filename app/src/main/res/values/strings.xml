@@ -16,6 +16,7 @@
     <string name="label_track">Current Track</string>
     <string name="track_not_loaded">No track loaded</string>
     <string name="label_playback">Playback Status</string>
+    <string name="label_runtime_logs">Runtime Logs (tap to expand)</string>
     <string name="status_playing">Playing</string>
     <string name="status_paused">Paused</string>
     <string name="action_play">Play</string>
@@ -38,4 +39,6 @@
     <string name="toast_emby_success">Emby connected and tracks loaded</string>
     <string name="toast_emby_failed">Emby connection failed</string>
     <string name="toast_end_of_queue">Reached end of queue</string>
+    <string name="runtime_logs_empty">No runtime logs yet.</string>
+    <string name="action_close">Close</string>
 </resources>

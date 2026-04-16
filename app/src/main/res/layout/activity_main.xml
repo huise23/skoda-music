@@ -185,5 +185,37 @@
                 android:text="@string/action_next" />
         </LinearLayout>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/runtime_log_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/label_runtime_logs"
+                android:textColor="#AFC2D4"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/runtime_log_preview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#1A1F25"
+                android:clickable="true"
+                android:ellipsize="end"
+                android:focusable="true"
+                android:fontFamily="monospace"
+                android:maxLines="2"
+                android:minHeight="44dp"
+                android:padding="10dp"
+                android:text="@string/runtime_logs_empty"
+                android:textColor="#D0D6DC"
+                android:textSize="12sp" />
+        </LinearLayout>
+
     </LinearLayout>
 </ScrollView>

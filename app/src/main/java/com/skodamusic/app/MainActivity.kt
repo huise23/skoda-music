@@ -1,5 +1,6 @@
 package com.skodamusic.app
 
+import android.app.Dialog
 import android.os.Bundle
 import android.util.Log
 import android.media.AudioManager
@@ -21,6 +22,10 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
     private data class UiState(
@@ -73,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var actionFeedback: TextView
+    private lateinit var runtimeLogPreview: TextView
     private lateinit var playPauseButton: Button
     private lateinit var nextButton: Button
     private lateinit var testEmbyButton: Button
@@ -85,6 +91,10 @@ class MainActivity : AppCompatActivity() {
     private var currentTrackIndex: Int = 0
     private var mediaPlayer: MediaPlayer? = null
     private var playbackRequestId: Int = 0
+    private val runtimeLogLines = mutableListOf<String>()
+    private val runtimeLogLock = Any()
+    private var runtimeLogDialog: Dialog? = null
+    private var runtimeLogDialogText: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
         actionFeedback = findViewById(R.id.action_feedback)
+        runtimeLogPreview = findViewById(R.id.runtime_log_preview)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
         testEmbyButton = findViewById(R.id.btn_test_emby)
@@ -115,15 +126,25 @@ class MainActivity : AppCompatActivity() {
         )
         render(uiState)
         bindActions()
+        appendRuntimeLog("app boot completed")
     }
 
     override fun onDestroy() {
+        appendRuntimeLog("activity destroyed")
+        runtimeLogDialog?.dismiss()
         super.onDestroy()
         playbackRequestId += 1
         releasePlayer()
     }
 
     private fun bindActions() {
+        runtimeLogPreview.setOnClickListener {
+            showRuntimeLogsFullscreen()
+        }
+        findViewById<TextView>(R.id.runtime_log_label).setOnClickListener {
+            showRuntimeLogsFullscreen()
+        }
+
         playPauseButton.setOnClickListener {
             if (loadedTracks.isEmpty()) {
                 updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
@@ -131,15 +152,18 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (uiState.isPlaying) {
+                appendRuntimeLog("ui click play/pause -> pause")
                 pausePlayback()
                 Toast.makeText(this, R.string.toast_paused, Toast.LENGTH_SHORT).show()
             } else {
+                appendRuntimeLog("ui click play/pause -> play")
                 startOrResumePlayback()
                 Toast.makeText(this, R.string.toast_playing, Toast.LENGTH_SHORT).show()
             }
         }
 
         nextButton.setOnClickListener {
+            appendRuntimeLog("ui click next")
             if (loadedTracks.isEmpty()) {
                 updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
                 return@setOnClickListener
@@ -191,6 +215,7 @@ class MainActivity : AppCompatActivity() {
                 username = embyUsernameInput.text.toString().trim(),
                 password = embyPasswordInput.text.toString().trim()
             )
+            appendRuntimeLog("ui click test emby base=${credentials.baseUrl}")
             persistCredentials(credentials)
 
             if (credentials.baseUrl.isEmpty()) {
@@ -220,6 +245,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestTracksFromEmby(credentials: EmbyCredentials) {
+        appendRuntimeLog("emby load start base=${credentials.baseUrl}")
         updateState {
             it.copy(
                 testEmbyEnabled = false,
@@ -232,6 +258,7 @@ class MainActivity : AppCompatActivity() {
             val result = fetchTracksFromEmby(credentials)
             runOnUiThread {
                 if (result.success) {
+                    appendRuntimeLog("emby load success tracks=${result.tracks.size}")
                     loadedTracks = result.tracks
                     embySessionBaseUrl = result.embyBase
                     embySessionUserId = result.embyUserId
@@ -284,6 +311,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
                 } else {
+                    appendRuntimeLog("emby load failed")
                     loadedTracks = emptyList()
                     embySessionBaseUrl = null
                     embySessionUserId = null
@@ -369,9 +397,37 @@ class MainActivity : AppCompatActivity() {
 
         currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val track = loadedTracks[currentTrackIndex]
-        val streamUrl = buildEmbyStreamUrl(base, track.id, userId, token)
+        val streamUrl = buildEmbyStreamUrl(base, track.id, token)
         val requestId = ++playbackRequestId
+        val streamPrepared = AtomicBoolean(false)
+        val fallbackTriggered = AtomicBoolean(false)
+        appendRuntimeLog("play request track=${track.title} streamUrl=$streamUrl requestId=$requestId")
         releasePlayer()
+
+        fun triggerCachedFallback(feedback: String) {
+            if (requestId != playbackRequestId) {
+                return
+            }
+            if (!fallbackTriggered.compareAndSet(false, true)) {
+                return
+            }
+            appendRuntimeLog("play fallback requestId=$requestId reason=$feedback")
+            runOnUiThread {
+                if (requestId != playbackRequestId) {
+                    return@runOnUiThread
+                }
+                releasePlayer()
+                updateState {
+                    it.copy(
+                        isPlaying = false,
+                        playbackStatusRes = R.string.status_paused,
+                        playPauseLabelRes = R.string.action_play,
+                        feedbackText = feedback
+                    )
+                }
+                downloadAndPlayTrack(track, base, token, requestId)
+            }
+        }
 
         try {
             val player = MediaPlayer()
@@ -382,6 +438,8 @@ class MainActivity : AppCompatActivity() {
                     prepared.release()
                     return@setOnPreparedListener
                 }
+                streamPrepared.set(true)
+                appendRuntimeLog("play prepared requestId=$requestId track=${track.title}")
                 prepared.start()
                 runOnUiThread {
                     updateState {
@@ -426,58 +484,105 @@ class MainActivity : AppCompatActivity() {
                 if (requestId != playbackRequestId) {
                     return@setOnErrorListener true
                 }
-                releasePlayer()
-                runOnUiThread {
-                    updateState {
-                        it.copy(
-                            isPlaying = false,
-                            playbackStatusRes = R.string.status_paused,
-                            playPauseLabelRes = R.string.action_play,
-                            feedbackText = "Action feedback: stream error ($what/$extra), trying cached file"
-                        )
-                    }
-                }
-                downloadAndPlayTrack(track, base, userId, token, requestId)
+                appendRuntimeLog("play error requestId=$requestId what=$what extra=$extra")
+                triggerCachedFallback("Action feedback: stream error ($what/$extra), trying cached file")
                 true
+            }
+            player.setOnInfoListener { _, what, _ ->
+                if (requestId != playbackRequestId) {
+                    return@setOnInfoListener true
+                }
+                when (what) {
+                    MediaPlayer.MEDIA_INFO_BUFFERING_START -> {
+                        appendRuntimeLog("play buffering start requestId=$requestId track=${track.title}")
+                        runOnUiThread {
+                            updateState {
+                                it.copy(
+                                    isPlaying = true,
+                                    playbackStatusRes = R.string.status_playing,
+                                    playPauseLabelRes = R.string.action_pause,
+                                    feedbackText = "Action feedback: buffering ${track.title}"
+                                )
+                            }
+                        }
+                        true
+                    }
+                    MediaPlayer.MEDIA_INFO_BUFFERING_END -> {
+                        appendRuntimeLog("play buffering end requestId=$requestId track=${track.title}")
+                        runOnUiThread {
+                            updateState {
+                                it.copy(
+                                    isPlaying = true,
+                                    playbackStatusRes = R.string.status_playing,
+                                    playPauseLabelRes = R.string.action_pause,
+                                    feedbackText = "Action feedback: streaming ${track.title}"
+                                )
+                            }
+                        }
+                        true
+                    }
+                    else -> false
+                }
             }
             player.setDataSource(this, Uri.parse(streamUrl))
             player.prepareAsync()
+            appendRuntimeLog("play prepareAsync requestId=$requestId")
             updateState {
                 it.copy(
                     isPlaying = true,
                     playbackStatusRes = R.string.status_playing,
                     playPauseLabelRes = R.string.action_pause,
-                    feedbackText = "Action feedback: buffering ${track.title}"
+                    feedbackText = "Action feedback: starting stream ${track.title}"
                 )
             }
+            Thread {
+                try {
+                    Thread.sleep(STREAM_PREPARE_TIMEOUT_MS)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+                if (requestId != playbackRequestId || streamPrepared.get()) {
+                    return@Thread
+                }
+                appendRuntimeLog("play timeout requestId=$requestId after=${STREAM_PREPARE_TIMEOUT_MS}ms")
+                triggerCachedFallback("Action feedback: stream timeout, trying cached file")
+            }.start()
         } catch (e: Exception) {
-            releasePlayer()
-            updateState {
-                it.copy(
-                    isPlaying = false,
-                    playbackStatusRes = R.string.status_paused,
-                    playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: stream setup failed (${e.javaClass.simpleName}), trying cached file"
-                )
-            }
-            downloadAndPlayTrack(track, base, userId, token, requestId)
+            appendRuntimeLog("play setup exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
+            triggerCachedFallback(
+                "Action feedback: stream setup failed (${e.javaClass.simpleName}), trying cached file"
+            )
         }
     }
 
     private fun downloadAndPlayTrack(
         track: EmbyTrack,
         embyBase: String,
-        userId: String,
         token: String,
         requestId: Int
     ) {
+        appendRuntimeLog("cache fallback start requestId=$requestId track=${track.title}")
+        runOnUiThread {
+            if (requestId != playbackRequestId) {
+                return@runOnUiThread
+            }
+            updateState {
+                it.copy(
+                    isPlaying = false,
+                    playbackStatusRes = R.string.status_paused,
+                    playPauseLabelRes = R.string.action_play,
+                    feedbackText = "Action feedback: downloading cached ${track.title}"
+                )
+            }
+        }
         Thread {
-            val cacheFile = downloadTrackToCache(track, embyBase, userId, token)
+            val cacheFile = downloadTrackToCache(track, embyBase, token)
             runOnUiThread {
                 if (requestId != playbackRequestId) {
                     return@runOnUiThread
                 }
                 if (cacheFile == null || !cacheFile.exists()) {
+                    appendRuntimeLog("cache fallback failed requestId=$requestId track=${track.title}")
                     updateState {
                         it.copy(
                             isPlaying = false,
@@ -490,6 +595,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 try {
+                    appendRuntimeLog("cache fallback file ready requestId=$requestId path=${cacheFile.absolutePath} size=${cacheFile.length()}")
                     releasePlayer()
                     val player = MediaPlayer()
                     mediaPlayer = player
@@ -500,6 +606,7 @@ class MainActivity : AppCompatActivity() {
                             prepared.release()
                             return@setOnPreparedListener
                         }
+                        appendRuntimeLog("cache playback prepared requestId=$requestId")
                         prepared.start()
                         runOnUiThread {
                             updateState {
@@ -541,6 +648,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     player.prepareAsync()
+                    appendRuntimeLog("cache playback prepareAsync requestId=$requestId")
                     updateState {
                         it.copy(
                             isPlaying = true,
@@ -550,6 +658,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 } catch (e: Exception) {
+                    appendRuntimeLog("cache playback exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
                     releasePlayer()
                     updateState {
                         it.copy(
@@ -567,45 +676,64 @@ class MainActivity : AppCompatActivity() {
     private fun downloadTrackToCache(
         track: EmbyTrack,
         embyBase: String,
-        userId: String,
         token: String
     ): File? {
-        var connection: HttpURLConnection? = null
-        return try {
-            val streamUrl = buildEmbyStreamUrl(embyBase, track.id, userId, token)
-            connection = (URL(streamUrl).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10000
-                readTimeout = 20000
-                setRequestProperty("Accept", "audio/*")
-                setRequestProperty("X-Emby-Token", token)
-            }
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                Log.e(LOG_TAG, "downloadTrackToCache HTTP $code")
-                return null
-            }
-            val file = File(cacheDir, "emby_${track.id}.mp3")
-            connection.inputStream.use { input ->
-                FileOutputStream(file, false).use { out ->
-                    val buffer = ByteArray(8192)
-                    var len = input.read(buffer)
-                    while (len >= 0) {
-                        if (len > 0) {
-                            out.write(buffer, 0, len)
-                        }
-                        len = input.read(buffer)
-                    }
-                    out.flush()
+        val candidateUrls = listOf(
+            buildEmbyDownloadUrl(embyBase, track.id, token),
+            buildEmbyStreamUrl(embyBase, track.id, token),
+            buildEmbyTranscodeStreamUrl(embyBase, track.id, token)
+        )
+        for (candidateUrl in candidateUrls) {
+            var connection: HttpURLConnection? = null
+            try {
+                appendRuntimeLog("emby download try GET $candidateUrl")
+                connection = (URL(candidateUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10000
+                    readTimeout = 20000
+                    instanceFollowRedirects = true
+                    setRequestProperty("Accept", "audio/*")
+                    setRequestProperty("X-Emby-Token", token)
                 }
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    appendRuntimeLog("emby download non-2xx code=$code url=$candidateUrl")
+                    Log.w(LOG_TAG, "downloadTrackToCache HTTP $code url=$candidateUrl")
+                    continue
+                }
+                val file = File(cacheDir, "emby_${track.id}.cache")
+                connection.inputStream.use { input ->
+                    FileOutputStream(file, false).use { out ->
+                        val buffer = ByteArray(8192)
+                        var len = input.read(buffer)
+                        while (len >= 0) {
+                            if (len > 0) {
+                                out.write(buffer, 0, len)
+                            }
+                            len = input.read(buffer)
+                        }
+                        out.flush()
+                    }
+                }
+                if (file.length() <= 0L) {
+                    appendRuntimeLog("emby download empty file url=$candidateUrl")
+                    Log.e(LOG_TAG, "downloadTrackToCache empty file url=$candidateUrl")
+                    file.delete()
+                    continue
+                }
+                appendRuntimeLog("emby download success bytes=${file.length()} url=$candidateUrl")
+                return file
+            } catch (e: Exception) {
+                appendRuntimeLog("emby download exception type=${e.javaClass.simpleName} msg=${e.message} url=$candidateUrl")
+                Log.w(
+                    LOG_TAG,
+                    "downloadTrackToCache failed url=$candidateUrl: ${e.javaClass.simpleName} ${e.message}"
+                )
+            } finally {
+                connection?.disconnect()
             }
-            file
-        } catch (e: Exception) {
-            Log.e(LOG_TAG, "downloadTrackToCache failed: ${e.javaClass.simpleName} ${e.message}")
-            null
-        } finally {
-            connection?.disconnect()
         }
+        return null
     }
 
     private fun releasePlayer() {
@@ -625,7 +753,7 @@ class MainActivity : AppCompatActivity() {
         val logs = mutableListOf<String>()
         val logger: (String) -> Unit = { message ->
             logs.add(message)
-            Log.d(LOG_TAG, message)
+            appendRuntimeLog("emby $message")
         }
 
         return try {
@@ -720,6 +848,7 @@ class MainActivity : AppCompatActivity() {
         var connection: HttpURLConnection? = null
         return try {
             val endpoint = buildAuthenticateByNameUrl(embyBase)
+            log("POST $endpoint")
             connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 6000
@@ -739,7 +868,7 @@ class MainActivity : AppCompatActivity() {
 
             val code = connection.responseCode
             val payload = readAll(if (code in 200..299) connection.inputStream else connection.errorStream)
-            log("POST /Users/AuthenticateByName -> HTTP $code")
+            log("POST $endpoint -> HTTP $code")
             log("auth body=${previewPayload(payload)}")
 
             if (code !in 200..299) {
@@ -770,6 +899,7 @@ class MainActivity : AppCompatActivity() {
     ): HttpResult {
         var connection: HttpURLConnection? = null
         return try {
+            log("$requestLabel url=$endpoint")
             connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 6000
@@ -825,11 +955,32 @@ class MainActivity : AppCompatActivity() {
     private fun buildEmbyStreamUrl(
         embyBase: String,
         trackId: String,
-        userId: String,
         token: String
     ): String {
         val params = mutableListOf(
-            "UserId=${urlEncode(userId)}",
+            "api_key=${urlEncode(token)}",
+            "static=true"
+        )
+        return "$embyBase/Audio/${urlEncode(trackId)}/stream?${params.joinToString("&")}"
+    }
+
+    private fun buildEmbyDownloadUrl(
+        embyBase: String,
+        trackId: String,
+        token: String
+    ): String {
+        val params = mutableListOf(
+            "api_key=${urlEncode(token)}"
+        )
+        return "$embyBase/Items/${urlEncode(trackId)}/Download?${params.joinToString("&")}"
+    }
+
+    private fun buildEmbyTranscodeStreamUrl(
+        embyBase: String,
+        trackId: String,
+        token: String
+    ): String {
+        val params = mutableListOf(
             "api_key=${urlEncode(token)}",
             "static=true"
         )
@@ -960,6 +1111,68 @@ class MainActivity : AppCompatActivity() {
             .apply()
     }
 
+    private fun appendRuntimeLog(message: String) {
+        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        val line = "$timestamp $message"
+        val snapshot: String
+        synchronized(runtimeLogLock) {
+            runtimeLogLines.add(line)
+            if (runtimeLogLines.size > MAX_RUNTIME_LOG_LINES) {
+                runtimeLogLines.removeAt(0)
+            }
+            snapshot = runtimeLogLines.joinToString("\n")
+        }
+        Log.d(LOG_TAG, line)
+        if (!this::runtimeLogPreview.isInitialized) {
+            return
+        }
+        val preview = if (snapshot.isBlank()) {
+            getString(R.string.runtime_logs_empty)
+        } else {
+            snapshot
+                .split('\n')
+                .takeLast(RUNTIME_LOG_PREVIEW_LINES)
+                .joinToString("\n")
+        }
+        runOnUiThread {
+            runtimeLogPreview.text = preview
+            runtimeLogDialogText?.text = if (snapshot.isBlank()) {
+                getString(R.string.runtime_logs_empty)
+            } else {
+                snapshot
+            }
+        }
+    }
+
+    private fun snapshotRuntimeLogs(): String {
+        synchronized(runtimeLogLock) {
+            if (runtimeLogLines.isEmpty()) {
+                return getString(R.string.runtime_logs_empty)
+            }
+            return runtimeLogLines.joinToString("\n")
+        }
+    }
+
+    private fun showRuntimeLogsFullscreen() {
+        if (runtimeLogDialog?.isShowing == true) {
+            return
+        }
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_runtime_logs)
+        val fullText = dialog.findViewById<TextView>(R.id.runtime_log_fullscreen_text)
+        dialog.findViewById<Button>(R.id.btn_close_runtime_logs).setOnClickListener {
+            dialog.dismiss()
+        }
+        fullText.text = snapshotRuntimeLogs()
+        runtimeLogDialog = dialog
+        runtimeLogDialogText = fullText
+        dialog.setOnDismissListener {
+            runtimeLogDialog = null
+            runtimeLogDialogText = null
+        }
+        dialog.show()
+    }
+
     private fun updateState(reducer: (UiState) -> UiState) {
         uiState = reducer(uiState)
         render(uiState)
@@ -987,5 +1200,8 @@ class MainActivity : AppCompatActivity() {
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
         const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
         const val EMBY_QUERY_LANGUAGE = "zh-cn"
+        const val STREAM_PREPARE_TIMEOUT_MS = 10_000L
+        const val MAX_RUNTIME_LOG_LINES = 800
+        const val RUNTIME_LOG_PREVIEW_LINES = 2
     }
 }

@@ -1,14 +1,13 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-16 17:10
+Last Updated: 2026-04-16 18:47
 
 ## Highest Priority
-- [ ] 执行 `T-S2-UI-007`：Queue/Library 列表单击即播放。
+- [ ] 执行 `T-S2-003`：日志面板增加复制/清理，提升现场回传效率。
 
 ## Immediate Actions
-- [ ] 执行 `T-S2-UI-008`：Queue 推荐歌曲默认 20 条，替换未播放段。
-- [ ] 执行 `T-S2-003`：日志面板增加复制/清理，提升现场回传效率。
-- [ ] 触发一次 CI 打包并验证 Settings 同区配置与自动保存门禁后 APK 构建稳定。
+- [ ] 触发一次 CI 打包并验证 Queue 推荐替换逻辑（保留当前播放、替换未播放段）与首页图卡残留文案清理后的 APK 构建稳定。
+- [ ] 为 `T-S2-004` 准备 API17 实机回归输入（最新 APK、回归记录模板、截图位）。
 
 ## Pending Confirmation
 - [ ] 系统首页音乐卡片第三方入口能力确认（`T-BLK-001`）。

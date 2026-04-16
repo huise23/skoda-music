@@ -9,6 +9,7 @@ import android.net.Uri
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -29,6 +30,11 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
+    private enum class ListSource {
+        QUEUE,
+        LIBRARY
+    }
+
     private data class UiState(
         val currentTrack: String,
         @StringRes val playbackStatusRes: Int,
@@ -94,8 +100,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playbackValue: TextView
     private lateinit var actionFeedback: TextView
     private lateinit var runtimeLogPreview: TextView
+    private lateinit var queueTracksContainer: LinearLayout
+    private lateinit var libraryTracksContainer: LinearLayout
     private lateinit var playPauseButton: Button
     private lateinit var nextButton: Button
+    private lateinit var recommendQueueButton: Button
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var navHomeButton: Button
@@ -135,8 +144,11 @@ class MainActivity : AppCompatActivity() {
         playbackValue = findViewById(R.id.playback_value)
         actionFeedback = findViewById(R.id.action_feedback)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
+        queueTracksContainer = findViewById(R.id.queue_tracks_container)
+        libraryTracksContainer = findViewById(R.id.library_tracks_container)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
+        recommendQueueButton = findViewById(R.id.btn_recommend_queue)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         navHomeButton = findViewById(R.id.nav_home)
@@ -166,6 +178,7 @@ class MainActivity : AppCompatActivity() {
         )
         render(uiState)
         bindActions()
+        rebuildTrackLists()
         appendRuntimeLog("app boot completed")
     }
 
@@ -183,6 +196,9 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<TextView>(R.id.runtime_log_label).setOnClickListener {
             showRuntimeLogsFullscreen()
+        }
+        recommendQueueButton.setOnClickListener {
+            requestQueueRecommendations()
         }
 
         playPauseButton.setOnClickListener {
@@ -229,6 +245,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 Toast.makeText(this, R.string.toast_end_of_queue, Toast.LENGTH_SHORT).show()
+                rebuildTrackLists()
                 return@setOnClickListener
             }
 
@@ -241,6 +258,7 @@ class MainActivity : AppCompatActivity() {
             }
             Toast.makeText(this, R.string.toast_next, Toast.LENGTH_SHORT).show()
             currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+            rebuildTrackLists()
             if (wasPlaying) {
                 playTrackAtCurrentIndex()
             } else {
@@ -336,6 +354,247 @@ class MainActivity : AppCompatActivity() {
         button.setBackgroundResource(if (selected) R.drawable.button_primary else R.drawable.button_secondary)
     }
 
+    private fun rebuildTrackLists() {
+        renderTrackContainer(
+            container = queueTracksContainer,
+            tracks = loadedTracks,
+            highlightCurrent = true,
+            emptyRes = R.string.queue_empty
+        )
+        renderTrackContainer(
+            container = libraryTracksContainer,
+            tracks = loadedTracks,
+            highlightCurrent = false,
+            emptyRes = R.string.library_empty
+        )
+    }
+
+    private fun renderTrackContainer(
+        container: LinearLayout,
+        tracks: List<EmbyTrack>,
+        highlightCurrent: Boolean,
+        emptyRes: Int
+    ) {
+        container.removeAllViews()
+        if (tracks.isEmpty()) {
+            val empty = TextView(this)
+            empty.setBackgroundResource(R.drawable.field_surface)
+            empty.setText(emptyRes)
+            empty.setTextColor(resources.getColor(R.color.text_secondary))
+            empty.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            container.addView(
+                empty,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            return
+        }
+
+        tracks.forEachIndexed { index, track ->
+            val row = TextView(this)
+            val isCurrent = highlightCurrent && index == currentTrackIndex
+            row.text = if (isCurrent) "▶ ${track.title}" else track.title
+            row.setTextColor(resources.getColor(R.color.text_primary))
+            row.textSize = 14f
+            row.setBackgroundResource(if (isCurrent) R.drawable.button_primary else R.drawable.field_surface)
+            row.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            row.setOnClickListener {
+                val source = if (highlightCurrent) ListSource.QUEUE else ListSource.LIBRARY
+                playFromList(index, source)
+            }
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                params.topMargin = dpToPx(8)
+            }
+            container.addView(row, params)
+        }
+    }
+
+    private fun playFromList(index: Int, source: ListSource) {
+        if (loadedTracks.isEmpty()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+            return
+        }
+        if (!NativePlaybackBridge.isAvailable()) {
+            updateState {
+                it.copy(
+                    feedbackText = getString(R.string.feedback_native_unavailable),
+                    nextEnabled = false
+                )
+            }
+            rebuildTrackLists()
+            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val safeIndex = index.coerceIn(0, loadedTracks.lastIndex)
+        if (safeIndex > 0) {
+            loadedTracks = loadedTracks.drop(safeIndex) + loadedTracks.take(safeIndex)
+        }
+        currentTrackIndex = 0
+        val first = NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
+        if (first == null) {
+            updateState {
+                it.copy(
+                    feedbackText = getString(R.string.feedback_native_unavailable),
+                    nextEnabled = false
+                )
+            }
+            rebuildTrackLists()
+            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val feedbackRes = if (source == ListSource.QUEUE) {
+            R.string.feedback_play_now_queue
+        } else {
+            R.string.feedback_play_now_library
+        }
+        updateState {
+            it.copy(
+                currentTrack = first,
+                nextEnabled = NativePlaybackBridge.hasNext(),
+                feedbackText = getString(feedbackRes),
+                isPlaying = true,
+                playbackStatusRes = R.string.status_playing,
+                playPauseLabelRes = R.string.action_pause
+            )
+        }
+        rebuildTrackLists()
+        playTrackAtCurrentIndex()
+    }
+
+    private fun requestQueueRecommendations() {
+        if (loadedTracks.isEmpty()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!NativePlaybackBridge.isAvailable()) {
+            updateState {
+                it.copy(
+                    feedbackText = getString(R.string.feedback_native_unavailable),
+                    nextEnabled = false
+                )
+            }
+            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val base = embySessionBaseUrl
+        val userId = embySessionUserId
+        val token = embyAccessToken
+        if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_missing_session)) }
+            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        recommendQueueButton.isEnabled = false
+        updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_loading)) }
+        appendRuntimeLog("queue recommend start size=${loadedTracks.size} currentIndex=$currentTrackIndex")
+
+        Thread {
+            val response = executeGet(
+                endpoint = buildEmbyRecommendedItemsUrl(base, userId, token),
+                token = token,
+                requestLabel = "GET /Users/{id}/Items (Queue Recommend)",
+                log = { message -> appendRuntimeLog("queue recommend $message") }
+            )
+            if (response.code !in 200..299) {
+                runOnUiThread {
+                    recommendQueueButton.isEnabled = true
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(
+                                R.string.feedback_queue_recommend_failed_http,
+                                response.code
+                            )
+                        )
+                    }
+                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                }
+                return@Thread
+            }
+
+            val recommendedTracks = parseTrackItems(response.payload)
+            if (recommendedTracks.isEmpty()) {
+                runOnUiThread {
+                    recommendQueueButton.isEnabled = true
+                    updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_empty)) }
+                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                }
+                return@Thread
+            }
+
+            runOnUiThread {
+                val replacedCount = applyQueueRecommendationReplacement(recommendedTracks)
+                recommendQueueButton.isEnabled = true
+                if (replacedCount < 0) {
+                    updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_apply)) }
+                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                appendRuntimeLog(
+                    "queue recommend success replaced=$replacedCount recommendations=${recommendedTracks.size}"
+                )
+                updateState {
+                    it.copy(
+                        feedbackText = getString(
+                            R.string.feedback_queue_recommend_success,
+                            replacedCount,
+                            recommendedTracks.size
+                        ),
+                        nextEnabled = NativePlaybackBridge.hasNext()
+                    )
+                }
+                Toast.makeText(this, R.string.toast_queue_recommend_success, Toast.LENGTH_SHORT).show()
+            }
+        }.start()
+    }
+
+    private fun applyQueueRecommendationReplacement(recommendedTracks: List<EmbyTrack>): Int {
+        if (loadedTracks.isEmpty()) {
+            return -1
+        }
+        val previousTracks = loadedTracks
+        val previousCurrentIndex = currentTrackIndex
+        val safeCurrentIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
+        val playedSegment = previousTracks.take(safeCurrentIndex + 1)
+        if (playedSegment.isEmpty()) {
+            return -1
+        }
+
+        loadedTracks = playedSegment + recommendedTracks
+        currentTrackIndex = playedSegment.lastIndex
+        val first = NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
+        if (first == null) {
+            loadedTracks = previousTracks
+            currentTrackIndex = previousCurrentIndex
+            return -1
+        }
+
+        for (i in 0 until currentTrackIndex) {
+            val next = NativePlaybackBridge.nextTitle()
+            if (next == null) {
+                loadedTracks = previousTracks
+                currentTrackIndex = previousCurrentIndex
+                return -1
+            }
+        }
+
+        rebuildTrackLists()
+        return (previousTracks.size - (safeCurrentIndex + 1)).coerceAtLeast(0)
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
     private fun requestTracksFromEmby(credentials: EmbyCredentials) {
         appendRuntimeLog("emby load start base=${credentials.baseUrl}")
         updateState {
@@ -385,6 +644,7 @@ class MainActivity : AppCompatActivity() {
                         currentTrackIndex = 0
                         playbackRequestId += 1
                         releasePlayer()
+                        rebuildTrackLists()
                         Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
                         return@runOnUiThread
                     }
@@ -402,6 +662,7 @@ class MainActivity : AppCompatActivity() {
                             feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + result.feedbackText
                         )
                     }
+                    rebuildTrackLists()
                     Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
                 } else {
                     appendRuntimeLog("emby load failed")
@@ -425,6 +686,7 @@ class MainActivity : AppCompatActivity() {
                             feedbackText = result.feedbackText
                         )
                     }
+                    rebuildTrackLists()
                     Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
                 }
             }
@@ -640,6 +902,7 @@ class MainActivity : AppCompatActivity() {
                                 nextEnabled = NativePlaybackBridge.hasNext()
                             )
                         }
+                        rebuildTrackLists()
                         playTrackAtCurrentIndex()
                     } else {
                         updateState { s ->
@@ -651,6 +914,7 @@ class MainActivity : AppCompatActivity() {
                                 feedbackText = getString(R.string.feedback_end_of_queue)
                             )
                         }
+                        rebuildTrackLists()
                     }
                 }
             }
@@ -808,6 +1072,7 @@ class MainActivity : AppCompatActivity() {
                                         nextEnabled = NativePlaybackBridge.hasNext()
                                     )
                                 }
+                                rebuildTrackLists()
                                 playTrackAtCurrentIndex()
                             } else {
                                 updateState { s ->
@@ -819,6 +1084,7 @@ class MainActivity : AppCompatActivity() {
                                         feedbackText = getString(R.string.feedback_end_of_queue)
                                     )
                                 }
+                                rebuildTrackLists()
                             }
                         }
                     }

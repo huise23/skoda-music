@@ -1,10 +1,8 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-16 17:10
+Last Updated: 2026-04-16 18:47
 
 ## Ready
-- [ ] `T-S2-UI-007` Queue/Library 列表单击即播放（禁用长按主路径）
-- [ ] `T-S2-UI-008` Queue 推荐歌曲（默认20）并替换未播放段
 - [ ] `T-S2-003` 日志面板交互增强（复制/清理）
 
 ## In Progress
@@ -37,8 +35,10 @@ Last Updated: 2026-04-16 17:10
 - [x] `T-S2-IA-001` IA v2 文档清洗与单一口径固化
 - [x] `T-S2-UI-006` 前台升级为 4 导航壳（Home -> Queue -> Library -> Settings）
 - [x] `T-S2-SET-008` 统一服务配置区（Emby + LrcApi）与测试门禁自动保存
+- [x] `T-S2-UI-007` Queue/Library 列表单击即播放（禁用长按主路径）
+- [x] `T-S2-UI-008` Queue 推荐歌曲（默认20）并替换未播放段
 
 ## Queue Notes
-- 推荐执行顺序: `T-S2-UI-007 -> T-S2-UI-008 -> T-S2-003`。
+- 推荐执行顺序: `T-S2-003 -> T-S2-004`（`T-S2-004` 仍需人工实机）。
 - `T-S2-SET-008` 与 `T-S2-UI-006` 共享 `MainActivity/activity_main.xml`，建议串行执行避免冲突。
 - `T-S2-004` 保持 Blocked，避免把人工事项误放 Ready。

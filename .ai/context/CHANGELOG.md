@@ -156,3 +156,9 @@
 - Changed Emby save gate to auto-save only after test success (removed pre-test persistence).
 - Added minimal LrcApi connectivity test and save gate (pass => auto-save, fail => block save).
 - Updated Android resources and statuses for LrcApi test flow (`testing/connected/failed`, toasts, feedback copy).
+- Completed T-S2-UI-007: replaced Queue/Library placeholders with clickable track lists and wired tap-to-play behavior.
+- Updated playback selection flow to refresh queue/library current-item highlight and keep queue progression consistent.
+- Removed Home top title/hero card as requested by user (the area shown in provided screenshot).
+- Completed T-S2-UI-008: wired Queue `Recommend 20` action to Emby random items endpoint and implemented “keep current, replace unplayed segment”.
+- Added queue recommendation failure guards: keep existing queue on HTTP failure/empty result/apply failure.
+- Removed residual Home hero wording resources (`Skoda Music MVP`, `Android interactive shell`, `MVP • Real Emby`) per user request.

@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-16 17:10
+Last Updated: 2026-04-16 18:47
 
 ## Stage
 - 阶段判断: S1 最小播放闭环已验证通过，当前处于 S2「IA v2 落地与交互闭环」阶段。
@@ -17,6 +17,10 @@ Last Updated: 2026-04-16 17:10
 - 已完成 planning 清洗：IA v2 单一口径已写入文档与任务队列。
 - 已完成 `T-S2-UI-006`：前台升级为 4 导航壳（Home/Queue/Library/Settings）并接入最小切页逻辑。
 - 已完成 `T-S2-SET-008`：Settings 同区加入 Emby + LrcApi 配置；两者均改为“测试通过自动保存、失败阻断对应保存”。
+- 已完成 `T-S2-UI-007`：Queue/Library 占位区改为可点击曲目列表，单击即播放并刷新当前曲目高亮。
+- 已按用户要求移除 Home 顶部标题图卡（截图对应区域）。
+- 已完成 `T-S2-UI-008`：Queue “Recommend 20” 按钮接线；保留当前播放项，仅替换未播放段；请求失败保持原队列并提示。
+- 已清理 `[Image #1]` 对应残留文案资源（`Skoda Music MVP / Android interactive shell / MVP • Real Emby`）。
 
 ## Not Started / Unknown
 - API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。
@@ -30,5 +34,5 @@ Last Updated: 2026-04-16 17:10
 ## Notes
 - `.ai/context/SCOPE.md` 仍缺失。
 - `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
-- 当前 Ready 主线: `T-S2-UI-007 -> T-S2-UI-008 -> T-S2-003`。
+- 当前 Ready 主线: `T-S2-003`。
 - 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。

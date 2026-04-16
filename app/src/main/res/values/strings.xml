@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Skoda Music</string>
-    <string name="app_title">Skoda Music MVP</string>
-    <string name="app_subtitle">Android interactive shell (real Emby path)</string>
-    <string name="label_mode_tag">MVP • Real Emby</string>
     <string name="label_emby">Emby Connection</string>
     <string name="label_service_config">Service Config (Emby + LrcApi)</string>
     <string name="hint_emby_base_url">Base URL (e.g. http://192.168.1.2:8096)</string>
@@ -49,6 +46,14 @@
     <string name="feedback_lrcapi_testing">Action feedback: testing LrcApi connection</string>
     <string name="feedback_lrcapi_autosaved">Action feedback: LrcApi test passed and config auto-saved</string>
     <string name="feedback_lrcapi_failed">Action feedback: LrcApi test failed, config not saved</string>
+    <string name="feedback_play_now_queue">Action feedback: play now from queue</string>
+    <string name="feedback_play_now_library">Action feedback: play now from library</string>
+    <string name="feedback_queue_recommend_missing_session">Action feedback: Emby session unavailable, test Emby first</string>
+    <string name="feedback_queue_recommend_loading">Action feedback: refreshing queue recommendations...</string>
+    <string name="feedback_queue_recommend_failed_http">Action feedback: queue recommend failed (HTTP %1$d)</string>
+    <string name="feedback_queue_recommend_failed_empty">Action feedback: queue recommend returned empty audio list</string>
+    <string name="feedback_queue_recommend_failed_apply">Action feedback: queue recommend apply failed, keep existing queue</string>
+    <string name="feedback_queue_recommend_success">Action feedback: queue updated, replaced %1$d pending tracks with %2$d recommendations</string>
     <string name="toast_playing">Playback changed to Playing</string>
     <string name="toast_paused">Playback changed to Paused</string>
     <string name="toast_next">Switched to next track</string>
@@ -57,6 +62,8 @@
     <string name="toast_end_of_queue">Reached end of queue</string>
     <string name="toast_lrcapi_success">LrcApi test passed and config saved</string>
     <string name="toast_lrcapi_failed">LrcApi test failed, config not saved</string>
+    <string name="toast_queue_recommend_success">Queue recommendations applied</string>
+    <string name="toast_queue_recommend_failed">Queue recommendation failed</string>
     <string name="runtime_logs_empty">No runtime logs yet.</string>
     <string name="action_close">Close</string>
     <string name="label_nav">Navigation</string>
@@ -68,7 +75,9 @@
     <string name="action_recommend_queue">Recommend 20</string>
     <string name="action_clear_queue">Clear Queue</string>
     <string name="queue_placeholder">Queue page shell ready. Detailed queue behavior will be wired in the next task.</string>
+    <string name="queue_empty">Queue is empty. Load tracks from Emby first.</string>
     <string name="label_library">Media Library</string>
     <string name="hint_library_search">Search tracks, artists, albums</string>
     <string name="library_placeholder">Library page shell ready. Tap-to-play list binding will be wired in the next task.</string>
+    <string name="library_empty">Library is empty. Load tracks from Emby first.</string>
 </resources>

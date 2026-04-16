@@ -1,41 +1,37 @@
 # HANDOFF
 
-Last Updated: 2026-04-15 22:41:00
+Last Updated: 2026-04-16 17:10
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前事实: 工程可打包并兼容 API 17，Android 前台已从封面页改为可交互壳（`T-S1-001` 完成）。
-- 最新已知 CI: `Package MVP` 成功（run `24440302444`）。
+- 当前主干: `master@9bbd2fd`（单页 MVP 可播放链路已稳定）
+- 当前阶段: S2 IA v2 落地（导航壳 + 交互规则 + 设置规则）
 
 ## Current Goal
-- 目标 1: 保持 API 17 设备可安装、可启动。
-- 目标 2: 在可交互前台基础上继续落地状态模型与最小播放闭环。
+- 目标 1: 完成 Queue/Library 单击即播放（`T-S2-UI-007`）。
+- 目标 2: 完成 Queue 推荐替换未播放段（`T-S2-UI-008`）。
+- 目标 3: 完成日志复制/清理（`T-S2-003`），准备 API17 全量回归。
 
-## Current Status
-- 已具备: C++ 业务骨架 + Android 壳 + CI 打包签名链路。
-- 未完成: 实机功能闭环验证（安装/启动/交互/前后台）。
-- 主要阻塞: 实机安装反馈与部分产品策略待确认。
-- 规划新增: 已产出模块化计划与任务拆分（`PLAN/TASK_BREAKDOWN/TASK_QUEUE/NEXT_STEPS`）。
-- 本轮新增: `T-S1-002` 已完成，Android 前台已引入最小 `UiState` 与统一 `render` 入口。
-- 本轮新增: `T-S1-003` 已完成，Android 前台“下一曲”已具备本地 mock 队列循环切换。
-- 本轮新增: `T-S1-005` 已完成，Android 前台新增 Emby 实时连通测试与曲目拉取；曲目展示不再依赖 mock 数据。
-- 本轮新增: `T-S1-004` 已完成，Android 前台已通过 JNI 调用真实 `playback_queue` 处理下一曲与当前曲目状态。
-- 本轮新增: `T-HF-EMBY-001` 已完成，`BaseURL/用户名/密码` 已持久化到 `SharedPreferences` 并在启动时回填。
-- 本轮新增: `T-HF-EMBY-002` 已完成，Emby 响应改为 UTF-8 解码，并新增 `tracks-sample` 日志用于中文曲名排障。
-- 本轮新增: `T-HF-PLY-001` 已完成，`Play/Pause` 已接入 `MediaPlayer` 真实播放 Emby 音频流，`Next` 在播放态可切歌并继续播放。
-- 本轮新增: `T-HF-PLY-002` 已完成，曲目请求改为推荐优先（`Items/Latest`）并在失败时回退全量库（`Items`）。
-- 本轮新增: `T-S1-006` 已完成，新增 API 17 实机交互回归清单与结果模板文档。
+## Plan Hand-off
+- 本轮 `ai-execution` 已完成 `T-S2-SET-008`：
+  - Settings 页面同区展示 Emby + LrcApi 配置入口
+  - Emby 逻辑改为“测试通过后自动保存、失败不保存”
+  - LrcApi 新增最小连通性测试，测试通过自动保存、失败阻断对应保存
+- 当前高优先级执行入口:
+  1. `T-S2-UI-007`
+  2. `T-S2-UI-008`
+  3. `T-S2-003`
+- `T-S2-004` 保持 Blocked（人工实机依赖）。
+- 说明: 本地环境缺少 `gradle/gradlew.bat`，本轮未完成编译型验证。
 
-## Recommended Next Steps
-1. 按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 在 Android 4.2.2 实机执行回归。
-2. 回传失败条目、关键日志（`statusText/actionFeedback/tracks-source/tracks-sample`）和截图。
-3. 根据回归结果决定是否进入下一轮 planning（新增 Ready 任务）。
+## Recommended Next Action
+1. 立即进入 `ai-execution` 执行 `T-S2-UI-007`。
+2. 接续执行 `T-S2-UI-008`。
+3. 并行补齐 `T-S2-003` 后进入 `T-S2-004` 人工回归。
 
 ## Read First In New Session
-1. `.ai/context/PROJECT_BRIEF.md`
-2. `.ai/context/CURRENT_STATUS.md`
-3. `.ai/context/DECISIONS.md`
-4. `.ai/context/HANDOFF.md`
-5. `.ai/context/PLAN.md`
-6. `.ai/context/TASK_BREAKDOWN.md`
-7. `.ai/context/TASK_QUEUE.md`
+1. `.ai/context/PLAN.md`
+2. `.ai/context/TASK_BREAKDOWN.md`
+3. `.ai/context/TASK_QUEUE.md`
+4. `.ai/context/NEXT_STEPS.md`
+5. `.ai/context/HANDOFF.md`

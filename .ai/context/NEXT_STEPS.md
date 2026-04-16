@@ -1,22 +1,22 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-15 22:41:00
+Last Updated: 2026-04-16 17:10
 
 ## Highest Priority
-- [ ] 按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行一轮 Android 4.2.2 实机回归并回传结果。
+- [ ] 执行 `T-S2-UI-007`：Queue/Library 列表单击即播放。
 
 ## Immediate Actions
-- [ ] 触发一次 CI 打包，验证 `T-S1-001~005 + T-S1-004` 改动后 APK 构建稳定。
-- [ ] 在 Android 4.2.2 实机验证 Emby 拉曲目 + Next(native) + 播放状态切换。
-- [ ] 验证 Emby 登录信息重启后自动回填（BaseURL/用户名/密码）。
-- [ ] 对比 `tracks-sample` 日志与界面显示，确认“非中文曲名”来自服务端元数据还是客户端解码问题。
-- [ ] 实机验证真实流播放链路：`登录 -> Play -> Pause -> Next(播放态)`。
-- [ ] 实机核对 `statusText` 中的来源标识（`recommended` / `library-fallback`）是否符合服务端返回。
+- [ ] 执行 `T-S2-UI-008`：Queue 推荐歌曲默认 20 条，替换未播放段。
+- [ ] 执行 `T-S2-003`：日志面板增加复制/清理，提升现场回传效率。
+- [ ] 触发一次 CI 打包并验证 Settings 同区配置与自动保存门禁后 APK 构建稳定。
 
 ## Pending Confirmation
-- [ ] 实机安装并回传 Android 4.2.2 行为结果（安装/启动/前后台/交互）。
-- [ ] 系统首页音乐卡片第三方入口能力确认。
-- [ ] 歌词失败回退策略口径确认。
+- [ ] 系统首页音乐卡片第三方入口能力确认（`T-BLK-001`）。
+- [ ] 歌词失败回退策略口径确认（`B-LRC-001`）。
+
+## Blocked By Human Device
+- [ ] `T-S2-004` API17 全量回归执行与证据回填。
 
 ## Deferred
-- [ ] 复杂视觉动效与大规模 UI 重构（非当前阶段重点）。
+- [ ] 多协议支持（Jellyfin/Subsonic）。
+- [ ] 完整离线下载管理与本地媒体库体系化改造。

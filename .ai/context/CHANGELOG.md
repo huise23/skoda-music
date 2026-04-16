@@ -114,3 +114,45 @@
 - Completed T-HF-PLY-002: switched track loading strategy to recommended-first (`Items/Latest`) with fallback to full library (`Items`), including source diagnostics in status/logs.
 - Completed T-S1-006: added `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` with API17 real-device verification steps and result template.
 - Updated CI release runbook to reference API17 interaction regression checklist.
+## 2026-04-16
+- Completed T-HF-LOG-001: added runtime log panel (2-line preview + fullscreen) and full Emby URL logging.
+- Completed T-HF-EMBY-003: replaced recommended-list query with fixed `Items + Random + Limit=20 + api_key` endpoint.
+- Completed T-HF-EMBY-004: filtered non-audio entries by `Type`, preventing album IDs from entering playback/download path.
+- Completed T-HF-PLY-003: kept stream-first strategy with download fallback; stream request switched to URL-only token auth.
+- Completed T-UI-001: redesigned Android UI first pass (card layout, new color system, custom button/field styles, unified log dialog look).
+- Verified CI `Package MVP` successful for recent runs: `24490460185`, `24491061385`, `24492874887`.
+- Replanned stage S2 via ai-planning: split UI second pass into `T-S2-001/002/003`, moved API17 full regression to blocked `T-S2-004`, and refreshed `PLAN/TASK_BREAKDOWN/TASK_QUEUE/NEXT_STEPS/HANDOFF`.
+- Appended IA v2 override planning based on user-confirmed rules:
+  - navigation `Home -> Queue -> Library -> Settings`
+  - default tap-to-play in `Library/Queue` (no long-press primary path)
+  - `Queue` adds `推荐歌曲` (20 items, replace unplayed only)
+  - `Emby/LrcApi` changed to test-gated auto-save (failure blocks corresponding save)
+- Refreshed `.ai/context` files to prioritize override tasks:
+  - `PLAN.md`
+  - `TASK_BREAKDOWN.md`
+  - `TASK_QUEUE.md`
+  - `NEXT_STEPS.md`
+  - `DECISIONS.md`
+  - `HANDOFF.md`
+  - `CURRENT_STATUS.md`
+- Updated `docs/UI_IA_LOW_FIDELITY.md` with explicit 2026-04-16 override section.
+- Applied user decisions: `LrcApi` merged into same service-config area with `Emby`, confirmed 4-nav shell migration, and cleaned conflicting planning/IA content.
+- Rewrote and cleaned these files to a single baseline (removed old+override dual wording):
+  - `docs/UI_IA_LOW_FIDELITY.md`
+  - `.ai/context/PLAN.md`
+  - `.ai/context/TASK_BREAKDOWN.md`
+  - `.ai/context/TASK_QUEUE.md`
+  - `.ai/context/NEXT_STEPS.md`
+  - `.ai/context/DECISIONS.md`
+  - `.ai/context/HANDOFF.md`
+  - `.ai/context/CURRENT_STATUS.md`
+- Task consolidation: replaced split settings tasks with unified `T-S2-SET-008` (Emby+LrcApi same config area + test-gated auto-save).
+- Completed T-S2-UI-006: upgraded Android foreground from single-page layout to 4-nav shell (`Home/Queue/Library/Settings`).
+- Updated `activity_main.xml` to left-nav + right-page containers while preserving existing playback/Emby/log IDs.
+- Updated `MainActivity.kt` with minimal nav switch logic and selected-state visuals.
+- Added navigation and page-shell strings in `app/src/main/res/values/strings.xml`.
+- Validation note: local build command unavailable in current env (`gradle/gradlew.bat` missing); completed static ID/binding verification.
+- Completed T-S2-SET-008: implemented unified service settings area for Emby + LrcApi in Settings page.
+- Changed Emby save gate to auto-save only after test success (removed pre-test persistence).
+- Added minimal LrcApi connectivity test and save gate (pass => auto-save, fail => block save).
+- Updated Android resources and statuses for LrcApi test flow (`testing/connected/failed`, toasts, feedback copy).

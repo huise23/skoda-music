@@ -1,94 +1,145 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-15 18:25:30
+Last Updated: 2026-04-16 16:28
 
-## T-S1-001
-- Task ID: `T-S1-001`
-- Title: Android 前台交互壳改造（替换封面页）
-- Goal: 将静态封面页改为可交互最小页面。
-- Why: 当前页面不可操作，无法承载后续播放功能验证。
+## T-S2-IA-001
+- Task ID: `T-S2-IA-001`
+- Title: IA v2 文档清洗与单一口径固化
+- Goal: 清理旧冲突口径，形成唯一 IA 基线。
+- Why: 旧文档通过 override 叠加，执行阶段易误读。
 - Dependencies: 无
-- Inputs: `app/src/main/res/layout/activity_main.xml`, `MainActivity.kt`
-- Expected Outputs: 新布局（状态区+操作区）与按钮事件占位逻辑。
+- Inputs:
+  - `docs/UI_IA_LOW_FIDELITY.md`
+  - `.ai/context/DECISIONS.md`
+- Expected Outputs: IA 文档与决策文档一致，不再存在冲突叙述。
 - Done Criteria:
-  - 页面包含播放状态、当前曲目、播放/下一曲按钮。
-  - 启动不崩溃，按钮点击有可见反馈。
-- Risks: API 17 兼容控件选择受限。
+  - 导航顺序、点击播放、推荐刷新、设置保存规则仅保留一套说法。
+  - 不再保留“LrcApi 失败不阻断保存”的旧描述。
+- Risks: 文档领先代码，短期会有实现差距。
+- Size: S
+- Minimal Loop: Yes
+
+## T-S2-UI-006
+- Task ID: `T-S2-UI-006`
+- Title: 前台升级为 4 导航壳（Home -> Queue -> Library -> Settings）
+- Goal: 从单页滚动布局升级为 IA v2 对应的 4 导航壳。
+- Why: 后续交互规则需要页面边界与状态边界。
+- Dependencies: `T-S2-IA-001`
+- Inputs:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Expected Outputs: 可切换四页入口，顺序固定。
+- Done Criteria:
+  - 导航顺序与 IA 一致。
+  - 页面切换不破坏现有播放链路。
+- Risks: 结构改造幅度大，易引入控件绑定回归。
 - Size: M
 - Minimal Loop: Yes
 
-## T-S1-002
-- Task ID: `T-S1-002`
-- Title: Android UI 状态模型（最小 ViewState）
-- Goal: 建立 Activity 内可维护的最小状态模型。
-- Why: 避免在页面逻辑中散落临时字符串和硬编码。
-- Dependencies: `T-S1-001`
-- Inputs: `MainActivity.kt`
-- Expected Outputs: 状态数据结构 + 单点渲染函数。
+## T-S2-SET-008
+- Task ID: `T-S2-SET-008`
+- Title: 统一服务配置区（Emby + LrcApi）与测试门禁自动保存
+- Goal: 将 Emby/LrcApi 合并在同一配置区，并统一保存规则。
+- Why: 用户已确认“LrcApi 放到 Emby 配置一起”，且两者规则一致。
+- Dependencies: `T-S2-UI-006`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+- Expected Outputs: 合并配置区 + 两服务各自测试通过自动保存、失败阻断。
 - Done Criteria:
-  - 状态更新只通过单一入口。
-  - UI 文本/按钮启用状态可由模型驱动。
-- Risks: 若后续接桥接层，模型字段可能需要扩展。
+  - Emby/LrcApi 在同一配置区展示。
+  - 两者均满足“测试通过即自动保存，失败阻断对应保存”。
+  - 各测各存，互不等待。
+- Risks: 当前 LrcApi 测试链路缺失，需要新增最小测试实现。
+- Size: M
+- Minimal Loop: Yes
+
+## T-S2-UI-007
+- Task ID: `T-S2-UI-007`
+- Title: Queue/Library 列表单击即播放（禁用长按主路径）
+- Goal: 收敛为驾驶场景低误触的单击主交互。
+- Why: 用户明确要求默认点击播放，不走长按。
+- Dependencies: `T-S2-UI-006`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - 列表渲染组件（Queue/Library）
+- Expected Outputs: 两页列表统一单击即播放。
+- Done Criteria:
+  - Queue 单击行可立即切播并同步高亮。
+  - Library 单击行可立即切歌。
+- Risks: 若列表组件抽象不足，可能出现重复逻辑。
+- Size: M
+- Minimal Loop: Yes
+
+## T-S2-UI-008
+- Task ID: `T-S2-UI-008`
+- Title: Queue 推荐歌曲（默认 20）并替换未播放段
+- Goal: 在不打断当前播放下刷新后续待播。
+- Why: 用户要求“刷新队列，默认20条，保留当前播放”。
+- Dependencies: `T-S2-UI-007`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Expected Outputs: Queue 头部新增推荐按钮与替换逻辑。
+- Done Criteria:
+  - 点击后保留当前播放项。
+  - 当前播放后的待播队列被推荐结果（20条）替换。
+  - 请求失败时保留原队列并提示。
+- Risks: Native 队列 API 可能缺少“仅替换未播放段”的原子操作。
+- Size: M
+- Minimal Loop: Yes
+
+## T-S2-003
+- Task ID: `T-S2-003`
+- Title: 日志面板交互增强（复制/清理）
+- Goal: 提升现场排障回传效率。
+- Why: 当前可看不可快速回传。
+- Dependencies: `T-HF-LOG-001`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/dialog_runtime_logs.xml`
+  - `app/src/main/res/values/strings.xml`
+- Expected Outputs: 全屏日志支持复制与清理。
+- Done Criteria:
+  - 可一键复制当前日志文本。
+  - 可清空日志并同步预览区与全屏区。
+- Risks: API17 剪贴板行为需实机确认。
 - Size: S
 - Minimal Loop: Yes
 
-## T-S1-003
-- Task ID: `T-S1-003`
-- Title: 播放动作最小闭环（本地 mock）
-- Goal: 完成“播放/下一曲”在 Android 前台的最小动作闭环。
-- Why: 先验证前台交互可行，再接入真实后端链路。
-- Dependencies: `T-S1-002`
-- Inputs: `MainActivity.kt`
-- Expected Outputs: 本地队列切换/状态刷新逻辑。
+## T-S2-004
+- Task ID: `T-S2-004`
+- Title: API17 全量回归执行与证据回填
+- Goal: 按清单完成实机验证并形成结构化证据。
+- Why: 当前最大缺口是“可运行但缺完整实机证明”。
+- Dependencies: `T-S2-UI-006`, `T-S2-SET-008`, `T-S2-UI-007`, `T-S2-UI-008`, `T-S2-003`
+- Inputs:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - CI 产物 APK
+  - 实机日志与截图
+- Expected Outputs: 一份完整回归报告（PASS/FAIL、失败条目、关键日志）。
 - Done Criteria:
-  - 点击“下一曲”可切换曲目显示。
-  - 点击“播放/暂停”可切换状态文本。
-- Risks: mock 逻辑与真实桥接接口命名可能不一致。
-- Size: S
-- Minimal Loop: Yes
-
-## T-S1-004
-- Task ID: `T-S1-004`
-- Title: Android-C++ 桥接最小接线
-- Goal: 将前台动作映射到现有骨架能力（优先队列与媒体键同步状态）。
-- Why: 从 UI mock 进入真实模块，减少双轨逻辑。
-- Dependencies: `T-S1-003`
-- Inputs: `src/app/qml_frontend_bridge.*`, Android 入口代码
-- Expected Outputs: 可调用的桥接接口与状态回读通道（最小实现）。
-- Done Criteria:
-  - UI 可触发至少一个真实模块动作。
-  - UI 可展示至少一个来自真实模块的状态字段。
-- Risks: Android 与 C++ 集成方式当前未完全定型。
-- Size: L
+  - 清单 A-F 项完成并有结论。
+  - 至少包含一次失败路径验证与恢复验证。
+- Risks: 依赖人工实机时段，节奏不可控。
+- Size: M
 - Minimal Loop: No
 
-## T-S1-005
-- Task ID: `T-S1-005`
-- Title: Emby 连接状态可视化
-- Goal: 在前台展示 Emby 就绪/未就绪状态和提示。
-- Why: 实机排障和可用性验证需要明确状态反馈。
-- Dependencies: `T-S1-002`
-- Inputs: 配置运行时状态、UI 状态模型
-- Expected Outputs: Emby 状态区与提示文案。
+## T-S2-005
+- Task ID: `T-S2-005`
+- Title: 回归结果固化与交接更新
+- Goal: 将 S2 回归结论写回上下文与 runbook。
+- Why: 防止验证结果丢失。
+- Dependencies: `T-S2-004`
+- Inputs:
+  - `.ai/context/*`
+  - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
+- Expected Outputs: 状态文件与交接信息更新、必要文档回写。
 - Done Criteria:
-  - 未配置/配置失败/可用 三态可区分。
-  - 提示文案与当前决策一致。
-- Risks: 真实连通性检测策略需与后端接口统一。
-- Size: M
-- Minimal Loop: Yes
-
-## T-S1-006
-- Task ID: `T-S1-006`
-- Title: API 17 实机交互回归脚本化清单
-- Goal: 固化本阶段实机验证步骤和结果记录格式。
-- Why: 避免每次验证口径漂移。
-- Dependencies: `T-S1-001`, `T-S1-003`
-- Inputs: 现有 runbook 与 UI 功能点
-- Expected Outputs: 验证清单文档更新 + 结果模板。
-- Done Criteria:
-  - 覆盖安装、启动、基础交互、前后台切换。
-  - 可直接用于下一轮实机回传。
-- Risks: 实机环境不可控导致结论延迟。
+  - `CURRENT_STATUS/NEXT_STEPS/HANDOFF/TASK_QUEUE` 与事实一致。
+  - runbook 引用最新回归结论。
+- Risks: 多文件同步时容易遗漏。
 - Size: S
 - Minimal Loop: Yes
 
@@ -105,4 +156,17 @@ Last Updated: 2026-04-15 18:25:30
 - Done Criteria: 能明确“支持/不支持”并有证据。
 - Risks: 完全受制于系统封闭能力。
 - Size: M
+- Minimal Loop: No
+
+### B-LRC-001
+- Task ID: `B-LRC-001`
+- Title: 歌词失败回退策略口径确认
+- Goal: 明确远程歌词失败时的提示文案、重试策略与缓存回退规则。
+- Why: 当前歌词策略未定，容易在 UI 和行为上反复。
+- Dependencies: 产品/维护者口径确认
+- Inputs: `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md` 与产品决策
+- Expected Outputs: 可执行的策略结论（含提示文案）
+- Done Criteria: 形成明确“失败即提示/重试次数/是否回退缓存”结论并写入决策。
+- Risks: 口径长期未确认会阻塞歌词相关开发。
+- Size: S
 - Minimal Loop: No

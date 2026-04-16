@@ -1,55 +1,48 @@
 # DECISIONS
 
-Last Updated: 2026-04-15 22:41:00
+Last Updated: 2026-04-16 17:10
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
-- 决策: bootstrap 最小工作集仅保留 4 个文件：
-  - `PROJECT_BRIEF.md`
-  - `CURRENT_STATUS.md`
-  - `DECISIONS.md`
-  - `HANDOFF.md`
-- 决策: 其余任务型上下文文件在 bootstrap 阶段不保留，后续按需要再扩展。
+- 决策: bootstrap 最小工作集仅保留 4 个文件（`PROJECT_BRIEF/CURRENT_STATUS/DECISIONS/HANDOFF`），其余按需扩展。
 
 ## Confirmed Technical Decisions
 - 决策: 业务核心继续使用 C++ 模块，Android 壳承担打包与前台入口。
-- 决策: 当前目标设备基线为 Android `4.2.2`（API 17），`minSdk` 固定为 `17`。
-- 决策: CI `minSdk` 校验接受 `aapt` 的两种输出格式：`sdkVersion:'17'` 或 `minSdkVersion:'17'`。
+- 决策: 目标设备基线为 Android `4.2.2`（API 17），`minSdk` 固定 `17`。
 - 决策: 首版协议维持 Emby only，网络策略维持纯在线。
+- 决策: 播放策略固定为 URL-only stream + download fallback。
+- 决策: 推荐接口固定为 `Users/{id}/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=Random&Limit=20&api_key=...`。
+- 决策: 列表解析仅接收 `Type=Audio`。
 
 ## Pending (Not Yet Confirmed)
 - 待确认: 系统首页卡片第三方入口能力。
 - 待确认: 歌词失败回退策略最终口径。
-- 待确认: Android 前台从占位页切换到播放交互页的分阶段范围。
 
 ## 2026-04-15 - Planning Scope Assumption
-- 决策: 当前 `SCOPE.md` 缺失，规划阶段以 `PROJECT_BRIEF + CURRENT_STATUS + HANDOFF + 最新用户指令` 作为阶段范围输入。
-- 影响: 若后续补充 `SCOPE.md` 与当前计划冲突，以显式 `SCOPE.md` 为准并重排任务队列。
+- 决策: `SCOPE.md` 缺失时，规划输入以 `PROJECT_BRIEF + CURRENT_STATUS + HANDOFF + 最新用户指令` 为准。
+- 影响: 后续若补充 `SCOPE.md` 且冲突，以显式 `SCOPE.md` 为准并重排任务队列。
 
-## 2026-04-15 - Android 前台移除 mock 曲目源
-- 决策: Android 前台曲目来源不再使用本地 mock 列表，改为通过 Emby 实时请求拉取。
-- 影响: 必须提供 Emby `BaseURL/UserId/Token` 才能启用播放与下一曲交互；后续优先推进 Android-C++ 桥接。
+## 2026-04-16 - IA/交互规则确认（已落地为当前基线）
+- 决策: 导航顺序固定为 `Home -> Queue -> Library -> Settings`。
+- 决策: `Home` 承载 Now Playing，不新增独立 Now Playing 页面。
+- 决策: `Queue/Library` 默认单击即播放，不使用长按作为主路径。
+- 决策: `Queue` 增加“推荐歌曲”，默认 20 条，保留当前播放，仅替换未播放段。
+- 决策: `Emby/LrcApi` 均执行“测试通过自动保存，测试失败阻断对应保存”。
+- 决策: 保存策略为“各测各存”，互不等待。
 
-## 2026-04-15 - Android 最小桥接采用 JNI + playback_queue
-- 决策: Android 前台通过 `NativePlaybackBridge`（JNI）直接调用 `src/playback/playback_queue` 实现最小接线。
-- 影响: Android 构建新增 CMake/NDK 依赖，CI 需安装匹配 NDK（`26.3.11579264`）。
+## 2026-04-16 16:28 - 设置区合并与文档清洗
+- 决策: `LrcApi` 与 `Emby` 合并在同一服务配置区展示和维护。
+- 决策: 进入 4 导航壳改造（不再停留单页滚动壳作为目标形态）。
+- 决策: 清洗旧冲突条目，不再保留“旧规则 + override”并存写法。
+- 影响: `T-S2-SET-007` 被并入 `T-S2-SET-008`，任务队列与下一步已同步。
 
-## 2026-04-15 - Emby 登录信息持久化（含密码）
-- 决策: 按用户明确要求，Android 前台将 Emby `BaseURL/用户名/密码` 持久化到 `SharedPreferences` 并在启动自动回填。
-- 影响: 提升实机反复测试效率，但密码为明文持久化，后续如需上线应切换加密存储方案。
+## 2026-04-16 16:49 - 4 导航壳最小实现落地（T-S2-UI-006）
+- 决策: 当前导航壳实现采用“单 Activity + 四页面容器显隐切换”的最小方案。
+- 决策: 保留原有 Emby/播放/日志关键控件 ID，优先保证既有业务链路不回归。
+- 影响: 后续 `T-S2-SET-008/T-S2-UI-007/T-S2-UI-008` 可在新页面容器上继续增量实现。
 
-## 2026-04-15 - Emby 响应统一 UTF-8 解码
-- 决策: 读取 Emby HTTP 响应时显式使用 UTF-8，避免设备默认字符集导致中文乱码。
-- 影响: “非中文曲名”排障时可优先判断服务端元数据本身，而非客户端默认编码。
-
-## 2026-04-15 - Android 最小真实播放采用 MediaPlayer
-- 决策: 在 API 17 兼容前提下，前台真实播放链路先采用系统 `MediaPlayer` + Emby stream URL。
-- 影响: 播放能力从“仅状态切换”升级为“可实际出声”，但暂未引入完整音频焦点/后台会话策略。
-
-## 2026-04-15 - Emby 曲目拉取策略调整为推荐优先
-- 决策: 曲目列表优先请求 `Items/Latest`（音频推荐），失败或为空时回退 `Items` 全量查询。
-- 影响: 当前曲目更贴近推荐场景，且可通过来源标记快速判断服务端返回路径。
-
-## 2026-04-15 - API17 实机回归口径文档化
-- 决策: 实机回归统一以 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 为执行与回传模板。
-- 影响: 后续人工验证将有固定条目与结果结构，便于快速定位回归失败点与阻塞项。
+## 2026-04-16 17:10 - 同区服务配置与测试门禁落地（T-S2-SET-008）
+- 决策: Settings 页面采用“单卡片同区”承载 Emby + LrcApi 配置。
+- 决策: Emby 持久化时序调整为“测试通过后自动保存”，失败不保存。
+- 决策: LrcApi 增加最小连通性测试（HTTP GET base_url，`200..499` 判定可达）；通过自动保存，失败不保存。
+- 影响: 实现口径与 IA 当前规则一致，为后续 `T-S2-UI-007/008` 提供稳定配置基座。

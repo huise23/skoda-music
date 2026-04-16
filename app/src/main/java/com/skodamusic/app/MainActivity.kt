@@ -6,6 +6,7 @@ import android.util.Log
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -34,16 +35,22 @@ class MainActivity : AppCompatActivity() {
         @StringRes val playPauseLabelRes: Int,
         val feedbackText: String,
         val embyStatusText: String,
+        val lrcApiStatusText: String,
         val isPlaying: Boolean,
         val playPauseEnabled: Boolean,
         val nextEnabled: Boolean,
-        val testEmbyEnabled: Boolean
+        val testEmbyEnabled: Boolean,
+        val testLrcApiEnabled: Boolean
     )
 
     private data class EmbyCredentials(
         val baseUrl: String,
         val username: String,
         val password: String
+    )
+
+    private data class LrcApiCredentials(
+        val baseUrl: String
     )
 
     private data class EmbyTrack(
@@ -71,10 +78,18 @@ class MainActivity : AppCompatActivity() {
         val accessToken: String? = null
     )
 
+    private data class LrcApiTestResult(
+        val success: Boolean,
+        val statusText: String,
+        val feedbackText: String
+    )
+
     private lateinit var embyBaseUrlInput: EditText
     private lateinit var embyUsernameInput: EditText
     private lateinit var embyPasswordInput: EditText
+    private lateinit var lrcApiBaseUrlInput: EditText
     private lateinit var embyStatusValue: TextView
+    private lateinit var lrcApiStatusValue: TextView
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var actionFeedback: TextView
@@ -82,6 +97,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playPauseButton: Button
     private lateinit var nextButton: Button
     private lateinit var testEmbyButton: Button
+    private lateinit var testLrcApiButton: Button
+    private lateinit var navHomeButton: Button
+    private lateinit var navQueueButton: Button
+    private lateinit var navLibraryButton: Button
+    private lateinit var navSettingsButton: Button
+    private lateinit var pageHome: View
+    private lateinit var pageQueue: View
+    private lateinit var pageLibrary: View
+    private lateinit var pageSettings: View
     private lateinit var uiState: UiState
 
     private var loadedTracks: List<EmbyTrack> = emptyList()
@@ -95,6 +119,7 @@ class MainActivity : AppCompatActivity() {
     private val runtimeLogLock = Any()
     private var runtimeLogDialog: Dialog? = null
     private var runtimeLogDialogText: TextView? = null
+    private var selectedPage: Int = PAGE_HOME
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,7 +128,9 @@ class MainActivity : AppCompatActivity() {
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
         embyUsernameInput = findViewById(R.id.emby_username_input)
         embyPasswordInput = findViewById(R.id.emby_password_input)
+        lrcApiBaseUrlInput = findViewById(R.id.lrcapi_base_url_input)
         embyStatusValue = findViewById(R.id.emby_status_value)
+        lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
         actionFeedback = findViewById(R.id.action_feedback)
@@ -111,6 +138,17 @@ class MainActivity : AppCompatActivity() {
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
         testEmbyButton = findViewById(R.id.btn_test_emby)
+        testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
+        navHomeButton = findViewById(R.id.nav_home)
+        navQueueButton = findViewById(R.id.nav_queue)
+        navLibraryButton = findViewById(R.id.nav_library)
+        navSettingsButton = findViewById(R.id.nav_settings)
+        pageHome = findViewById(R.id.page_home)
+        pageQueue = findViewById(R.id.page_queue)
+        pageLibrary = findViewById(R.id.page_library)
+        pageSettings = findViewById(R.id.page_settings)
+        bindNavigation()
+        switchPage(PAGE_HOME)
         loadSavedCredentials()
 
         uiState = UiState(
@@ -119,10 +157,12 @@ class MainActivity : AppCompatActivity() {
             playPauseLabelRes = R.string.action_play,
             feedbackText = getString(R.string.feedback_need_emby),
             embyStatusText = getString(R.string.emby_status_not_tested),
+            lrcApiStatusText = getString(R.string.lrcapi_status_not_tested),
             isPlaying = false,
             playPauseEnabled = false,
             nextEnabled = false,
-            testEmbyEnabled = true
+            testEmbyEnabled = true,
+            testLrcApiEnabled = true
         )
         render(uiState)
         bindActions()
@@ -216,7 +256,6 @@ class MainActivity : AppCompatActivity() {
                 password = embyPasswordInput.text.toString().trim()
             )
             appendRuntimeLog("ui click test emby base=${credentials.baseUrl}")
-            persistCredentials(credentials)
 
             if (credentials.baseUrl.isEmpty()) {
                 updateState {
@@ -242,6 +281,59 @@ class MainActivity : AppCompatActivity() {
 
             requestTracksFromEmby(credentials)
         }
+
+        testLrcApiButton.setOnClickListener {
+            val credentials = LrcApiCredentials(
+                baseUrl = lrcApiBaseUrlInput.text.toString().trim()
+            )
+            appendRuntimeLog("ui click test lrcapi base=${credentials.baseUrl}")
+            if (credentials.baseUrl.isEmpty()) {
+                updateState {
+                    it.copy(
+                        lrcApiStatusText = getString(R.string.lrcapi_status_failed),
+                        feedbackText = getString(R.string.feedback_lrcapi_missing)
+                    )
+                }
+                Toast.makeText(this, R.string.toast_lrcapi_failed, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            requestLrcApiConnectionTest(credentials)
+        }
+    }
+
+    private fun bindNavigation() {
+        navHomeButton.setOnClickListener {
+            switchPage(PAGE_HOME)
+        }
+        navQueueButton.setOnClickListener {
+            switchPage(PAGE_QUEUE)
+        }
+        navLibraryButton.setOnClickListener {
+            switchPage(PAGE_LIBRARY)
+        }
+        navSettingsButton.setOnClickListener {
+            switchPage(PAGE_SETTINGS)
+        }
+    }
+
+    private fun switchPage(targetPage: Int) {
+        selectedPage = targetPage
+        pageHome.visibility = if (selectedPage == PAGE_HOME) View.VISIBLE else View.GONE
+        pageQueue.visibility = if (selectedPage == PAGE_QUEUE) View.VISIBLE else View.GONE
+        pageLibrary.visibility = if (selectedPage == PAGE_LIBRARY) View.VISIBLE else View.GONE
+        pageSettings.visibility = if (selectedPage == PAGE_SETTINGS) View.VISIBLE else View.GONE
+        updateNavigationVisualState()
+    }
+
+    private fun updateNavigationVisualState() {
+        setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME)
+        setNavButtonSelected(navQueueButton, selectedPage == PAGE_QUEUE)
+        setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY)
+        setNavButtonSelected(navSettingsButton, selectedPage == PAGE_SETTINGS)
+    }
+
+    private fun setNavButtonSelected(button: Button, selected: Boolean) {
+        button.setBackgroundResource(if (selected) R.drawable.button_primary else R.drawable.button_secondary)
     }
 
     private fun requestTracksFromEmby(credentials: EmbyCredentials) {
@@ -296,6 +388,7 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
                         return@runOnUiThread
                     }
+                    persistCredentials(credentials)
                     updateState {
                         it.copy(
                             currentTrack = firstTrack,
@@ -306,7 +399,7 @@ class MainActivity : AppCompatActivity() {
                             nextEnabled = NativePlaybackBridge.hasNext(),
                             testEmbyEnabled = true,
                             embyStatusText = result.statusText,
-                            feedbackText = result.feedbackText
+                            feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + result.feedbackText
                         )
                     }
                     Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
@@ -336,6 +429,87 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun requestLrcApiConnectionTest(credentials: LrcApiCredentials) {
+        updateState {
+            it.copy(
+                testLrcApiEnabled = false,
+                lrcApiStatusText = getString(R.string.lrcapi_status_testing),
+                feedbackText = getString(R.string.feedback_lrcapi_testing)
+            )
+        }
+        Thread {
+            val result = testLrcApiConnection(credentials.baseUrl)
+            runOnUiThread {
+                if (result.success) {
+                    persistLrcApiCredentials(credentials)
+                    updateState {
+                        it.copy(
+                            testLrcApiEnabled = true,
+                            lrcApiStatusText = result.statusText,
+                            feedbackText = result.feedbackText
+                        )
+                    }
+                    Toast.makeText(this, R.string.toast_lrcapi_success, Toast.LENGTH_SHORT).show()
+                } else {
+                    updateState {
+                        it.copy(
+                            testLrcApiEnabled = true,
+                            lrcApiStatusText = result.statusText,
+                            feedbackText = result.feedbackText
+                        )
+                    }
+                    Toast.makeText(this, R.string.toast_lrcapi_failed, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun testLrcApiConnection(baseUrl: String): LrcApiTestResult {
+        val normalized = baseUrl.trim().trimEnd('/')
+        if (!isHttpUrl(normalized)) {
+            appendRuntimeLog("lrcapi test invalid-url base=$baseUrl")
+            return LrcApiTestResult(
+                success = false,
+                statusText = getString(R.string.lrcapi_status_failed),
+                feedbackText = getString(R.string.feedback_lrcapi_failed)
+            )
+        }
+        var connection: HttpURLConnection? = null
+        return try {
+            appendRuntimeLog("lrcapi test GET $normalized")
+            connection = (URL(normalized).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 4000
+                readTimeout = 6000
+                instanceFollowRedirects = true
+            }
+            val code = connection.responseCode
+            appendRuntimeLog("lrcapi test response code=$code")
+            if (code in 200..499) {
+                LrcApiTestResult(
+                    success = true,
+                    statusText = getString(R.string.lrcapi_status_connected),
+                    feedbackText = getString(R.string.feedback_lrcapi_autosaved)
+                )
+            } else {
+                LrcApiTestResult(
+                    success = false,
+                    statusText = getString(R.string.lrcapi_status_failed),
+                    feedbackText = getString(R.string.feedback_lrcapi_failed)
+                )
+            }
+        } catch (e: Exception) {
+            appendRuntimeLog("lrcapi test exception type=${e.javaClass.simpleName} msg=${e.message}")
+            LrcApiTestResult(
+                success = false,
+                statusText = getString(R.string.lrcapi_status_failed),
+                feedbackText = getString(R.string.feedback_lrcapi_failed)
+            )
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     private fun startOrResumePlayback() {
@@ -1079,11 +1253,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun urlEncode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
+    private fun isHttpUrl(value: String): Boolean {
+        val lower = value.lowercase(Locale.US)
+        return lower.startsWith("http://") || lower.startsWith("https://")
+    }
+
     private fun loadSavedCredentials() {
         val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
         embyBaseUrlInput.setText(prefs.getString(KEY_BASE_URL, "").orEmpty())
         embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
         embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
+        lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
     }
 
     private fun persistCredentials(credentials: EmbyCredentials) {
@@ -1092,6 +1272,13 @@ class MainActivity : AppCompatActivity() {
             .putString(KEY_BASE_URL, credentials.baseUrl)
             .putString(KEY_USERNAME, credentials.username)
             .putString(KEY_PASSWORD, credentials.password)
+            .apply()
+    }
+
+    private fun persistLrcApiCredentials(credentials: LrcApiCredentials) {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LRCAPI_BASE_URL, credentials.baseUrl)
             .apply()
     }
 
@@ -1164,6 +1351,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun render(state: UiState) {
         embyStatusValue.text = state.embyStatusText
+        lrcApiStatusValue.text = state.lrcApiStatusText
         trackValue.text = state.currentTrack
         playbackValue.setText(state.playbackStatusRes)
         actionFeedback.text = state.feedbackText
@@ -1171,6 +1359,7 @@ class MainActivity : AppCompatActivity() {
         playPauseButton.isEnabled = state.playPauseEnabled
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled
+        testLrcApiButton.isEnabled = state.testLrcApiEnabled
     }
 
     private companion object {
@@ -1179,6 +1368,7 @@ class MainActivity : AppCompatActivity() {
         const val KEY_BASE_URL = "base_url"
         const val KEY_USERNAME = "username"
         const val KEY_PASSWORD = "password"
+        const val KEY_LRCAPI_BASE_URL = "lrcapi_base_url"
         const val EMBY_QUERY_CLIENT = "Emby Web"
         const val EMBY_QUERY_DEVICE_NAME = "Google Chrome Windows"
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
@@ -1187,5 +1377,9 @@ class MainActivity : AppCompatActivity() {
         const val STREAM_PREPARE_TIMEOUT_MS = 30_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
+        const val PAGE_HOME = 0
+        const val PAGE_QUEUE = 1
+        const val PAGE_LIBRARY = 2
+        const val PAGE_SETTINGS = 3
     }
 }

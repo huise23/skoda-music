@@ -2,218 +2,314 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_primary">
+    android:background="@drawable/bg_main_gradient"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
-
-        <TextView
-            android:id="@+id/title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/app_title"
-            android:textColor="@android:color/white"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/subtitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/app_subtitle"
-            android:textColor="#D0D6DC"
-            android:textSize="14sp" />
+        android:padding="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:orientation="vertical">
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/app_title"
+                android:textColor="@color/text_primary"
+                android:textSize="28sp" />
+
+            <TextView
+                android:id="@+id/subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif"
+                android:text="@string/app_subtitle"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/chip_pill"
+                android:fontFamily="sans-serif-medium"
+                android:paddingLeft="10dp"
+                android:paddingTop="5dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="5dp"
+                android:text="@string/label_mode_tag"
+                android:textColor="@color/chip_text"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
             <TextView
                 android:id="@+id/emby_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/label_emby"
-                android:textColor="#AFC2D4"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
 
             <EditText
                 android:id="@+id/emby_base_url_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/field_surface"
+                android:fontFamily="sans-serif"
                 android:hint="@string/hint_emby_base_url"
                 android:imeOptions="actionNext"
                 android:inputType="textUri"
                 android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
+                android:padding="12dp"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted"
+                android:textSize="14sp" />
 
             <EditText
                 android:id="@+id/emby_username_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/field_surface"
+                android:fontFamily="sans-serif"
                 android:hint="@string/hint_emby_username"
                 android:imeOptions="actionNext"
                 android:inputType="text"
                 android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
+                android:padding="12dp"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted"
+                android:textSize="14sp" />
 
             <EditText
                 android:id="@+id/emby_password_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/field_surface"
+                android:fontFamily="sans-serif"
                 android:hint="@string/hint_emby_password"
                 android:imeOptions="actionDone"
                 android:inputType="textPassword"
                 android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textColorHint="#90A4B8" />
+                android:padding="12dp"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted"
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/emby_auth_note"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:fontFamily="sans-serif"
                 android:text="@string/label_emby_auth_note"
-                android:textColor="#90A4B8"
+                android:textColor="@color/text_muted"
                 android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_test_emby"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/action_test_emby" />
+                android:layout_height="48dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/button_primary"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/action_test_emby"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/emby_status_value"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/emby_status_not_tested"
-                android:textColor="#D0D6DC"
+                android:textColor="@color/text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:orientation="vertical">
+            android:layout_marginTop="12dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/label_now_playing"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/track_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:fontFamily="sans-serif"
                 android:text="@string/label_track"
-                android:textColor="#AFC2D4"
-                android:textSize="12sp" />
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/track_value"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/track_not_loaded"
-                android:textColor="@android:color/white"
-                android:textSize="18sp" />
+                android:textColor="@color/text_primary"
+                android:textSize="22sp" />
 
             <TextView
                 android:id="@+id/playback_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
+                android:fontFamily="sans-serif"
                 android:text="@string/label_playback"
-                android:textColor="#AFC2D4"
-                android:textSize="12sp" />
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/playback_value"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/status_paused"
-                android:textColor="@android:color/white"
-                android:textSize="18sp" />
+                android:textColor="@color/text_primary"
+                android:textSize="19sp" />
 
             <TextView
                 android:id="@+id/action_feedback"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
+                android:background="@drawable/field_surface"
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="2dp"
                 android:maxLines="12"
+                android:padding="12dp"
                 android:text="@string/feedback_need_emby"
+                android:textColor="@color/text_secondary"
                 android:textIsSelectable="true"
-                android:textColor="#D0D6DC"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_marginTop="12dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
-            <Button
-                android:id="@+id/btn_play_pause"
-                android:layout_width="0dp"
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_play" />
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/label_controls"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
-            <Space
-                android:layout_width="12dp"
-                android:layout_height="1dp" />
-
-            <Button
-                android:id="@+id/btn_next"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_next" />
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_play_pause"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/action_play"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+
+                <Space
+                    android:layout_width="10dp"
+                    android:layout_height="1dp" />
+
+                <Button
+                    android:id="@+id/btn_next"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_secondary"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/action_next"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:orientation="vertical">
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
             <TextView
                 android:id="@+id/runtime_log_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/label_runtime_logs"
-                android:textColor="#AFC2D4"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/runtime_log_preview"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:background="#1A1F25"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/field_surface"
                 android:clickable="true"
-                android:ellipsize="end"
                 android:focusable="true"
                 android:fontFamily="monospace"
                 android:maxLines="2"
                 android:minHeight="44dp"
-                android:padding="10dp"
+                android:padding="12dp"
                 android:text="@string/runtime_logs_empty"
-                android:textColor="#D0D6DC"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
 

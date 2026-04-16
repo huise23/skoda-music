@@ -3,6 +3,7 @@
     <string name="app_name">Skoda Music</string>
     <string name="app_title">Skoda Music MVP</string>
     <string name="app_subtitle">Android interactive shell (real Emby path)</string>
+    <string name="label_mode_tag">MVP • Real Emby</string>
     <string name="label_emby">Emby Connection</string>
     <string name="hint_emby_base_url">Base URL (e.g. http://192.168.1.2:8096)</string>
     <string name="hint_emby_username">Username</string>
@@ -16,6 +17,8 @@
     <string name="label_track">Current Track</string>
     <string name="track_not_loaded">No track loaded</string>
     <string name="label_playback">Playback Status</string>
+    <string name="label_now_playing">Now Playing</string>
+    <string name="label_controls">Controls</string>
     <string name="label_runtime_logs">Runtime Logs (tap to expand)</string>
     <string name="status_playing">Playing</string>
     <string name="status_paused">Paused</string>

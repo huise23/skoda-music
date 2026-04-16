@@ -773,38 +773,22 @@ class MainActivity : AppCompatActivity() {
 
             logger("auth success user=${shortId(auth.userId)}")
 
-            val recommendedEndpoint = buildEmbyRecommendedItemsUrl(embyBase, auth.userId)
+            val recommendedEndpoint =
+                buildEmbyRecommendedItemsUrl(embyBase, auth.userId, auth.accessToken)
             val recommendedResponse = executeGet(
                 endpoint = recommendedEndpoint,
                 token = auth.accessToken,
-                requestLabel = "GET /Users/{id}/Items/Latest",
+                requestLabel = "GET /Users/{id}/Items (Random/20)",
                 log = logger
             )
-            var source = "recommended"
-            var tracks = if (recommendedResponse.code in 200..299) {
-                parseTrackItems(recommendedResponse.payload)
-            } else {
-                logger("recommended endpoint failed, fallback to full library")
-                emptyList()
-            }
-
-            if (tracks.isEmpty()) {
-                val libraryEndpoint = buildEmbyItemsUrl(embyBase, auth.userId)
-                val libraryResponse = executeGet(
-                    endpoint = libraryEndpoint,
-                    token = auth.accessToken,
-                    requestLabel = "GET /Users/{id}/Items",
-                    log = logger
+            if (recommendedResponse.code !in 200..299) {
+                return failedResult(
+                    headline = "Action feedback: Emby random items request failed (HTTP ${recommendedResponse.code})",
+                    logs = logs
                 )
-                if (libraryResponse.code !in 200..299) {
-                    return failedResult(
-                        headline = "Action feedback: Emby items request failed (HTTP ${libraryResponse.code})",
-                        logs = logs
-                    )
-                }
-                tracks = parseTrackItems(libraryResponse.payload)
-                source = "library-fallback"
             }
+            val source = "random-20"
+            val tracks = parseTrackItems(recommendedResponse.payload)
 
             logger("tracks=${tracks.size}")
             if (tracks.isNotEmpty()) {
@@ -932,23 +916,18 @@ class MainActivity : AppCompatActivity() {
         return "$embyBase/Users/AuthenticateByName?${buildCommonEmbyQuery()}"
     }
 
-    private fun buildEmbyRecommendedItemsUrl(embyBase: String, userId: String): String {
-        val params = mutableListOf(
-            "IncludeItemTypes=Audio",
-            "Limit=50"
-        )
-        params.addAll(commonEmbyQueryParams())
-        return "$embyBase/Users/${urlEncode(userId)}/Items/Latest?${params.joinToString("&")}"
-    }
-
-    private fun buildEmbyItemsUrl(embyBase: String, userId: String): String {
+    private fun buildEmbyRecommendedItemsUrl(
+        embyBase: String,
+        userId: String,
+        token: String
+    ): String {
         val params = mutableListOf(
             "IncludeItemTypes=Audio",
             "Recursive=true",
-            "SortBy=SortName",
-            "Limit=50"
+            "SortBy=Random",
+            "Limit=20",
+            "api_key=${urlEncode(token)}"
         )
-        params.addAll(commonEmbyQueryParams())
         return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
     }
 
@@ -1030,6 +1009,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractTrack(item: JSONObject?): EmbyTrack? {
         if (item == null) {
+            return null
+        }
+        val itemType = item.optString("Type").trim()
+        if (itemType.isNotEmpty() && !itemType.equals("Audio", ignoreCase = true)) {
             return null
         }
         val trackId = item.optString("Id").trim()

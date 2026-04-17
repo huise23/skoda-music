@@ -35,11 +35,11 @@
             android:layout_width="match_parent"
             android:layout_height="46dp"
             android:layout_marginTop="14dp"
-            android:background="@drawable/button_primary"
+            android:background="@drawable/button_nav_active"
             android:fontFamily="sans-serif-medium"
             android:text="@string/nav_home"
             android:textAllCaps="false"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/white"
             android:textSize="14sp" />
 
         <Button

@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-04-16 20:47
+Last Updated: 2026-04-17 17:03
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -25,10 +25,19 @@ Last Updated: 2026-04-16 20:47
 - `T-S2-004` 保持 Blocked（人工实机依赖）。
 - 说明: 本地环境缺少 `gradle/gradlew.bat`，本轮未完成编译型验证。
 
+## Local Gemini Delta (Uncommitted)
+- 工作区检测到 Gemini 本地改动（未提交）：
+  - `MainActivity.kt`：新增“启动/进入 Queue 页自动刷新推荐”逻辑与并发/冷却保护。
+  - `activity_main.xml`：导航 Home 按钮默认样式调整为新导航激活态资源。
+  - `colors.xml` + 多个 drawable：切换到 glass 视觉参数（边框、透明面板、渐变）。
+  - 新增 `button_nav_active.xml`、`button_nav_inactive.xml`。
+  - `strings.xml`：新增 `app_name_version` 标识。
+- 当前状态：仅完成差异汇总与 `.ai` 回写，尚未对这批改动做提交或回归结论。
+
 ## Recommended Next Action
-1. 触发一次 CI 打包，确认 `T-S2-003` + 5.0 启动修复无构建回归。
-2. 进入 `T-S2-004`，按 API17 清单执行并回填 PASS/FAIL 与日志。
-3. 完成 `T-S2-005`，同步 `.ai/context` 与 runbook 结论。
+1. 先确认 Gemini 本地改动是否作为本阶段目标纳入。
+2. 若纳入，先做一次设备回归，再按结果提交（建议单独 commit）。
+3. 随后进入 `T-S2-004`，按 API17 清单执行并回填 PASS/FAIL 与日志。
 
 ## Read First In New Session
 1. `.ai/context/PLAN.md`

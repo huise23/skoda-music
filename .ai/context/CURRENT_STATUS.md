@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-16 20:47
+Last Updated: 2026-04-17 17:03
 
 ## Stage
 - 阶段判断: S1 最小播放闭环已验证通过，当前处于 S2「IA v2 落地与交互闭环」阶段。
@@ -39,3 +39,18 @@ Last Updated: 2026-04-16 20:47
 - `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
 - 当前 Ready 主线: （空，待人工推进 `T-S2-004`）。
 - 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。
+
+## Local Pending Changes (Gemini)
+- 当前工作区存在一批未提交的 Gemini 本地改动（UI 玻璃态视觉 + 推荐页自动刷新）。
+- 代码行为变更（`MainActivity.kt`）：
+  - 启动时自动尝试刷新推荐数据（当队列为空且 Emby 凭据完整）。
+  - 进入 Queue 页时自动尝试刷新推荐数据（同上）。
+  - 自动刷新增加并发保护与冷却窗口（`queueAutoRefreshInFlight` + `15s cooldown`）。
+  - `requestTracksFromEmby` 改为支持 `onFinished` 回调，用于释放自动刷新状态。
+- 资源/UI 变更：
+  - `colors.xml` 视觉基色重定义为玻璃态风格，新增 `glass_*` 与 `white`。
+  - 多个 drawable 改为玻璃态边框/圆角参数（`panel_card/field_surface/button_secondary/chip_pill` 等）。
+  - 新增导航按钮资源：`button_nav_active.xml`、`button_nav_inactive.xml`。
+  - `activity_main.xml` 导航 Home 按钮默认样式改为 `button_nav_active`，文字改白色。
+  - `bg_main_gradient.xml` 改为新的蓝色线性渐变参数。
+  - `strings.xml` 新增 `app_name_version = v1.0.0 Glass`。

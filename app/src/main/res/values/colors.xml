@@ -1,17 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_primary">#0C1218</color>
-    <color name="bg_secondary">#121B24</color>
+    <!-- Main Background & Surfaces -->
+    <color name="bg_primary">#0A0F14</color>
+    <color name="bg_secondary">#101820</color>
+
+    <!-- Glassmorphism Elements -->
+    <color name="glass_surface">#1AFFFFFF</color> <!-- 10% White -->
+    <color name="glass_border">#4DFFFFFF</color> <!-- 30% White -->
+    <color name="glass_surface_pressed">#33FFFFFF</color> <!-- 20% White -->
+
+    <!-- Kept for compatibility, but overridden by glass style -->
     <color name="surface_panel">#172330</color>
     <color name="surface_field">#0E171F</color>
     <color name="surface_border">#2E4356</color>
-    <color name="text_primary">#F2F7FB</color>
-    <color name="text_secondary">#B8C7D6</color>
-    <color name="text_muted">#8EA1B4</color>
-    <color name="brand_primary">#3F8FB7</color>
-    <color name="brand_primary_pressed">#32789A</color>
-    <color name="brand_secondary">#274054</color>
-    <color name="brand_secondary_pressed">#1E3343</color>
-    <color name="chip_bg">#213344</color>
-    <color name="chip_text">#C9E5F6</color>
+
+    <!-- Text Palette -->
+    <color name="text_primary">#F0F4F8</color>
+    <color name="text_secondary">#A8B9CC</color>
+    <color name="text_muted">#7A8C9E</color>
+
+    <!-- Brand & Accent Palette -->
+    <color name="brand_primary">#00AEEF</color>
+    <color name="brand_primary_pressed">#0095CC</color>
+    <color name="brand_secondary">@color/glass_surface</color>
+    <color name="brand_secondary_pressed">@color/glass_surface_pressed</color>
+
+    <!-- Chip Palette -->
+    <color name="chip_bg">#2A3B4C</color>
+    <color name="chip_text">#D0E0F0</color>
+
+    <!-- Misc -->
+    <color name="white">#FFFFFF</color>
 </resources>

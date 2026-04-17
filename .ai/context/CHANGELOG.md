@@ -165,3 +165,12 @@
 - Completed Android 5.0 startup crash hotfix: changed `bg_main_gradient.xml` angle from `140` to API-safe `135`.
 - Completed T-S2-003: full-screen runtime logs now support `Copy` and `Clear`, and preview/fullscreen views stay synchronized after clear.
 - Captured user validation result: Android 5.0 startup test passed.
+
+## 2026-04-17
+- Summarized local Gemini uncommitted changes and wrote back to `.ai/context` files.
+- Recorded Gemini delta scope:
+  - auto-refresh recommendations on app startup and entering Queue page
+  - glass-style visual resource updates (colors/drawables/layout)
+  - added navigation button drawables (`button_nav_active/inactive`)
+  - added `app_name_version` string
+- Marked decision points as pending before merge/commit (scope inclusion and DPI/font adaptation approach).

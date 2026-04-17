@@ -84,4 +84,5 @@
     <string name="hint_library_search">Search tracks, artists, albums</string>
     <string name="library_placeholder">Library page shell ready. Tap-to-play list binding will be wired in the next task.</string>
     <string name="library_empty">Library is empty. Load tracks from Emby first.</string>
+    <string name="app_name_version">v1.0.0 Glass</string>
 </resources>

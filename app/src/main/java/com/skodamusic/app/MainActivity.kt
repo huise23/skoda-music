@@ -131,6 +131,8 @@ class MainActivity : AppCompatActivity() {
     private var runtimeLogDialog: Dialog? = null
     private var runtimeLogDialogText: TextView? = null
     private var selectedPage: Int = PAGE_HOME
+    private var queueAutoRefreshInFlight: Boolean = false
+    private var lastQueueAutoRefreshMs: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -182,6 +184,7 @@ class MainActivity : AppCompatActivity() {
         bindActions()
         rebuildTrackLists()
         appendRuntimeLog("app boot completed")
+        maybeAutoRefreshQueueRecommendations("app-startup")
     }
 
     override fun onDestroy() {
@@ -343,6 +346,9 @@ class MainActivity : AppCompatActivity() {
         pageLibrary.visibility = if (selectedPage == PAGE_LIBRARY) View.VISIBLE else View.GONE
         pageSettings.visibility = if (selectedPage == PAGE_SETTINGS) View.VISIBLE else View.GONE
         updateNavigationVisualState()
+        if (selectedPage == PAGE_QUEUE) {
+            maybeAutoRefreshQueueRecommendations("enter-queue-page")
+        }
     }
 
     private fun updateNavigationVisualState() {
@@ -597,7 +603,39 @@ class MainActivity : AppCompatActivity() {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
-    private fun requestTracksFromEmby(credentials: EmbyCredentials) {
+    private fun maybeAutoRefreshQueueRecommendations(trigger: String) {
+        if (loadedTracks.isNotEmpty()) {
+            return
+        }
+        if (queueAutoRefreshInFlight) {
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (now - lastQueueAutoRefreshMs < AUTO_QUEUE_REFRESH_COOLDOWN_MS) {
+            return
+        }
+        val credentials = EmbyCredentials(
+            baseUrl = embyBaseUrlInput.text.toString().trim(),
+            username = embyUsernameInput.text.toString().trim(),
+            password = embyPasswordInput.text.toString().trim()
+        )
+        if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
+            appendRuntimeLog("queue auto refresh skip trigger=$trigger reason=missing-emby-credentials")
+            return
+        }
+        lastQueueAutoRefreshMs = now
+        queueAutoRefreshInFlight = true
+        appendRuntimeLog("queue auto refresh start trigger=$trigger")
+        requestTracksFromEmby(credentials) {
+            queueAutoRefreshInFlight = false
+            appendRuntimeLog("queue auto refresh finish trigger=$trigger tracks=${loadedTracks.size}")
+        }
+    }
+
+    private fun requestTracksFromEmby(
+        credentials: EmbyCredentials,
+        onFinished: (() -> Unit)? = null
+    ) {
         appendRuntimeLog("emby load start base=${credentials.baseUrl}")
         updateState {
             it.copy(
@@ -610,22 +648,72 @@ class MainActivity : AppCompatActivity() {
         Thread {
             val result = fetchTracksFromEmby(credentials)
             runOnUiThread {
-                if (result.success) {
-                    appendRuntimeLog("emby load success tracks=${result.tracks.size}")
-                    loadedTracks = result.tracks
-                    embySessionBaseUrl = result.embyBase
-                    embySessionUserId = result.embyUserId
-                    embyAccessToken = result.accessToken
-                    currentTrackIndex = 0
-                    playbackRequestId += 1
-                    releasePlayer()
-                    val nativeReady = NativePlaybackBridge.isAvailable()
-                    val firstTrack = if (nativeReady) {
-                        NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
+                try {
+                    if (result.success) {
+                        appendRuntimeLog("emby load success tracks=${result.tracks.size}")
+                        loadedTracks = result.tracks
+                        embySessionBaseUrl = result.embyBase
+                        embySessionUserId = result.embyUserId
+                        embyAccessToken = result.accessToken
+                        currentTrackIndex = 0
+                        playbackRequestId += 1
+                        releasePlayer()
+                        val nativeReady = NativePlaybackBridge.isAvailable()
+                        val firstTrack = if (nativeReady) {
+                            NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
+                        } else {
+                            null
+                        }
+                        if (!nativeReady || firstTrack == null) {
+                            updateState {
+                                it.copy(
+                                    currentTrack = getString(R.string.track_not_loaded),
+                                    playbackStatusRes = R.string.status_paused,
+                                    playPauseLabelRes = R.string.action_play,
+                                    isPlaying = false,
+                                    playPauseEnabled = false,
+                                    nextEnabled = false,
+                                    testEmbyEnabled = true,
+                                    embyStatusText = getString(R.string.emby_status_failed),
+                                    feedbackText = result.feedbackText + "\n- native playback unavailable"
+                                )
+                            }
+                            embySessionBaseUrl = null
+                            embySessionUserId = null
+                            embyAccessToken = null
+                            loadedTracks = emptyList()
+                            currentTrackIndex = 0
+                            playbackRequestId += 1
+                            releasePlayer()
+                            rebuildTrackLists()
+                            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+                            return@runOnUiThread
+                        }
+                        persistCredentials(credentials)
+                        updateState {
+                            it.copy(
+                                currentTrack = firstTrack,
+                                playbackStatusRes = R.string.status_paused,
+                                playPauseLabelRes = R.string.action_play,
+                                isPlaying = false,
+                                playPauseEnabled = true,
+                                nextEnabled = NativePlaybackBridge.hasNext(),
+                                testEmbyEnabled = true,
+                                embyStatusText = result.statusText,
+                                feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + result.feedbackText
+                            )
+                        }
+                        rebuildTrackLists()
+                        Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
                     } else {
-                        null
-                    }
-                    if (!nativeReady || firstTrack == null) {
+                        appendRuntimeLog("emby load failed")
+                        loadedTracks = emptyList()
+                        embySessionBaseUrl = null
+                        embySessionUserId = null
+                        embyAccessToken = null
+                        currentTrackIndex = 0
+                        playbackRequestId += 1
+                        releasePlayer()
                         updateState {
                             it.copy(
                                 currentTrack = getString(R.string.track_not_loaded),
@@ -635,61 +723,15 @@ class MainActivity : AppCompatActivity() {
                                 playPauseEnabled = false,
                                 nextEnabled = false,
                                 testEmbyEnabled = true,
-                                embyStatusText = getString(R.string.emby_status_failed),
-                                feedbackText = result.feedbackText + "\n- native playback unavailable"
+                                embyStatusText = result.statusText,
+                                feedbackText = result.feedbackText
                             )
                         }
-                        embySessionBaseUrl = null
-                        embySessionUserId = null
-                        embyAccessToken = null
-                        loadedTracks = emptyList()
-                        currentTrackIndex = 0
-                        playbackRequestId += 1
-                        releasePlayer()
                         rebuildTrackLists()
                         Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-                        return@runOnUiThread
                     }
-                    persistCredentials(credentials)
-                    updateState {
-                        it.copy(
-                            currentTrack = firstTrack,
-                            playbackStatusRes = R.string.status_paused,
-                            playPauseLabelRes = R.string.action_play,
-                            isPlaying = false,
-                            playPauseEnabled = true,
-                            nextEnabled = NativePlaybackBridge.hasNext(),
-                            testEmbyEnabled = true,
-                            embyStatusText = result.statusText,
-                            feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + result.feedbackText
-                        )
-                    }
-                    rebuildTrackLists()
-                    Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
-                } else {
-                    appendRuntimeLog("emby load failed")
-                    loadedTracks = emptyList()
-                    embySessionBaseUrl = null
-                    embySessionUserId = null
-                    embyAccessToken = null
-                    currentTrackIndex = 0
-                    playbackRequestId += 1
-                    releasePlayer()
-                    updateState {
-                        it.copy(
-                            currentTrack = getString(R.string.track_not_loaded),
-                            playbackStatusRes = R.string.status_paused,
-                            playPauseLabelRes = R.string.action_play,
-                            isPlaying = false,
-                            playPauseEnabled = false,
-                            nextEnabled = false,
-                            testEmbyEnabled = true,
-                            embyStatusText = result.statusText,
-                            feedbackText = result.feedbackText
-                        )
-                    }
-                    rebuildTrackLists()
-                    Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+                } finally {
+                    onFinished?.invoke()
                 }
             }
         }.start()
@@ -1671,6 +1713,7 @@ class MainActivity : AppCompatActivity() {
         const val STREAM_PREPARE_TIMEOUT_MS = 30_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
+        const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val PAGE_HOME = 0
         const val PAGE_QUEUE = 1
         const val PAGE_LIBRARY = 2

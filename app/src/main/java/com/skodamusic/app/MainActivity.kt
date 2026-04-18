@@ -8,6 +8,7 @@ import android.util.Log
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -215,11 +216,11 @@ class MainActivity : AppCompatActivity() {
             if (uiState.isPlaying) {
                 appendRuntimeLog("ui click play/pause -> pause")
                 pausePlayback()
-                Toast.makeText(this, R.string.toast_paused, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_paused)
             } else {
                 appendRuntimeLog("ui click play/pause -> play")
                 startOrResumePlayback()
-                Toast.makeText(this, R.string.toast_playing, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_playing)
             }
         }
 
@@ -229,19 +230,8 @@ class MainActivity : AppCompatActivity() {
                 updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
                 return@setOnClickListener
             }
-            if (!NativePlaybackBridge.isAvailable()) {
-                updateState {
-                    it.copy(
-                        feedbackText = getString(R.string.feedback_native_unavailable),
-                        nextEnabled = false
-                    )
-                }
-                Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
             val wasPlaying = uiState.isPlaying
-            val nextTitle = NativePlaybackBridge.nextTitle()
+            val nextTitle = moveToNextTrack()
             if (nextTitle == null) {
                 updateState {
                     it.copy(
@@ -249,7 +239,7 @@ class MainActivity : AppCompatActivity() {
                         nextEnabled = false
                     )
                 }
-                Toast.makeText(this, R.string.toast_end_of_queue, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_end_of_queue)
                 rebuildTrackLists()
                 return@setOnClickListener
             }
@@ -258,11 +248,10 @@ class MainActivity : AppCompatActivity() {
                 it.copy(
                     currentTrack = nextTitle,
                     feedbackText = getString(R.string.feedback_next_pressed),
-                    nextEnabled = NativePlaybackBridge.hasNext()
+                    nextEnabled = hasNextTrack()
                 )
             }
-            Toast.makeText(this, R.string.toast_next, Toast.LENGTH_SHORT).show()
-            currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+            showToast(R.string.toast_next)
             rebuildTrackLists()
             if (wasPlaying) {
                 playTrackAtCurrentIndex()
@@ -287,7 +276,7 @@ class MainActivity : AppCompatActivity() {
                         feedbackText = getString(R.string.feedback_emby_missing)
                     )
                 }
-                Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_emby_failed)
                 return@setOnClickListener
             }
 
@@ -298,7 +287,7 @@ class MainActivity : AppCompatActivity() {
                         feedbackText = getString(R.string.feedback_emby_need_auth)
                     )
                 }
-                Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_emby_failed)
                 return@setOnClickListener
             }
 
@@ -317,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                         feedbackText = getString(R.string.feedback_lrcapi_missing)
                     )
                 }
-                Toast.makeText(this, R.string.toast_lrcapi_failed, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_lrcapi_failed)
                 return@setOnClickListener
             }
             requestLrcApiConnectionTest(credentials)
@@ -428,35 +417,11 @@ class MainActivity : AppCompatActivity() {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
             return
         }
-        if (!NativePlaybackBridge.isAvailable()) {
-            updateState {
-                it.copy(
-                    feedbackText = getString(R.string.feedback_native_unavailable),
-                    nextEnabled = false
-                )
-            }
-            rebuildTrackLists()
-            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-            return
-        }
 
         val safeIndex = index.coerceIn(0, loadedTracks.lastIndex)
-        if (safeIndex > 0) {
-            loadedTracks = loadedTracks.drop(safeIndex) + loadedTracks.take(safeIndex)
-        }
-        currentTrackIndex = 0
-        val first = NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
-        if (first == null) {
-            updateState {
-                it.copy(
-                    feedbackText = getString(R.string.feedback_native_unavailable),
-                    nextEnabled = false
-                )
-            }
-            rebuildTrackLists()
-            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-            return
-        }
+        currentTrackIndex = safeIndex
+        syncNativeQueueToCurrentIndex()
+        val first = loadedTracks[currentTrackIndex].title
 
         val feedbackRes = if (source == ListSource.QUEUE) {
             R.string.feedback_play_now_queue
@@ -466,7 +431,7 @@ class MainActivity : AppCompatActivity() {
         updateState {
             it.copy(
                 currentTrack = first,
-                nextEnabled = NativePlaybackBridge.hasNext(),
+                nextEnabled = hasNextTrack(),
                 feedbackText = getString(feedbackRes),
                 isPlaying = true,
                 playbackStatusRes = R.string.status_playing,
@@ -480,7 +445,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestQueueRecommendations() {
         if (loadedTracks.isEmpty()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
-            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            showToast(R.string.toast_queue_recommend_failed)
             return
         }
         if (!NativePlaybackBridge.isAvailable()) {
@@ -490,7 +455,7 @@ class MainActivity : AppCompatActivity() {
                     nextEnabled = false
                 )
             }
-            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            showToast(R.string.toast_queue_recommend_failed)
             return
         }
         val base = embySessionBaseUrl
@@ -498,7 +463,7 @@ class MainActivity : AppCompatActivity() {
         val token = embyAccessToken
         if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_missing_session)) }
-            Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+            showToast(R.string.toast_queue_recommend_failed)
             return
         }
 
@@ -524,7 +489,7 @@ class MainActivity : AppCompatActivity() {
                             )
                         )
                     }
-                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                    showToast(R.string.toast_queue_recommend_failed)
                 }
                 return@Thread
             }
@@ -534,7 +499,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     recommendQueueButton.isEnabled = true
                     updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_empty)) }
-                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                    showToast(R.string.toast_queue_recommend_failed)
                 }
                 return@Thread
             }
@@ -544,7 +509,7 @@ class MainActivity : AppCompatActivity() {
                 recommendQueueButton.isEnabled = true
                 if (replacedCount < 0) {
                     updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_apply)) }
-                    Toast.makeText(this, R.string.toast_queue_recommend_failed, Toast.LENGTH_SHORT).show()
+                    showToast(R.string.toast_queue_recommend_failed)
                     return@runOnUiThread
                 }
                 appendRuntimeLog(
@@ -557,10 +522,10 @@ class MainActivity : AppCompatActivity() {
                             replacedCount,
                             recommendedTracks.size
                         ),
-                        nextEnabled = NativePlaybackBridge.hasNext()
+                        nextEnabled = hasNextTrack()
                     )
                 }
-                Toast.makeText(this, R.string.toast_queue_recommend_success, Toast.LENGTH_SHORT).show()
+                showToast(R.string.toast_queue_recommend_success)
             }
         }.start()
     }
@@ -579,24 +544,53 @@ class MainActivity : AppCompatActivity() {
 
         loadedTracks = playedSegment + recommendedTracks
         currentTrackIndex = playedSegment.lastIndex
-        val first = NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
-        if (first == null) {
+        if (!syncNativeQueueToCurrentIndex()) {
             loadedTracks = previousTracks
             currentTrackIndex = previousCurrentIndex
             return -1
         }
 
-        for (i in 0 until currentTrackIndex) {
-            val next = NativePlaybackBridge.nextTitle()
-            if (next == null) {
-                loadedTracks = previousTracks
-                currentTrackIndex = previousCurrentIndex
-                return -1
-            }
-        }
-
         rebuildTrackLists()
         return (previousTracks.size - (safeCurrentIndex + 1)).coerceAtLeast(0)
+    }
+
+    private fun hasNextTrack(): Boolean {
+        if (loadedTracks.isEmpty()) {
+            return false
+        }
+        return currentTrackIndex < loadedTracks.lastIndex
+    }
+
+    private fun moveToNextTrack(): String? {
+        if (!hasNextTrack()) {
+            return null
+        }
+        currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+        syncNativeQueueToCurrentIndex()
+        return loadedTracks[currentTrackIndex].title
+    }
+
+    private fun syncNativeQueueToCurrentIndex(): Boolean {
+        if (!NativePlaybackBridge.isAvailable() || loadedTracks.isEmpty()) {
+            return false
+        }
+        val first = NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title }) ?: return false
+        if (first.isEmpty()) {
+            return false
+        }
+        for (i in 0 until currentTrackIndex) {
+            val next = NativePlaybackBridge.nextTitle() ?: return false
+            if (next.isEmpty()) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun showToast(@StringRes textRes: Int) {
+        val toast = Toast.makeText(this, textRes, Toast.LENGTH_SHORT)
+        toast.setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dpToPx(56))
+        toast.show()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -658,16 +652,11 @@ class MainActivity : AppCompatActivity() {
                         currentTrackIndex = 0
                         playbackRequestId += 1
                         releasePlayer()
-                        val nativeReady = NativePlaybackBridge.isAvailable()
-                        val nativeFirstTrack = if (nativeReady) {
-                            NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
-                        } else {
-                            null
-                        }
-                        val firstTrack = nativeFirstTrack ?: loadedTracks.firstOrNull()?.title
+                        val firstTrack = loadedTracks.firstOrNull()?.title
                             ?: getString(R.string.track_not_loaded)
                         persistCredentials(credentials)
-                        val feedbackTail = if (nativeReady && nativeFirstTrack != null) {
+                        val nativeSynced = syncNativeQueueToCurrentIndex()
+                        val feedbackTail = if (nativeSynced) {
                             result.feedbackText
                         } else {
                             result.feedbackText + "\n- native queue unavailable, playback stays in degraded mode"
@@ -679,14 +668,14 @@ class MainActivity : AppCompatActivity() {
                                 playPauseLabelRes = R.string.action_play,
                                 isPlaying = false,
                                 playPauseEnabled = true,
-                                nextEnabled = nativeReady && nativeFirstTrack != null && NativePlaybackBridge.hasNext(),
+                                nextEnabled = hasNextTrack(),
                                 testEmbyEnabled = true,
                                 embyStatusText = result.statusText,
                                 feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + feedbackTail
                             )
                         }
                         rebuildTrackLists()
-                        Toast.makeText(this, R.string.toast_emby_success, Toast.LENGTH_SHORT).show()
+                        showToast(R.string.toast_emby_success)
                     } else {
                         appendRuntimeLog("emby load failed")
                         loadedTracks = emptyList()
@@ -710,7 +699,7 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         rebuildTrackLists()
-                        Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
+                        showToast(R.string.toast_emby_failed)
                     }
                 } finally {
                     onFinished?.invoke()
@@ -739,7 +728,7 @@ class MainActivity : AppCompatActivity() {
                             feedbackText = result.feedbackText
                         )
                     }
-                    Toast.makeText(this, R.string.toast_lrcapi_success, Toast.LENGTH_SHORT).show()
+                    showToast(R.string.toast_lrcapi_success)
                 } else {
                     updateState {
                         it.copy(
@@ -748,7 +737,7 @@ class MainActivity : AppCompatActivity() {
                             feedbackText = result.feedbackText
                         )
                     }
-                    Toast.makeText(this, R.string.toast_lrcapi_failed, Toast.LENGTH_SHORT).show()
+                    showToast(R.string.toast_lrcapi_failed)
                 }
             }
         }.start()
@@ -919,13 +908,12 @@ class MainActivity : AppCompatActivity() {
                     return@setOnCompletionListener
                 }
                 runOnUiThread {
-                    if (NativePlaybackBridge.hasNext()) {
-                        NativePlaybackBridge.nextTitle()
-                        currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+                    val nextTitle = moveToNextTrack()
+                    if (nextTitle != null) {
                         updateState { s ->
                             s.copy(
-                                currentTrack = loadedTracks[currentTrackIndex].title,
-                                nextEnabled = NativePlaybackBridge.hasNext()
+                                currentTrack = nextTitle,
+                                nextEnabled = hasNextTrack()
                             )
                         }
                         rebuildTrackLists()
@@ -994,9 +982,9 @@ class MainActivity : AppCompatActivity() {
             appendRuntimeLog("play prepareAsync requestId=$requestId")
             updateState {
                 it.copy(
-                    isPlaying = true,
-                    playbackStatusRes = R.string.status_playing,
-                    playPauseLabelRes = R.string.action_pause,
+                    isPlaying = false,
+                    playbackStatusRes = R.string.status_paused,
+                    playPauseLabelRes = R.string.action_play,
                     feedbackText = "Action feedback: starting stream ${track.title}"
                 )
             }
@@ -1009,8 +997,24 @@ class MainActivity : AppCompatActivity() {
                 if (requestId != playbackRequestId || streamPrepared.get()) {
                     return@Thread
                 }
-                appendRuntimeLog("play timeout requestId=$requestId after=${STREAM_PREPARE_TIMEOUT_MS}ms")
-                triggerCachedFallback("Action feedback: stream timeout, trying cached file")
+                runOnUiThread {
+                    if (requestId != playbackRequestId || streamPrepared.get()) {
+                        return@runOnUiThread
+                    }
+                    val active = mediaPlayer
+                    if (active != null) {
+                        try {
+                            if (active.isPlaying) {
+                                streamPrepared.set(true)
+                                appendRuntimeLog("play timeout guard ignored requestId=$requestId reason=already-playing")
+                                return@runOnUiThread
+                            }
+                        } catch (_: Exception) {
+                        }
+                    }
+                    appendRuntimeLog("play timeout guard confirmed requestId=$requestId")
+                    triggerCachedFallback("Action feedback: stream timeout, trying cached file")
+                }
             }.start()
         } catch (e: Exception) {
             appendRuntimeLog("play setup exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
@@ -1089,13 +1093,12 @@ class MainActivity : AppCompatActivity() {
                             return@setOnCompletionListener
                         }
                         runOnUiThread {
-                            if (NativePlaybackBridge.hasNext()) {
-                                NativePlaybackBridge.nextTitle()
-                                currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+                            val nextTitle = moveToNextTrack()
+                            if (nextTitle != null) {
                                 updateState { s ->
                                     s.copy(
-                                        currentTrack = loadedTracks[currentTrackIndex].title,
-                                        nextEnabled = NativePlaybackBridge.hasNext()
+                                        currentTrack = nextTitle,
+                                        nextEnabled = hasNextTrack()
                                     )
                                 }
                                 rebuildTrackLists()
@@ -1118,9 +1121,9 @@ class MainActivity : AppCompatActivity() {
                     appendRuntimeLog("cache playback prepareAsync requestId=$requestId")
                     updateState {
                         it.copy(
-                            isPlaying = true,
-                            playbackStatusRes = R.string.status_playing,
-                            playPauseLabelRes = R.string.action_pause,
+                            isPlaying = false,
+                            playbackStatusRes = R.string.status_paused,
+                            playPauseLabelRes = R.string.action_play,
                             feedbackText = "Action feedback: buffering cached ${track.title}"
                         )
                     }
@@ -1625,7 +1628,7 @@ class MainActivity : AppCompatActivity() {
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText("Skoda Runtime Logs", snapshot))
         appendRuntimeLog("runtime logs copied to clipboard")
-        Toast.makeText(this, R.string.toast_runtime_logs_copied, Toast.LENGTH_SHORT).show()
+        showToast(R.string.toast_runtime_logs_copied)
     }
 
     private fun clearRuntimeLogs() {
@@ -1633,7 +1636,7 @@ class MainActivity : AppCompatActivity() {
             runtimeLogLines.clear()
         }
         renderRuntimeLogSnapshot("")
-        Toast.makeText(this, R.string.toast_runtime_logs_cleared, Toast.LENGTH_SHORT).show()
+        showToast(R.string.toast_runtime_logs_cleared)
     }
 
     private fun showRuntimeLogsFullscreen() {
@@ -1692,7 +1695,7 @@ class MainActivity : AppCompatActivity() {
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
         const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
         const val EMBY_QUERY_LANGUAGE = "zh-cn"
-        const val STREAM_PREPARE_TIMEOUT_MS = 30_000L
+        const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L

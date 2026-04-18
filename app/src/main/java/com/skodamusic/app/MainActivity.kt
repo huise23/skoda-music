@@ -659,37 +659,19 @@ class MainActivity : AppCompatActivity() {
                         playbackRequestId += 1
                         releasePlayer()
                         val nativeReady = NativePlaybackBridge.isAvailable()
-                        val firstTrack = if (nativeReady) {
+                        val nativeFirstTrack = if (nativeReady) {
                             NativePlaybackBridge.initializeQueue(loadedTracks.map { it.title })
                         } else {
                             null
                         }
-                        if (!nativeReady || firstTrack == null) {
-                            updateState {
-                                it.copy(
-                                    currentTrack = getString(R.string.track_not_loaded),
-                                    playbackStatusRes = R.string.status_paused,
-                                    playPauseLabelRes = R.string.action_play,
-                                    isPlaying = false,
-                                    playPauseEnabled = false,
-                                    nextEnabled = false,
-                                    testEmbyEnabled = true,
-                                    embyStatusText = getString(R.string.emby_status_failed),
-                                    feedbackText = result.feedbackText + "\n- native playback unavailable"
-                                )
-                            }
-                            embySessionBaseUrl = null
-                            embySessionUserId = null
-                            embyAccessToken = null
-                            loadedTracks = emptyList()
-                            currentTrackIndex = 0
-                            playbackRequestId += 1
-                            releasePlayer()
-                            rebuildTrackLists()
-                            Toast.makeText(this, R.string.toast_emby_failed, Toast.LENGTH_SHORT).show()
-                            return@runOnUiThread
-                        }
+                        val firstTrack = nativeFirstTrack ?: loadedTracks.firstOrNull()?.title
+                            ?: getString(R.string.track_not_loaded)
                         persistCredentials(credentials)
+                        val feedbackTail = if (nativeReady && nativeFirstTrack != null) {
+                            result.feedbackText
+                        } else {
+                            result.feedbackText + "\n- native queue unavailable, playback stays in degraded mode"
+                        }
                         updateState {
                             it.copy(
                                 currentTrack = firstTrack,
@@ -697,10 +679,10 @@ class MainActivity : AppCompatActivity() {
                                 playPauseLabelRes = R.string.action_play,
                                 isPlaying = false,
                                 playPauseEnabled = true,
-                                nextEnabled = NativePlaybackBridge.hasNext(),
+                                nextEnabled = nativeReady && nativeFirstTrack != null && NativePlaybackBridge.hasNext(),
                                 testEmbyEnabled = true,
                                 embyStatusText = result.statusText,
-                                feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + result.feedbackText
+                                feedbackText = getString(R.string.feedback_emby_autosaved) + "\n- " + feedbackTail
                             )
                         }
                         rebuildTrackLists()

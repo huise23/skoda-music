@@ -14,6 +14,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+        multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -51,6 +52,7 @@ dependencies {
     val exoPlayerVersion = "2.17.1"
 
     implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.multidex:multidex:2.0.1")
     implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
     implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")
 }

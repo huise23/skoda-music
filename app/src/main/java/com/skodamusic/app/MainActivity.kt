@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Bundle
 import android.util.Log
 import android.net.Uri
@@ -23,6 +24,7 @@ import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
+import com.google.android.exoplayer2.util.UnstableApi
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -55,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         fun release()
     }
 
+    @OptIn(UnstableApi::class)
     private class ExoPlaybackEngine(
         private val context: Context
     ) : PlaybackEngine {
@@ -69,7 +72,6 @@ class MainActivity : AppCompatActivity() {
                     LOAD_CONTROL_PLAYBACK_MS,
                     LOAD_CONTROL_REBUFFER_MS
                 )
-                .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
             val player = SimpleExoPlayer.Builder(context)
                 .setLoadControl(loadControl)
@@ -82,7 +84,7 @@ class MainActivity : AppCompatActivity() {
             player.setAudioAttributes(
                 ExoAudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build(),
                 true
             )

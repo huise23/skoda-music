@@ -39,6 +39,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6.1.0
+        with:
+          gradle-version: 8.10.2
 
       - name: Install Android SDK components
         shell: bash
@@ -170,9 +172,9 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${BUILD_AAB}" == "true" ]]; then
-            gradle --no-daemon :app:assembleRelease :app:bundleRelease
+            gradle --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
           else
-            gradle --no-daemon :app:assembleRelease
+            gradle --no-daemon --stacktrace :app:assembleRelease
           fi
 
           mkdir -p dist/release

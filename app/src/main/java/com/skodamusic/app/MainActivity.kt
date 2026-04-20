@@ -3,10 +3,9 @@ package com.skodamusic.app
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
-import android.media.AudioManager
-import android.media.MediaPlayer
 import android.net.Uri
 import android.view.Gravity
 import android.view.View
@@ -17,6 +16,13 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.exoplayer2.C
+import com.google.android.exoplayer2.DefaultLoadControl
+import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.PlaybackException
+import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.SimpleExoPlayer
+import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -33,6 +39,130 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
+    private interface PlaybackEngineCallback {
+        fun onPrepared()
+        fun onCompletion()
+        fun onError(code: Int, detail: String)
+        fun onBufferingStart()
+        fun onBufferingEnd()
+    }
+
+    private interface PlaybackEngine {
+        fun prepare(source: Uri, callback: PlaybackEngineCallback)
+        fun play(): Boolean
+        fun pause()
+        fun isPlaying(): Boolean
+        fun release()
+    }
+
+    private class ExoPlaybackEngine(
+        private val context: Context
+    ) : PlaybackEngine {
+        private var exoPlayer: SimpleExoPlayer? = null
+
+        override fun prepare(source: Uri, callback: PlaybackEngineCallback) {
+            releaseInternal()
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    LOAD_CONTROL_MIN_BUFFER_MS,
+                    LOAD_CONTROL_MAX_BUFFER_MS,
+                    LOAD_CONTROL_PLAYBACK_MS,
+                    LOAD_CONTROL_REBUFFER_MS
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+            val player = SimpleExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .build()
+            exoPlayer = player
+
+            var preparedNotified = false
+            var buffering = false
+
+            player.setAudioAttributes(
+                ExoAudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                true
+            )
+            player.addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    when (state) {
+                        Player.STATE_BUFFERING -> {
+                            if (!buffering) {
+                                buffering = true
+                                callback.onBufferingStart()
+                            }
+                        }
+                        Player.STATE_READY -> {
+                            if (!preparedNotified) {
+                                preparedNotified = true
+                                callback.onPrepared()
+                            }
+                            if (buffering) {
+                                buffering = false
+                                callback.onBufferingEnd()
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            callback.onCompletion()
+                        }
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    callback.onError(error.errorCode, error.message ?: error.javaClass.simpleName)
+                }
+            })
+            player.setMediaItem(MediaItem.fromUri(source))
+            player.prepare()
+        }
+
+        override fun play(): Boolean {
+            val player = exoPlayer ?: return false
+            return try {
+                player.playWhenReady = true
+                player.play()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        override fun pause() {
+            try {
+                exoPlayer?.pause()
+            } catch (_: Exception) {
+            }
+        }
+
+        override fun isPlaying(): Boolean {
+            return try {
+                exoPlayer?.isPlaying == true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        override fun release() {
+            releaseInternal()
+        }
+
+        private fun releaseInternal() {
+            val player = exoPlayer ?: return
+            try {
+                player.stop()
+            } catch (_: Exception) {
+            }
+            try {
+                player.release()
+            } catch (_: Exception) {
+            }
+            exoPlayer = null
+        }
+    }
+
     private enum class ListSource {
         QUEUE,
         LIBRARY
@@ -125,7 +255,7 @@ class MainActivity : AppCompatActivity() {
     private var embySessionUserId: String? = null
     private var embyAccessToken: String? = null
     private var currentTrackIndex: Int = 0
-    private var mediaPlayer: MediaPlayer? = null
+    private var playbackEngine: PlaybackEngine? = null
     private var playbackRequestId: Int = 0
     private val runtimeLogLines = mutableListOf<String>()
     private val runtimeLogLock = Any()
@@ -790,10 +920,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startOrResumePlayback() {
-        val existing = mediaPlayer
+        val existing = playbackEngine
         if (existing != null) {
-            try {
-                existing.start()
+            if (existing.play()) {
                 updateState {
                     it.copy(
                         isPlaying = true,
@@ -803,20 +932,15 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 return
-            } catch (_: Exception) {
-                releasePlayer()
             }
+            releasePlayer()
         }
         playTrackAtCurrentIndex()
     }
 
     private fun pausePlayback() {
         playbackRequestId += 1
-        try {
-            mediaPlayer?.pause()
-        } catch (_: Exception) {
-            releasePlayer()
-        }
+        playbackEngine?.pause()
         updateState {
             it.copy(
                 isPlaying = false,
@@ -848,11 +972,11 @@ class MainActivity : AppCompatActivity() {
 
         currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val track = loadedTracks[currentTrackIndex]
-        val streamUrl = buildEmbyStreamUrl(base, track.id, token)
+        val downloadUrl = buildEmbyDownloadUrl(base, track.id, token)
         val requestId = ++playbackRequestId
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
-        appendRuntimeLog("play request track=${track.title} streamUrl=$streamUrl requestId=$requestId")
+        appendRuntimeLog("play request track=${track.title} downloadUrl=$downloadUrl requestId=$requestId")
         releasePlayer()
 
         fun triggerCachedFallback(feedback: String) {
@@ -881,71 +1005,72 @@ class MainActivity : AppCompatActivity() {
         }
 
         try {
-            val player = MediaPlayer()
-            mediaPlayer = player
-            player.setAudioStreamType(AudioManager.STREAM_MUSIC)
-            player.setOnPreparedListener { prepared ->
-                if (requestId != playbackRequestId) {
-                    prepared.release()
-                    return@setOnPreparedListener
-                }
-                streamPrepared.set(true)
-                appendRuntimeLog("play prepared requestId=$requestId track=${track.title}")
-                prepared.start()
-                runOnUiThread {
-                    updateState {
-                        it.copy(
-                            isPlaying = true,
-                            playbackStatusRes = R.string.status_playing,
-                            playPauseLabelRes = R.string.action_pause,
-                            feedbackText = "Action feedback: streaming ${track.title}"
-                        )
-                    }
-                }
-            }
-            player.setOnCompletionListener {
-                if (requestId != playbackRequestId) {
-                    return@setOnCompletionListener
-                }
-                runOnUiThread {
-                    val nextTitle = moveToNextTrack()
-                    if (nextTitle != null) {
-                        updateState { s ->
-                            s.copy(
-                                currentTrack = nextTitle,
-                                nextEnabled = hasNextTrack()
-                            )
+            val engine = ensurePlaybackEngine()
+            appendRuntimeLog("play mode=download-only-url requestId=$requestId")
+            engine.prepare(
+                source = Uri.parse(downloadUrl),
+                callback = object : PlaybackEngineCallback {
+                    override fun onPrepared() {
+                        if (requestId != playbackRequestId) {
+                            return
                         }
-                        rebuildTrackLists()
-                        playTrackAtCurrentIndex()
-                    } else {
-                        updateState { s ->
-                            s.copy(
-                                isPlaying = false,
-                                playbackStatusRes = R.string.status_paused,
-                                playPauseLabelRes = R.string.action_play,
-                                nextEnabled = false,
-                                feedbackText = getString(R.string.feedback_end_of_queue)
-                            )
+                        streamPrepared.set(true)
+                        appendRuntimeLog("play prepared requestId=$requestId track=${track.title} source=download")
+                        engine.play()
+                        runOnUiThread {
+                            updateState {
+                                it.copy(
+                                    isPlaying = true,
+                                    playbackStatusRes = R.string.status_playing,
+                                    playPauseLabelRes = R.string.action_pause,
+                                    feedbackText = "Action feedback: playing ${track.title}"
+                                )
+                            }
                         }
-                        rebuildTrackLists()
                     }
-                }
-            }
-            player.setOnErrorListener { _, what, extra ->
-                if (requestId != playbackRequestId) {
-                    return@setOnErrorListener true
-                }
-                appendRuntimeLog("play error requestId=$requestId what=$what extra=$extra")
-                triggerCachedFallback("Action feedback: stream error ($what/$extra), trying cached file")
-                true
-            }
-            player.setOnInfoListener { _, what, _ ->
-                if (requestId != playbackRequestId) {
-                    return@setOnInfoListener true
-                }
-                when (what) {
-                    MediaPlayer.MEDIA_INFO_BUFFERING_START -> {
+
+                    override fun onCompletion() {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
+                        runOnUiThread {
+                            val nextTitle = moveToNextTrack()
+                            if (nextTitle != null) {
+                                updateState { s ->
+                                    s.copy(
+                                        currentTrack = nextTitle,
+                                        nextEnabled = hasNextTrack()
+                                    )
+                                }
+                                rebuildTrackLists()
+                                playTrackAtCurrentIndex()
+                            } else {
+                                updateState { s ->
+                                    s.copy(
+                                        isPlaying = false,
+                                        playbackStatusRes = R.string.status_paused,
+                                        playPauseLabelRes = R.string.action_play,
+                                        nextEnabled = false,
+                                        feedbackText = getString(R.string.feedback_end_of_queue)
+                                    )
+                                }
+                                rebuildTrackLists()
+                            }
+                        }
+                    }
+
+                    override fun onError(code: Int, detail: String) {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
+                        appendRuntimeLog("play error requestId=$requestId code=$code detail=$detail source=download")
+                        triggerCachedFallback("Action feedback: download play error ($code/$detail), trying cached file")
+                    }
+
+                    override fun onBufferingStart() {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
                         appendRuntimeLog("play buffering start requestId=$requestId track=${track.title}")
                         runOnUiThread {
                             updateState {
@@ -957,9 +1082,12 @@ class MainActivity : AppCompatActivity() {
                                 )
                             }
                         }
-                        true
                     }
-                    MediaPlayer.MEDIA_INFO_BUFFERING_END -> {
+
+                    override fun onBufferingEnd() {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
                         appendRuntimeLog("play buffering end requestId=$requestId track=${track.title}")
                         runOnUiThread {
                             updateState {
@@ -967,25 +1095,20 @@ class MainActivity : AppCompatActivity() {
                                     isPlaying = true,
                                     playbackStatusRes = R.string.status_playing,
                                     playPauseLabelRes = R.string.action_pause,
-                                    feedbackText = "Action feedback: streaming ${track.title}"
+                                    feedbackText = "Action feedback: playing ${track.title}"
                                 )
                             }
                         }
-                        true
                     }
-                    else -> false
                 }
-            }
-            appendRuntimeLog("play stream mode=request-only-url requestId=$requestId")
-            player.setDataSource(this, Uri.parse(streamUrl))
-            player.prepareAsync()
+            )
             appendRuntimeLog("play prepareAsync requestId=$requestId")
             updateState {
                 it.copy(
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: starting stream ${track.title}"
+                    feedbackText = "Action feedback: preparing ${track.title}"
                 )
             }
             Thread {
@@ -1001,25 +1124,20 @@ class MainActivity : AppCompatActivity() {
                     if (requestId != playbackRequestId || streamPrepared.get()) {
                         return@runOnUiThread
                     }
-                    val active = mediaPlayer
-                    if (active != null) {
-                        try {
-                            if (active.isPlaying) {
-                                streamPrepared.set(true)
-                                appendRuntimeLog("play timeout guard ignored requestId=$requestId reason=already-playing")
-                                return@runOnUiThread
-                            }
-                        } catch (_: Exception) {
-                        }
+                    val active = playbackEngine
+                    if (active != null && active.isPlaying()) {
+                        streamPrepared.set(true)
+                        appendRuntimeLog("play timeout guard ignored requestId=$requestId reason=already-playing")
+                        return@runOnUiThread
                     }
                     appendRuntimeLog("play timeout guard confirmed requestId=$requestId")
-                    triggerCachedFallback("Action feedback: stream timeout, trying cached file")
+                    triggerCachedFallback("Action feedback: download play timeout, trying cached file")
                 }
             }.start()
         } catch (e: Exception) {
             appendRuntimeLog("play setup exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
             triggerCachedFallback(
-                "Action feedback: stream setup failed (${e.javaClass.simpleName}), trying cached file"
+                "Action feedback: download setup failed (${e.javaClass.simpleName}), trying cached file"
             )
         }
     }
@@ -1066,58 +1184,90 @@ class MainActivity : AppCompatActivity() {
                 try {
                     appendRuntimeLog("cache fallback file ready requestId=$requestId path=${cacheFile.absolutePath} size=${cacheFile.length()}")
                     releasePlayer()
-                    val player = MediaPlayer()
-                    mediaPlayer = player
-                    player.setAudioStreamType(AudioManager.STREAM_MUSIC)
-                    player.setDataSource(cacheFile.absolutePath)
-                    player.setOnPreparedListener { prepared ->
-                        if (requestId != playbackRequestId) {
-                            prepared.release()
-                            return@setOnPreparedListener
-                        }
-                        appendRuntimeLog("cache playback prepared requestId=$requestId")
-                        prepared.start()
-                        runOnUiThread {
-                            updateState {
-                                it.copy(
-                                    isPlaying = true,
-                                    playbackStatusRes = R.string.status_playing,
-                                    playPauseLabelRes = R.string.action_pause,
-                                    feedbackText = "Action feedback: playing cached ${track.title}"
-                                )
+                    val engine = ensurePlaybackEngine()
+                    engine.prepare(
+                        source = Uri.fromFile(cacheFile),
+                        callback = object : PlaybackEngineCallback {
+                            override fun onPrepared() {
+                                if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                appendRuntimeLog("cache playback prepared requestId=$requestId")
+                                engine.play()
+                                runOnUiThread {
+                                    updateState {
+                                        it.copy(
+                                            isPlaying = true,
+                                            playbackStatusRes = R.string.status_playing,
+                                            playPauseLabelRes = R.string.action_pause,
+                                            feedbackText = "Action feedback: playing cached ${track.title}"
+                                        )
+                                    }
+                                }
+                            }
+
+                            override fun onCompletion() {
+                                if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                runOnUiThread {
+                                    val nextTitle = moveToNextTrack()
+                                    if (nextTitle != null) {
+                                        updateState { s ->
+                                            s.copy(
+                                                currentTrack = nextTitle,
+                                                nextEnabled = hasNextTrack()
+                                            )
+                                        }
+                                        rebuildTrackLists()
+                                        playTrackAtCurrentIndex()
+                                    } else {
+                                        updateState { s ->
+                                            s.copy(
+                                                isPlaying = false,
+                                                playbackStatusRes = R.string.status_paused,
+                                                playPauseLabelRes = R.string.action_play,
+                                                nextEnabled = false,
+                                                feedbackText = getString(R.string.feedback_end_of_queue)
+                                            )
+                                        }
+                                        rebuildTrackLists()
+                                    }
+                                }
+                            }
+
+                            override fun onError(code: Int, detail: String) {
+                                if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                appendRuntimeLog("cache playback error requestId=$requestId code=$code detail=$detail")
+                                runOnUiThread {
+                                    updateState {
+                                        it.copy(
+                                            isPlaying = false,
+                                            playbackStatusRes = R.string.status_paused,
+                                            playPauseLabelRes = R.string.action_play,
+                                            feedbackText = "Action feedback: cached play failed ($code)"
+                                        )
+                                    }
+                                }
+                            }
+
+                            override fun onBufferingStart() {
+                                if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                appendRuntimeLog("cache buffering start requestId=$requestId")
+                            }
+
+                            override fun onBufferingEnd() {
+                                if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                appendRuntimeLog("cache buffering end requestId=$requestId")
                             }
                         }
-                    }
-                    player.setOnCompletionListener {
-                        if (requestId != playbackRequestId) {
-                            return@setOnCompletionListener
-                        }
-                        runOnUiThread {
-                            val nextTitle = moveToNextTrack()
-                            if (nextTitle != null) {
-                                updateState { s ->
-                                    s.copy(
-                                        currentTrack = nextTitle,
-                                        nextEnabled = hasNextTrack()
-                                    )
-                                }
-                                rebuildTrackLists()
-                                playTrackAtCurrentIndex()
-                            } else {
-                                updateState { s ->
-                                    s.copy(
-                                        isPlaying = false,
-                                        playbackStatusRes = R.string.status_paused,
-                                        playPauseLabelRes = R.string.action_play,
-                                        nextEnabled = false,
-                                        feedbackText = getString(R.string.feedback_end_of_queue)
-                                    )
-                                }
-                                rebuildTrackLists()
-                            }
-                        }
-                    }
-                    player.prepareAsync()
+                    )
                     appendRuntimeLog("cache playback prepareAsync requestId=$requestId")
                     updateState {
                         it.copy(
@@ -1149,9 +1299,7 @@ class MainActivity : AppCompatActivity() {
         token: String
     ): File? {
         val candidateUrls = listOf(
-            buildEmbyDownloadUrl(embyBase, track.id, token),
-            buildEmbyStreamUrl(embyBase, track.id, token),
-            buildEmbyTranscodeStreamUrl(embyBase, track.id, token)
+            buildEmbyDownloadUrl(embyBase, track.id, token)
         )
         for (candidateUrl in candidateUrls) {
             var connection: HttpURLConnection? = null
@@ -1206,17 +1354,19 @@ class MainActivity : AppCompatActivity() {
         return null
     }
 
+    private fun ensurePlaybackEngine(): PlaybackEngine {
+        val existing = playbackEngine
+        if (existing != null) {
+            return existing
+        }
+        val created = ExoPlaybackEngine(this)
+        playbackEngine = created
+        return created
+    }
+
     private fun releasePlayer() {
-        val player = mediaPlayer ?: return
-        try {
-            player.stop()
-        } catch (_: Exception) {
-        }
-        try {
-            player.release()
-        } catch (_: Exception) {
-        }
-        mediaPlayer = null
+        playbackEngine?.release()
+        playbackEngine = null
     }
 
     private fun fetchTracksFromEmby(credentials: EmbyCredentials): EmbyLoadResult {
@@ -1401,18 +1551,6 @@ class MainActivity : AppCompatActivity() {
         return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
     }
 
-    private fun buildEmbyStreamUrl(
-        embyBase: String,
-        trackId: String,
-        token: String
-    ): String {
-        val params = mutableListOf(
-            "api_key=${urlEncode(token)}",
-            "static=true"
-        )
-        return "$embyBase/Audio/${urlEncode(trackId)}/stream?${params.joinToString("&")}"
-    }
-
     private fun buildEmbyDownloadUrl(
         embyBase: String,
         trackId: String,
@@ -1422,19 +1560,6 @@ class MainActivity : AppCompatActivity() {
             "api_key=${urlEncode(token)}"
         )
         return "$embyBase/Items/${urlEncode(trackId)}/Download?${params.joinToString("&")}"
-    }
-
-    private fun buildEmbyTranscodeStreamUrl(
-        embyBase: String,
-        trackId: String,
-        token: String
-    ): String {
-        val params = mutableListOf(
-            "api_key=${urlEncode(token)}",
-            "static=true"
-        )
-        params.addAll(commonEmbyQueryParams())
-        return "$embyBase/Audio/${urlEncode(trackId)}/stream.mp3?${params.joinToString("&")}"
     }
 
     private fun buildCommonEmbyQuery(): String = commonEmbyQueryParams().joinToString("&")
@@ -1695,6 +1820,11 @@ class MainActivity : AppCompatActivity() {
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
         const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
         const val EMBY_QUERY_LANGUAGE = "zh-cn"
+        // Start playback once playable duration is >=3s and rebuffer with >=1s.
+        const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
+        const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
+        const val LOAD_CONTROL_PLAYBACK_MS = 3_000
+        const val LOAD_CONTROL_REBUFFER_MS = 1_000
         const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2

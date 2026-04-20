@@ -1,15 +1,17 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-16 20:47
+Last Updated: 2026-04-20 13:02
 
 ## Ready
-- [ ] （空）
+- [ ] `T-S3-UI-004` `StyledPlayerView` 接入与现有壳层融合
+- [ ] `T-S3-LOG-005` 登录/加载日志口径收敛
+- [ ] `T-S3-CACHE-006` “最近20首”缓存保留与清理治理
 
 ## In Progress
 - [ ] （空）
 
 ## Blocked
-- [ ] `T-S2-004` API17 全量回归执行与证据回填（依赖人工实机）
+- [ ] `T-S3-VAL-007` API17 播放专项回归与证据回填（依赖人工实机）
 - [ ] `T-BLK-001` 系统首页音乐卡片第三方入口接入（待系统能力确认）
 - [ ] `B-LRC-001` 歌词失败回退策略口径（待确认）
 
@@ -38,8 +40,11 @@ Last Updated: 2026-04-16 20:47
 - [x] `T-S2-UI-007` Queue/Library 列表单击即播放（禁用长按主路径）
 - [x] `T-S2-UI-008` Queue 推荐歌曲（默认20）并替换未播放段
 - [x] `T-S2-003` 日志面板交互增强（复制/清理）
+- [x] `T-S3-PLY-001` ExoPlayer 2.x 版本探针与依赖固定（首选 `2.17.1`，备选 `2.16.1`）
+- [x] `T-S3-PLY-002` 播放引擎抽象与 MediaPlayer 主路径替换（ExoPlaybackEngine 已接管）
+- [x] `T-S3-DL-003` Download-only 边下边播链路落地（仅 Download 端点 + 3s起播 + 1s补缓）
 
 ## Queue Notes
-- 推荐执行顺序: `T-S2-004 -> T-S2-005`（`T-S2-004` 仍需人工实机）。
-- `T-S2-SET-008` 与 `T-S2-UI-006` 共享 `MainActivity/activity_main.xml`，建议串行执行避免冲突。
-- `T-S2-004` 保持 Blocked，避免把人工事项误放 Ready。
+- 推荐执行顺序: `T-S3-PLY-001(已完成) -> T-S3-PLY-002(已完成) -> T-S3-DL-003(已完成) -> T-S3-UI-004 -> T-S3-LOG-005 -> T-S3-CACHE-006 -> T-S3-VAL-007`。
+- 共享改动热点为 `MainActivity.kt`，执行阶段应保持单任务串行，避免并发冲突。
+- `T-S3-VAL-007` 维持 Blocked（人工设备依赖），不误放 Ready。

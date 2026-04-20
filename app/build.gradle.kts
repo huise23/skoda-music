@@ -46,5 +46,11 @@ android {
 }
 
 dependencies {
+    // S3 baseline: lock legacy ExoPlayer branch for API17 target.
+    // Preferred: 2.17.1 ; fallback: 2.16.1 (if compatibility issue found on device).
+    val exoPlayerVersion = "2.17.1"
+
     implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")
 }

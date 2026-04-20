@@ -1,9 +1,9 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-20 10:38
+Last Updated: 2026-04-20 13:02
 
 ## Stage
-- 阶段判断: S1 最小播放闭环已验证通过，当前处于 S2「IA v2 落地与交互闭环」阶段。
+- 阶段判断: S1/S2 基础交互已完成，当前处于 S3「API17 播放内核重构（ExoPlayer 2.x + download 边下边播）」执行阶段。
 
 ## Completed
 - 已有 C++ 业务骨架模块（配置/首页壳/歌词/播放队列/媒体键/音频焦点）。
@@ -24,24 +24,30 @@ Last Updated: 2026-04-20 10:38
 - 已完成 `T-S2-003`：全屏日志面板新增“复制/清理”，并保持预览区与全屏区同步刷新。
 - 已完成 Android 5.0 启动闪退修复：`bg_main_gradient.xml` 角度改为 API 兼容值（`140 -> 135`）。
 - 用户回传验证：Android 5.0 启动测试已通过。
+- 已完成 `T-S3-PLY-001`：锁定 ExoPlayer 旧版依赖（首选 `2.17.1`，备选 `2.16.1`）并写入 Android 构建配置。
+- 已完成 `T-S3-PLY-002`：引入 `PlaybackEngine` 抽象与 `ExoPlaybackEngine` 实现，主播放链路不再直接调用 `MediaPlayer`。
+- 已完成 `T-S3-DL-003`：主播放链路改为 download-only（不再主动请求 stream 端点），并配置 3s 起播 / 1s 补缓阈值。
 
 ## Not Started / Unknown
 - API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。
 - 系统首页音乐卡片第三方入口能力仍未知。
 
 ## Current Blockers
-- `T-S2-004` API17 全量回归清单结果（需人工实机执行并回传）。
+- `T-S3-VAL-007` API17 播放专项回归与证据回填（需人工实机执行并回传）。
 - `T-BLK-001` 系统首页音乐卡片第三方入口接入（待系统能力确认）。
 - `B-LRC-001` 歌词失败回退策略口径（待产品确认）。
+- 本地缺少 `gradle/gradlew.bat`，无法完成构建型验证（需 CI 或外部环境）。
 
 ## Notes
 - `.ai/context/SCOPE.md` 仍缺失。
 - `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
-- 当前 Ready 主线: （空，待人工推进 `T-S2-004`）。
+- 当前 Ready 主线: `T-S3-UI-004 -> T-S3-LOG-005 -> T-S3-CACHE-006`。
 - 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。
 - 新增硬约束: `minSdk=17` 为红线，不允许通过升级 SDK/依赖版本绕过兼容问题。
 - 新增口径: “移除登录/加载”在本项目中指“移除相关敏感/冗余日志”，非移除登录与加载功能本身。
 - 诊断补充: 首播卡顿当前只确认链路等待累积问题，`NAT` 可能为放大因素但未被确认为唯一根因。
+- 规划补充: 已生成 S3 任务拆分与队列（`T-S3-PLY-001~T-S3-VAL-007`），Ready 可直接进入 execution。
+- 执行补充: `T-S3-PLY-001/002/003` 已闭环，下一任务为 `T-S3-UI-004`。
 
 ## Local Pending Changes (Gemini)
 - 当前工作区存在一批未提交的 Gemini 本地改动（UI 玻璃态视觉 + 推荐页自动刷新）。

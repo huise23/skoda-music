@@ -1,149 +1,149 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-16 16:28
+Last Updated: 2026-04-20 12:08
 
-## T-S2-IA-001
-- Task ID: `T-S2-IA-001`
-- Title: IA v2 文档清洗与单一口径固化
-- Goal: 清理旧冲突口径，形成唯一 IA 基线。
-- Why: 旧文档通过 override 叠加，执行阶段易误读。
+## T-S3-PLY-001
+- Task ID: `T-S3-PLY-001`
+- Title: ExoPlayer 2.x 版本探针与依赖固定（API17）
+- Goal: 在不改 `minSdk=17` 前提下确认可用旧版 ExoPlayer，并锁定版本。
+- Why: S3 方案可行性的第一前置，避免后续改造建立在错误版本假设上。
 - Dependencies: 无
 - Inputs:
-  - `docs/UI_IA_LOW_FIDELITY.md`
-  - `.ai/context/DECISIONS.md`
-- Expected Outputs: IA 文档与决策文档一致，不再存在冲突叙述。
+  - `app/build.gradle.kts`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `DECISIONS.md`（S3 新决策）
+- Expected Outputs:
+  - 固定 ExoPlayer 2.x 版本依赖说明（首选 + 备选降级版本）
+  - API17 兼容性结论（可运行/需降级）
 - Done Criteria:
-  - 导航顺序、点击播放、推荐刷新、设置保存规则仅保留一套说法。
-  - 不再保留“LrcApi 失败不阻断保存”的旧描述。
-- Risks: 文档领先代码，短期会有实现差距。
+  - 依赖版本已固定且被文档记录。
+  - 给出后续任务使用的唯一版本基线。
+- Risks:
+  - 旧版依赖可用性、传递依赖冲突。
 - Size: S
 - Minimal Loop: Yes
 
-## T-S2-UI-006
-- Task ID: `T-S2-UI-006`
-- Title: 前台升级为 4 导航壳（Home -> Queue -> Library -> Settings）
-- Goal: 从单页滚动布局升级为 IA v2 对应的 4 导航壳。
-- Why: 后续交互规则需要页面边界与状态边界。
-- Dependencies: `T-S2-IA-001`
+## T-S3-PLY-002
+- Task ID: `T-S3-PLY-002`
+- Title: 播放引擎抽象与 MediaPlayer 主路径替换
+- Goal: 引入统一播放引擎接口并将主播放路径切到 ExoPlayer。
+- Why: 当前 `MainActivity` 直接操作 `MediaPlayer`，扩展边下边播困难。
+- Dependencies: `T-S3-PLY-001`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Expected Outputs:
+  - 清晰的播放引擎边界（prepare/play/pause/release/状态回调）
+  - 原 `MediaPlayer` 主路径移除或下沉为临时兜底
+- Done Criteria:
+  - 播放/暂停/下一曲链路在新引擎下可执行。
+  - 不再通过旧 `MediaPlayer` stream 主路径触发播放。
+- Risks:
+  - 状态回调与现有 UI 状态机耦合，易出现状态不同步。
+- Size: M
+- Minimal Loop: Yes
+
+## T-S3-DL-003
+- Task ID: `T-S3-DL-003`
+- Title: Download-only 边下边播链路落地
+- Goal: 仅使用 download 端点实现可播即播。
+- Why: 用户要求停止 stream 端点主链路，并支持“1秒级可感知起播”。
+- Dependencies: `T-S3-PLY-002`
+- Inputs:
+  - `MainActivity.kt` 中 Emby URL 构建与播放接线路径
+- Expected Outputs:
+  - 仅 download 请求链路
+  - 可播放内容 `>=3s` 即起播
+  - 低缓冲 `<1s` 自动补缓与恢复
+- Done Criteria:
+  - 日志可验证无主动 stream 端点请求。
+  - 弱网下可见 buffering->resume 闭环。
+- Risks:
+  - 阈值需在目标设备上调参；过激阈值会造成频繁补缓。
+- Size: M
+- Minimal Loop: Yes
+
+## T-S3-UI-004
+- Task ID: `T-S3-UI-004`
+- Title: `StyledPlayerView` 接入与现有壳层融合
+- Goal: 引入可美化播放器控件，保持现有 4 导航交互逻辑。
+- Why: 用户明确要求支持播放器美化与优化。
+- Dependencies: `T-S3-PLY-002`
 - Inputs:
   - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-- Expected Outputs: 可切换四页入口，顺序固定。
+  - `MainActivity.kt`
+- Expected Outputs:
+  - `StyledPlayerView` 嵌入 Home 播放区域
+  - 现有按钮与状态文本与播放器状态一致
 - Done Criteria:
-  - 导航顺序与 IA 一致。
-  - 页面切换不破坏现有播放链路。
-- Risks: 结构改造幅度大，易引入控件绑定回归。
+  - UI 不破坏 Queue/Library 单击切歌逻辑。
+  - 播放状态（播放/缓冲/暂停）可见且一致。
+- Risks:
+  - 控件接入后可能与现有按钮行为重复或冲突。
 - Size: M
 - Minimal Loop: Yes
 
-## T-S2-SET-008
-- Task ID: `T-S2-SET-008`
-- Title: 统一服务配置区（Emby + LrcApi）与测试门禁自动保存
-- Goal: 将 Emby/LrcApi 合并在同一配置区，并统一保存规则。
-- Why: 用户已确认“LrcApi 放到 Emby 配置一起”，且两者规则一致。
-- Dependencies: `T-S2-UI-006`
+## T-S3-LOG-005
+- Task ID: `T-S3-LOG-005`
+- Title: 登录/加载日志口径收敛
+- Goal: 移除敏感与冗余日志，保留诊断必要日志。
+- Why: 已确认“移除登录/加载日志”是日志口径收敛，不是功能删除。
+- Dependencies: `T-S3-PLY-002`
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/values/strings.xml`
-- Expected Outputs: 合并配置区 + 两服务各自测试通过自动保存、失败阻断。
+  - `MainActivity.kt` 日志输出点
+  - `DECISIONS.md` 日志口径
+- Expected Outputs:
+  - 鉴权、payload 预览、冗余加载样本日志下线
+  - 保留阶段结果、错误码、异常类型、关键耗时
 - Done Criteria:
-  - Emby/LrcApi 在同一配置区展示。
-  - 两者均满足“测试通过即自动保存，失败阻断对应保存”。
-  - 各测各存，互不等待。
-- Risks: 当前 LrcApi 测试链路缺失，需要新增最小测试实现。
-- Size: M
-- Minimal Loop: Yes
-
-## T-S2-UI-007
-- Task ID: `T-S2-UI-007`
-- Title: Queue/Library 列表单击即播放（禁用长按主路径）
-- Goal: 收敛为驾驶场景低误触的单击主交互。
-- Why: 用户明确要求默认点击播放，不走长按。
-- Dependencies: `T-S2-UI-006`
-- Inputs:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - 列表渲染组件（Queue/Library）
-- Expected Outputs: 两页列表统一单击即播放。
-- Done Criteria:
-  - Queue 单击行可立即切播并同步高亮。
-  - Library 单击行可立即切歌。
-- Risks: 若列表组件抽象不足，可能出现重复逻辑。
-- Size: M
-- Minimal Loop: Yes
-
-## T-S2-UI-008
-- Task ID: `T-S2-UI-008`
-- Title: Queue 推荐歌曲（默认 20）并替换未播放段
-- Goal: 在不打断当前播放下刷新后续待播。
-- Why: 用户要求“刷新队列，默认20条，保留当前播放”。
-- Dependencies: `T-S2-UI-007`
-- Inputs:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/layout/activity_main.xml`
-- Expected Outputs: Queue 头部新增推荐按钮与替换逻辑。
-- Done Criteria:
-  - 点击后保留当前播放项。
-  - 当前播放后的待播队列被推荐结果（20条）替换。
-  - 请求失败时保留原队列并提示。
-- Risks: Native 队列 API 可能缺少“仅替换未播放段”的原子操作。
-- Size: M
-- Minimal Loop: Yes
-
-## T-S2-003
-- Task ID: `T-S2-003`
-- Title: 日志面板交互增强（复制/清理）
-- Goal: 提升现场排障回传效率。
-- Why: 当前可看不可快速回传。
-- Dependencies: `T-HF-LOG-001`
-- Inputs:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/layout/dialog_runtime_logs.xml`
-  - `app/src/main/res/values/strings.xml`
-- Expected Outputs: 全屏日志支持复制与清理。
-- Done Criteria:
-  - 可一键复制当前日志文本。
-  - 可清空日志并同步预览区与全屏区。
-- Risks: API17 剪贴板行为需实机确认。
+  - 运行日志中不再出现登录/加载敏感信息。
+  - 故障时仍可定位到阶段与错误类型。
+- Risks:
+  - 过度删日志会降低排障效率。
 - Size: S
 - Minimal Loop: Yes
 
-## T-S2-004
-- Task ID: `T-S2-004`
-- Title: API17 全量回归执行与证据回填
-- Goal: 按清单完成实机验证并形成结构化证据。
-- Why: 当前最大缺口是“可运行但缺完整实机证明”。
-- Dependencies: `T-S2-UI-006`, `T-S2-SET-008`, `T-S2-UI-007`, `T-S2-UI-008`, `T-S2-003`
+## T-S3-CACHE-006
+- Task ID: `T-S3-CACHE-006`
+- Title: “最近20首”缓存保留与清理治理
+- Goal: 在边下边播场景下提升二次播放速度并控制空间。
+- Why: 用户已明确“缓存保留最近20首”。
+- Dependencies: `T-S3-DL-003`
 - Inputs:
+  - 缓存目录与缓存命名规则
+  - `MainActivity.kt` 下载与回放路径
+- Expected Outputs:
+  - 最近20首保留策略
+  - 过期/总量清理策略
+- Done Criteria:
+  - 缓存命中可用于加速二次播放。
+  - 缓存文件数量可稳定限制在 20 条以内。
+- Risks:
+  - 清理时机不当可能删到正在播放文件。
+- Size: S
+- Minimal Loop: Yes
+
+## T-S3-VAL-007
+- Task ID: `T-S3-VAL-007`
+- Title: API17 播放专项回归与证据回填
+- Goal: 验证 S3 播放改造在目标车机可用并形成证据。
+- Why: 播放改造涉及内核替换，必须有实机结果闭环。
+- Dependencies: `T-S3-UI-004`, `T-S3-LOG-005`, `T-S3-CACHE-006`
+- Inputs:
+  - API17 实机
+  - 运行日志与关键操作录像/截图
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - CI 产物 APK
-  - 实机日志与截图
-- Expected Outputs: 一份完整回归报告（PASS/FAIL、失败条目、关键日志）。
+- Expected Outputs:
+  - 首播、弱网补缓、切歌、缓存复用的 PASS/FAIL 结论
+  - 缺陷清单与复现条件
 - Done Criteria:
-  - 清单 A-F 项完成并有结论。
-  - 至少包含一次失败路径验证与恢复验证。
-- Risks: 依赖人工实机时段，节奏不可控。
+  - 至少覆盖：首次播放、连续播放、弱网补缓、下一曲、二次播放缓存命中。
+  - 结果已回填到 `.ai/context`。
+- Risks:
+  - 强依赖人工设备时段，进度不可控。
 - Size: M
 - Minimal Loop: No
 
-## T-S2-005
-- Task ID: `T-S2-005`
-- Title: 回归结果固化与交接更新
-- Goal: 将 S2 回归结论写回上下文与 runbook。
-- Why: 防止验证结果丢失。
-- Dependencies: `T-S2-004`
-- Inputs:
-  - `.ai/context/*`
-  - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
-- Expected Outputs: 状态文件与交接信息更新、必要文档回写。
-- Done Criteria:
-  - `CURRENT_STATUS/NEXT_STEPS/HANDOFF/TASK_QUEUE` 与事实一致。
-  - runbook 引用最新回归结论。
-- Risks: 多文件同步时容易遗漏。
-- Size: S
-- Minimal Loop: Yes
-
-## Blocked Candidates (Pending Confirmation)
+## Blocked Candidates (Carry Forward)
 
 ### T-BLK-001
 - Task ID: `T-BLK-001`

@@ -182,3 +182,25 @@
   - “Remove login/loading” interpreted as removing related sensitive/redundant logs, not removing features.
   - Stream vs download distinction documented as playback strategy tradeoff rather than transport-type difference.
 - Synced `CURRENT_STATUS.md` notes with the above constraints and terminology.
+- Replanned execution for S3 playback refactor (based on latest discussion):
+  - `PLAN.md` switched to `ExoPlayer 2.x (legacy) + download-only + pseudo-stream` stage plan.
+  - `TASK_BREAKDOWN.md` rebuilt with `T-S3-PLY-001~T-S3-VAL-007`.
+  - `TASK_QUEUE.md` rebuilt with S3 Ready/Blocked queue.
+  - `NEXT_STEPS.md` updated to S3 immediate actions.
+  - `HANDOFF.md` aligned with S3 goals and next execution order.
+  - `DECISIONS.md` added S3 confirmed decisions and override note.
+- Corrected S3 playback trigger rule:
+  - start playback when playable content reaches `>=3s`
+  - removed `>=512KB` start gate from planning/decision docs
+- Completed `T-S3-PLY-001` (ai-execution):
+  - added legacy ExoPlayer dependencies in `app/build.gradle.kts`
+  - locked preferred version `2.17.1` with fallback plan `2.16.1`
+  - updated context files (`CURRENT_STATUS/NEXT_STEPS/TASK_QUEUE/HANDOFF/DECISIONS`) for single-task closure
+- Completed `T-S3-PLY-002` (ai-execution):
+  - introduced `PlaybackEngine` abstraction and `ExoPlaybackEngine` implementation in `MainActivity.kt`
+  - replaced direct `MediaPlayer` control paths with engine calls (`play/pause/prepare/release`)
+  - kept existing stream/download behavior unchanged to avoid crossing into `T-S3-DL-003`
+- Completed `T-S3-DL-003` (ai-execution):
+  - switched primary playback URL from stream endpoint to download endpoint
+  - configured Exo load control to start at `>=3s` playable buffer and rebuffer at `>=1s`
+  - restricted cache download candidates to download endpoint only

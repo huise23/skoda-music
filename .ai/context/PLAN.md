@@ -1,71 +1,78 @@
 # PLAN
 
-Last Updated: 2026-04-16 16:28
+Last Updated: 2026-04-20 12:08
 
 ## Current Stage
-- Stage Name: S2 IA v2 落地与交互闭环
-- Scope Source: `SCOPE.md` 当前缺失，按 `PROJECT_BRIEF + CURRENT_STATUS + DECISIONS + 最新用户指令` 推导。
+- Stage Name: S3 API17 播放内核重构（第三方播放器 + Download 边下边播）
+- Scope Source: `SCOPE.md` 缺失，按 `PROJECT_BRIEF + CURRENT_STATUS + DECISIONS + 最新用户指令` 推导。
 
 ## Scope Validation
 
-### In Scope (S2)
-- 落地左侧 4 导航壳，顺序固定为 `Home -> Queue -> Library -> Settings`。
-- Queue/Library 列表改为“单击即播放”（禁用长按主路径）。
-- Queue 增加 `推荐歌曲`，默认 20 条，保留当前播放，仅替换未播放段。
-- Settings 将 Emby 与 LrcApi 合并到同一配置区。
-- Emby/LrcApi 均执行“测试通过自动保存，测试失败阻断对应保存”。
-- 日志面板继续增强（复制/清理），并保持 API17 兼容。
-- 产出可用于 API17 实机回归的安装包与验证口径。
+### In Scope (S3)
+- 在 `minSdk=17` 红线下，引入旧版 ExoPlayer 2.x 固定版本（不升 SDK）。
+- 将播放链路从“stream + fallback download”改为“仅 download 端点 + 边下边播”。
+- 实现“可播放内容达到 `>=3s` 即起播”与低缓冲自动补缓（`<1s`）。
+- 引入 `StyledPlayerView` 并完成首轮 UI 融合（不破坏现有导航结构）。
+- 收敛日志口径：移除登录/加载敏感与冗余日志，仅保留诊断必要信息。
+- 缓存策略落地：保留最近 20 首并执行清理策略。
 
-### Out of Scope (S2)
-- 多协议支持（Jellyfin/Subsonic）。
-- 完整离线下载体系与本地媒体库重构。
-- 后台媒体会话体系化改造（通知栏/锁屏全量能力）。
+### Out of Scope (S3)
+- 升级到 Media3 新主线或提升 `minSdk`。
+- 多协议接入（Jellyfin/Subsonic）。
+- 完整离线媒体库体系化重构。
+- 车机系统首页卡片能力接入（仍受系统能力限制）。
 
 ### Success Criteria
-- UI 具备可见 4 导航壳，顺序与 IA 一致。
-- Queue/Library 单击播放、Queue 推荐替换逻辑符合规则。
-- Emby/LrcApi 同区配置可用，且“测过即存、失败阻断”生效。
-- 日志复制/清理可用，不破坏播放主链路。
-- `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 完成至少一轮结构化回传。
+- API17 环境可完成“点击播放 -> 可见缓冲态 -> 边下边播起播 -> 连续播放/自动补缓”闭环。
+- 实际请求链路仅使用 download 端点，日志可证明无主动 stream 请求。
+- `StyledPlayerView` 接入后，不破坏 Queue/Library 切歌与当前曲目状态同步。
+- 缓存命中可加速二次播放，缓存数量上限为 20 且可清理。
+- 登录/加载敏感日志被清理，保留错误码/异常类型/阶段结果日志。
 
 ## Reality Check
-- 当前 Android 前台仍为单页滚动布局（`MainActivity + activity_main.xml`），尚未形成 4 导航壳。
-- Emby 测试与播放链路已可用；LrcApi 前台测试链路尚未落地。
-- 构建入口稳定，API17 仍为兼容基线。
+- 现状播放内核仍为 `MediaPlayer`，`MainActivity.kt` 内含 stream 直连 + download 兜底逻辑。
+- 当前 UI 已是 4 导航壳，但尚未接入 `StyledPlayerView`。
+- 现有日志包含鉴权与加载细节，需按新口径收敛。
+- 本地环境缺少 `gradle/gradlew.bat`，构建验证需依赖 CI 或人工设备回归。
 
 ## Workstreams
 
-### W1 IA Shell
-- 目标: 把 IA v2 结构直接落到前台壳（导航顺序、页面入口、状态同步位）。
-- 输出: 可切换的 Home/Queue/Library/Settings 前台框架。
+### W1 播放器内核替换
+- 目标: 在 API17 下将播放执行引擎替换为固定版本 ExoPlayer 2.x。
+- 输出: 可稳定准备、播放、暂停、释放的统一播放引擎。
 
-### W2 Playback Interaction
-- 目标: 收敛 Queue/Library 点击播放与 Queue 推荐替换未播放逻辑。
-- 输出: 单击即播 + 推荐 20 条替换未播放段。
+### W2 Download 边下边播链路
+- 目标: 仅使用 download 端点并实现起播阈值与补缓策略。
+- 输出: 可持续下载并可播即播的链路，移除 stream 主路径。
 
-### W3 Unified Service Settings
-- 目标: Emby 与 LrcApi 同区配置，并统一测试门禁自动保存策略。
-- 输出: 合并配置区 + 两服务独立测试/保存状态机。
+### W3 UI 与状态融合
+- 目标: 接入 `StyledPlayerView`，保持现有交互壳与队列逻辑。
+- 输出: 可视化播放控件 + 不回归的 Queue/Library 交互。
 
-### W4 Log UX + Validation
-- 目标: 完成日志复制/清理并形成 API17 回归闭环证据。
-- 输出: 可回传日志能力 + 回归证据。
+### W4 日志与缓存治理
+- 目标: 清理敏感日志并落地“最近20首”缓存策略。
+- 输出: 可审计日志口径 + 可控缓存占用。
+
+### W5 回归验证
+- 目标: 完成 API17 专项回归（首播、弱网、补缓、切歌、缓存）。
+- 输出: 结构化 PASS/FAIL 证据与问题清单。
 
 ## Dependencies
-- W1 是 W2/W3 的前置壳层。
-- W2 与 W3 可并行，但共享 `MainActivity/activity_main.xml`，需串行合并避免冲突。
-- W4 与 W2/W3 可并行；人工实机回归依赖 W1-W3 输出包。
+- W1 是 W2/W3 的前置。
+- W2 与 W4 可并行，但都会改 `MainActivity.kt`，应串行合并以减少冲突。
+- W5 依赖 W1~W4 输出。
 
 ## Risks & Assumptions
-- 风险: 单页转 4 导航壳过程中可能引入状态同步回归。
-- 风险: API17 设备性能/网络抖动会放大 UI 与播放边界问题。
-- 假设: 当前优先级是“先把 IA 与交互规则做对，再做细节美化”。
+- 风险: 旧版 ExoPlayer 版本与 API17 兼容性存在不确定性，需先做版本探针。
+- 风险: download-only 在弱网下仍可能频繁补缓，阈值需设备上校准。
+- 假设: 服务端音频已为 320k mp3 且单曲体积通常 <=10MB。
+- 假设: 当前阶段优先“可听感稳定 + 可诊断”，UI 深度美化后置。
 
 ## Recommended Order
-1. `T-S2-UI-006`（4 导航壳）
-2. `T-S2-SET-008`（统一服务配置区 + 测试门禁自动保存）
-3. `T-S2-UI-007`（列表单击即播放）
-4. `T-S2-UI-008`（Queue 推荐替换未播放段）
-5. `T-S2-003`（日志复制/清理）
-6. `T-S2-004`（API17 人工实机回归）
+1. `T-S3-PLY-001` ExoPlayer 2.x 版本探针与依赖固定
+2. `T-S3-PLY-002` 播放引擎抽象与 MediaPlayer 替换
+3. `T-S3-DL-003` download-only 边下边播链路
+4. `T-S3-UI-004` `StyledPlayerView` 接入与状态同步
+5. `T-S3-LOG-005` 登录/加载日志收敛
+6. `T-S3-CACHE-006` 最近20首缓存治理
+7. `T-S3-VAL-007` API17 回归与证据回填

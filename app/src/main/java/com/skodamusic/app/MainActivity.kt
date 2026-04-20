@@ -24,7 +24,6 @@ import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
-import com.google.android.exoplayer2.util.UnstableApi
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -57,7 +56,6 @@ class MainActivity : AppCompatActivity() {
         fun release()
     }
 
-    @OptIn(UnstableApi::class)
     private class ExoPlaybackEngine(
         private val context: Context
     ) : PlaybackEngine {

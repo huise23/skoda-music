@@ -174,3 +174,11 @@
   - added navigation button drawables (`button_nav_active/inactive`)
   - added `app_name_version` string
 - Marked decision points as pending before merge/commit (scope inclusion and DPI/font adaptation approach).
+
+## 2026-04-20
+- Landed new decision baseline to `.ai/context`:
+  - `minSdk=17` is a hard constraint and must not be changed.
+  - API17 path should rely on system playback stack, not SDK-upgrade-driven solution.
+  - “Remove login/loading” interpreted as removing related sensitive/redundant logs, not removing features.
+  - Stream vs download distinction documented as playback strategy tradeoff rather than transport-type difference.
+- Synced `CURRENT_STATUS.md` notes with the above constraints and terminology.

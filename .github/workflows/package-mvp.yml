@@ -171,20 +171,31 @@ jobs:
           BUILD_AAB: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release) }}
         run: |
           set -euo pipefail
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          CI_VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          CI_VERSION_NAME="0.1.0-r${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
           if [[ "${BUILD_AAB}" == "true" ]]; then
-            gradle --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
+            gradle --no-daemon --stacktrace \
+              -PciVersionCode="${CI_VERSION_CODE}" \
+              -PciVersionName="${CI_VERSION_NAME}" \
+              :app:assembleRelease :app:bundleRelease
           else
-            gradle --no-daemon --stacktrace :app:assembleRelease
+            gradle --no-daemon --stacktrace \
+              -PciVersionCode="${CI_VERSION_CODE}" \
+              -PciVersionName="${CI_VERSION_NAME}" \
+              :app:assembleRelease
           fi
 
           mkdir -p dist/release
           APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
           test -n "${APK_PATH}"
+          cp "${APK_PATH}" "dist/release/skoda-music-mvp-r${GITHUB_RUN_NUMBER}-${SHORT_SHA}-unsigned.apk"
           cp "${APK_PATH}" dist/release/skoda-music-mvp-unsigned.apk
 
           if [[ "${BUILD_AAB}" == "true" ]]; then
             AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n1)"
             test -n "${AAB_PATH}"
+            cp "${AAB_PATH}" "dist/release/skoda-music-mvp-r${GITHUB_RUN_NUMBER}-${SHORT_SHA}-unsigned.aab"
             cp "${AAB_PATH}" dist/release/skoda-music-mvp-unsigned.aab
           fi
 
@@ -195,6 +206,7 @@ jobs:
           BUILD_TOOLS_DIR="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
           "$BUILD_TOOLS_DIR/aapt" dump badging dist/release/skoda-music-mvp-unsigned.apk \
             > dist/release/apk_badging.txt
+          grep -E "package: name=|versionCode=|versionName=|sdkVersion='|minSdkVersion='" dist/release/apk_badging.txt || true
 
       - name: Verify APK minSdk is API 17
         shell: bash

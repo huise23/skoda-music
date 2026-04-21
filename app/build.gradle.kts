@@ -8,12 +8,18 @@ android {
     compileSdk = 34
     ndkVersion = "26.3.11579264"
 
+    val ciVersionCode = (project.findProperty("ciVersionCode") as String?)
+        ?.toIntOrNull()
+    val ciVersionName = (project.findProperty("ciVersionName") as String?)
+        ?.trim()
+        .orEmpty()
+
     defaultConfig {
         applicationId = "com.skodamusic.app"
         minSdk = 17
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = if (ciVersionName.isNotEmpty()) ciVersionName else "0.1.0"
         multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

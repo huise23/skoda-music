@@ -23,6 +23,10 @@
     <string name="label_runtime_logs">Runtime Logs (tap to expand)</string>
     <string name="status_playing">Playing</string>
     <string name="status_paused">Paused</string>
+    <string name="playback_progress_placeholder">Progress: --:-- / --:--</string>
+    <string name="playback_progress_format">Progress: %1$s / %2$s</string>
+    <string name="download_progress_placeholder">Download: 0 B / ? (playable --:-- / --:--)</string>
+    <string name="download_progress_format">Download: %1$s / %2$s (playable %3$s / %4$s)</string>
     <string name="action_play">Play</string>
     <string name="action_pause">Pause</string>
     <string name="action_next">Next</string>

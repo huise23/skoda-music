@@ -6,7 +6,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.text.format.Formatter
 import android.util.Log
 import android.net.Uri
 import android.view.Gravity
@@ -239,7 +242,8 @@ class MainActivity : AppCompatActivity() {
 
     private data class EmbyTrack(
         val id: String,
-        val title: String
+        val title: String,
+        val runtimeTicks: Long = -1L
     )
 
     private data class AuthByNameResult(
@@ -285,6 +289,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lrcApiStatusValue: TextView
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
+    private lateinit var playbackProgressValue: TextView
+    private lateinit var downloadProgressValue: TextView
     private lateinit var actionFeedback: TextView
     private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
@@ -318,10 +324,18 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
+    private var lastPlaybackProgressLogMs: Long = 0L
     private val dnsCacheLock = Any()
     private val cfPreferredIpv4Cache = LinkedHashMap<String, Pair<Long, List<InetAddress>>>()
     private val downloadStateLock = Any()
     private val trackDownloadStates = LinkedHashMap<String, TrackDownloadState>()
+    private val uiProgressHandler = Handler(Looper.getMainLooper())
+    private val uiProgressTicker = object : Runnable {
+        override fun run() {
+            refreshProgressMetrics()
+            uiProgressHandler.postDelayed(this, UI_PROGRESS_REFRESH_MS)
+        }
+    }
     @Volatile private var lastKnownBitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
     @Volatile private var downloadControllerRequestId: Int = -1
     @Volatile private var downloadControllerStop = false
@@ -342,6 +356,8 @@ class MainActivity : AppCompatActivity() {
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
+        playbackProgressValue = findViewById(R.id.playback_progress_value)
+        downloadProgressValue = findViewById(R.id.download_progress_value)
         actionFeedback = findViewById(R.id.action_feedback)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
         queueTracksContainer = findViewById(R.id.queue_tracks_container)
@@ -379,12 +395,14 @@ class MainActivity : AppCompatActivity() {
         render(uiState)
         bindActions()
         rebuildTrackLists()
+        startUiProgressTicker()
         appendRuntimeLog("app boot completed")
         maybeAutoRefreshQueueRecommendations("app-startup")
     }
 
     override fun onDestroy() {
         appendRuntimeLog("activity destroyed")
+        stopUiProgressTicker()
         runtimeLogDialog?.dismiss()
         super.onDestroy()
         playbackRequestId += 1
@@ -426,7 +444,6 @@ class MainActivity : AppCompatActivity() {
                 updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
                 return@setOnClickListener
             }
-            val wasPlaying = uiState.isPlaying
             val nextTitle = moveToNextTrack()
             if (nextTitle == null) {
                 updateState {
@@ -444,18 +461,16 @@ class MainActivity : AppCompatActivity() {
                 it.copy(
                     currentTrack = nextTitle,
                     feedbackText = getString(R.string.feedback_next_pressed),
-                    nextEnabled = hasNextTrack()
+                    nextEnabled = hasNextTrack(),
+                    isPlaying = true,
+                    playbackStatusRes = R.string.status_playing,
+                    playPauseLabelRes = R.string.action_pause
                 )
             }
             showToast(R.string.toast_next)
             rebuildTrackLists()
-            if (wasPlaying) {
-                playTrackAtCurrentIndex()
-            } else {
-                playbackRequestId += 1
-                stopDownloadController()
-                releasePlayer()
-            }
+            appendRuntimeLog("ui click next -> play immediately index=$currentTrackIndex")
+            playTrackAtCurrentIndex()
         }
 
         testEmbyButton.setOnClickListener {
@@ -795,6 +810,111 @@ class MainActivity : AppCompatActivity() {
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun startUiProgressTicker() {
+        uiProgressHandler.removeCallbacks(uiProgressTicker)
+        uiProgressHandler.post(uiProgressTicker)
+    }
+
+    private fun stopUiProgressTicker() {
+        uiProgressHandler.removeCallbacks(uiProgressTicker)
+    }
+
+    private fun refreshProgressMetrics() {
+        if (!this::playbackProgressValue.isInitialized || !this::downloadProgressValue.isInitialized) {
+            return
+        }
+        val track = loadedTracks.getOrNull(currentTrackIndex)
+        if (track == null) {
+            playbackProgressValue.text = getString(R.string.playback_progress_placeholder)
+            downloadProgressValue.text = getString(R.string.download_progress_placeholder)
+            return
+        }
+
+        val engineDurationMs = playbackEngine?.durationMs() ?: -1L
+        val durationMs = resolveTrackDurationMs(track, engineDurationMs)
+        val positionMsRaw = playbackEngine?.currentPositionMs() ?: -1L
+        val positionMs = positionMsRaw.coerceAtLeast(0L)
+        val positionText = if (positionMsRaw >= 0L) {
+            formatDurationClock(positionMs)
+        } else {
+            "--:--"
+        }
+        val totalText = if (durationMs > 0L) {
+            formatDurationClock(durationMs)
+        } else {
+            "--:--"
+        }
+        playbackProgressValue.text = getString(
+            R.string.playback_progress_format,
+            positionText,
+            totalText
+        )
+
+        val state = getOrCreateTrackDownloadState(track)
+        val downloadedBytes = state.downloadedBytes.coerceAtLeast(0L)
+        val totalBytes = state.totalBytes
+        val downloadedText = Formatter.formatShortFileSize(this, downloadedBytes)
+        val totalBytesText = if (totalBytes > 0L) {
+            Formatter.formatShortFileSize(this, totalBytes)
+        } else {
+            "?"
+        }
+        val playableSec = estimatePlayableSeconds(track, durationMs)
+        val playableText = formatDurationClock(playableSec * 1000L)
+        val durationText = if (durationMs > 0L) {
+            formatDurationClock(durationMs)
+        } else {
+            "--:--"
+        }
+        downloadProgressValue.text = getString(
+            R.string.download_progress_format,
+            downloadedText,
+            totalBytesText,
+            playableText,
+            durationText
+        )
+
+        if (uiState.isPlaying) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastPlaybackProgressLogMs >= PLAYBACK_PROGRESS_LOG_INTERVAL_MS) {
+                lastPlaybackProgressLogMs = now
+                appendRuntimeLog(
+                    "play progress track=${track.title} time=$positionText/$totalText download=$downloadedText/$totalBytesText"
+                )
+            }
+        }
+    }
+
+    private fun resolveTrackDurationMs(track: EmbyTrack, durationMsHint: Long): Long {
+        if (durationMsHint > 0L) {
+            return durationMsHint
+        }
+        return runTimeTicksToDurationMs(track.runtimeTicks)
+    }
+
+    private fun runTimeTicksToDurationMs(runTimeTicks: Long): Long {
+        if (runTimeTicks <= 0L) {
+            return -1L
+        }
+        // Emby RunTimeTicks follows .NET ticks (100ns per tick).
+        return (runTimeTicks / 10_000L).coerceAtLeast(0L)
+    }
+
+    private fun formatDurationClock(durationMs: Long): String {
+        if (durationMs < 0L) {
+            return "--:--"
+        }
+        val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
     }
 
     private fun maybeAutoRefreshQueueRecommendations(trigger: String) {
@@ -1271,6 +1391,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         appendRuntimeLog("dl-ctl start requestId=$requestId current=${currentTrack.title}")
         var lastPhase: DownloadControlPhase? = null
+        var lastHeartbeatMs = 0L
         while (!downloadControllerStop && requestId == playbackRequestId) {
             val durationMs = playbackEngine?.durationMs() ?: -1L
             val positionMs = playbackEngine?.currentPositionMs() ?: -1L
@@ -1303,6 +1424,15 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 lastPhase = phase
+            }
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastHeartbeatMs >= DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS) {
+                val state = getOrCreateTrackDownloadState(currentTrack)
+                val remainText = if (remainingSec == Long.MAX_VALUE) "unknown" else "${remainingSec}s"
+                appendRuntimeLog(
+                    "dl-ctl heartbeat phase=$phase remain=$remainText track=${currentTrack.title} downloaded=${state.downloadedBytes}/${state.totalBytes} playableSec=$currentPlayableSec posMs=$positionMs durationMs=$durationMs"
+                )
+                lastHeartbeatMs = now
             }
 
             val didWork = when (phase) {
@@ -1397,10 +1527,11 @@ class MainActivity : AppCompatActivity() {
         if (state.completed) {
             return true
         }
-        if (durationMsHint > 0L) {
-            val durationSec = durationMsHint / 1000L
+        val durationMs = resolveTrackDurationMs(track, durationMsHint)
+        if (durationMs > 0L) {
+            val durationSec = durationMs / 1000L
             if (durationSec > 0L) {
-                val playableSec = estimatePlayableSeconds(track, durationMsHint)
+                val playableSec = estimatePlayableSeconds(track, durationMs)
                 if (playableSec + 1 >= durationSec) {
                     synchronized(downloadStateLock) {
                         state.completed = true
@@ -1414,8 +1545,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun estimatePlayableSeconds(track: EmbyTrack, durationMsHint: Long): Long {
         val state = getOrCreateTrackDownloadState(track)
-        if (durationMsHint > 0L && state.totalBytes > 0L) {
-            val durationSec = durationMsHint / 1000L
+        val durationMs = resolveTrackDurationMs(track, durationMsHint)
+        if (durationMs > 0L && state.totalBytes > 0L) {
+            val durationSec = durationMs / 1000L
             if (durationSec > 0L) {
                 return ((state.downloadedBytes.toDouble() / state.totalBytes.toDouble()) * durationSec.toDouble()).toLong()
             }
@@ -1540,8 +1672,9 @@ class MainActivity : AppCompatActivity() {
                     if (state.totalBytes > 0L && state.downloadedBytes >= state.totalBytes) {
                         state.completed = true
                     }
-                    if (durationMsHint > 0L && state.totalBytes > 0L) {
-                        val bitrate = ((state.totalBytes * 8L * 1000L) / durationMsHint).coerceAtLeast(64_000L)
+                    val durationMs = resolveTrackDurationMs(track, durationMsHint)
+                    if (durationMs > 0L && state.totalBytes > 0L) {
+                        val bitrate = ((state.totalBytes * 8L * 1000L) / durationMs).coerceAtLeast(64_000L)
                         state.bitrateBps = bitrate
                         lastKnownBitrateBps = bitrate
                     }
@@ -2218,7 +2351,11 @@ class MainActivity : AppCompatActivity() {
         if (trackId.isEmpty() || title.isEmpty()) {
             return null
         }
-        return EmbyTrack(id = trackId, title = title)
+        return EmbyTrack(
+            id = trackId,
+            title = title,
+            runtimeTicks = item.optLong("RunTimeTicks", -1L)
+        )
     }
 
     private fun readAll(stream: InputStream?): String {
@@ -2436,6 +2573,9 @@ class MainActivity : AppCompatActivity() {
         const val TRACK_DOWNLOAD_STATE_MAX_SIZE = 48
         const val DEFAULT_ESTIMATED_BITRATE_BPS = 192_000L
         const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
+        const val UI_PROGRESS_REFRESH_MS = 1_000L
+        const val PLAYBACK_PROGRESS_LOG_INTERVAL_MS = 5_000L
+        const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L

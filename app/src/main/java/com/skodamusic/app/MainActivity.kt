@@ -291,7 +291,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playbackValue: TextView
     private lateinit var playbackProgressValue: TextView
     private lateinit var downloadProgressValue: TextView
-    private lateinit var actionFeedback: TextView
     private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
     private lateinit var libraryTracksContainer: LinearLayout
@@ -324,7 +323,6 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
-    private var lastPlaybackProgressLogMs: Long = 0L
     private val dnsCacheLock = Any()
     private val cfPreferredIpv4Cache = LinkedHashMap<String, Pair<Long, List<InetAddress>>>()
     private val downloadStateLock = Any()
@@ -358,7 +356,6 @@ class MainActivity : AppCompatActivity() {
         playbackValue = findViewById(R.id.playback_value)
         playbackProgressValue = findViewById(R.id.playback_progress_value)
         downloadProgressValue = findViewById(R.id.download_progress_value)
-        actionFeedback = findViewById(R.id.action_feedback)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
         queueTracksContainer = findViewById(R.id.queue_tracks_container)
         libraryTracksContainer = findViewById(R.id.library_tracks_container)
@@ -478,7 +475,7 @@ class MainActivity : AppCompatActivity() {
                 baseUrl = embyBaseUrlInput.text.toString().trim(),
                 username = embyUsernameInput.text.toString().trim(),
                 password = embyPasswordInput.text.toString().trim(),
-                cfReferenceDomain = cfRefDomainInput.text.toString().trim()
+                cfReferenceDomain = resolveCfReferenceDomain()
             )
             appendRuntimeLog("ui click test emby base=${credentials.baseUrl}")
 
@@ -683,7 +680,7 @@ class MainActivity : AppCompatActivity() {
         recommendQueueButton.isEnabled = false
         updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_loading)) }
         appendRuntimeLog("queue recommend start size=${loadedTracks.size} currentIndex=$currentTrackIndex")
-        val embyClient = buildEmbyHttpClient(base, cfRefDomainInput.text.toString().trim())
+        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
 
         Thread {
             val response = executeGet(
@@ -876,15 +873,6 @@ class MainActivity : AppCompatActivity() {
             durationText
         )
 
-        if (uiState.isPlaying) {
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastPlaybackProgressLogMs >= PLAYBACK_PROGRESS_LOG_INTERVAL_MS) {
-                lastPlaybackProgressLogMs = now
-                appendRuntimeLog(
-                    "play progress track=${track.title} time=$positionText/$totalText download=$downloadedText/$totalBytesText"
-                )
-            }
-        }
     }
 
     private fun resolveTrackDurationMs(track: EmbyTrack, durationMsHint: Long): Long {
@@ -932,7 +920,7 @@ class MainActivity : AppCompatActivity() {
             baseUrl = embyBaseUrlInput.text.toString().trim(),
             username = embyUsernameInput.text.toString().trim(),
             password = embyPasswordInput.text.toString().trim(),
-            cfReferenceDomain = cfRefDomainInput.text.toString().trim()
+            cfReferenceDomain = resolveCfReferenceDomain()
         )
         if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
             appendRuntimeLog("queue auto refresh skip trigger=$trigger reason=missing-emby-credentials")
@@ -1168,7 +1156,7 @@ class MainActivity : AppCompatActivity() {
         val track = loadedTracks[currentTrackIndex]
         val nextTrack = loadedTracks.getOrNull(currentTrackIndex + 1)
         val downloadUrl = buildEmbyDownloadUrl(base, track.id, token)
-        val embyClient = buildEmbyHttpClient(base, cfRefDomainInput.text.toString().trim())
+        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
         val requestId = ++playbackRequestId
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
@@ -1395,12 +1383,18 @@ class MainActivity : AppCompatActivity() {
         while (!downloadControllerStop && requestId == playbackRequestId) {
             val durationMs = playbackEngine?.durationMs() ?: -1L
             val positionMs = playbackEngine?.currentPositionMs() ?: -1L
+            val playedSec = if (positionMs >= 0L) positionMs / 1000L else -1L
             val remainingSec = if (durationMs > 0L && positionMs >= 0L) {
                 ((durationMs - positionMs).coerceAtLeast(0L) / 1000L)
             } else {
                 Long.MAX_VALUE
             }
             val currentPlayableSec = estimatePlayableSeconds(currentTrack, durationMs)
+            val currentAheadSec = if (playedSec >= 0L) {
+                (currentPlayableSec - playedSec).coerceAtLeast(0L)
+            } else {
+                currentPlayableSec
+            }
             val currentComplete = isTrackDownloadComplete(currentTrack, durationMs)
             val nextPlayableSec = if (nextTrack != null) {
                 estimatePlayableSeconds(nextTrack, -1L)
@@ -1409,18 +1403,19 @@ class MainActivity : AppCompatActivity() {
             }
             val phase = chooseDownloadControlPhase(
                 remainingSec = remainingSec,
-                currentPlayableSec = currentPlayableSec,
+                currentAheadSec = currentAheadSec,
+                playbackPositionKnown = positionMs >= 0L,
                 currentTrackComplete = currentComplete,
                 hasNextTrack = nextTrack != null,
                 nextPlayableSec = nextPlayableSec
             )
             if (phase != lastPhase) {
                 appendRuntimeLog(
-                    "dl-ctl phase=$phase remainSec=$remainingSec currentPlayableSec=$currentPlayableSec nextPlayableSec=$nextPlayableSec"
+                    "dl-ctl phase=$phase remainSec=$remainingSec currentPlayableSec=$currentPlayableSec currentAheadSec=$currentAheadSec nextPlayableSec=$nextPlayableSec"
                 )
                 if (phase == DownloadControlPhase.IDLE) {
                     appendRuntimeLog(
-                        "dl-ctl pause reason=${describeIdleReason(remainingSec, currentPlayableSec, currentComplete, nextTrack != null, nextPlayableSec)}"
+                        "dl-ctl pause reason=${describeIdleReason(remainingSec, currentAheadSec, currentComplete, nextTrack != null, nextPlayableSec)}"
                     )
                 }
                 lastPhase = phase
@@ -1430,7 +1425,7 @@ class MainActivity : AppCompatActivity() {
                 val state = getOrCreateTrackDownloadState(currentTrack)
                 val remainText = if (remainingSec == Long.MAX_VALUE) "unknown" else "${remainingSec}s"
                 appendRuntimeLog(
-                    "dl-ctl heartbeat phase=$phase remain=$remainText track=${currentTrack.title} downloaded=${state.downloadedBytes}/${state.totalBytes} playableSec=$currentPlayableSec posMs=$positionMs durationMs=$durationMs"
+                    "dl-ctl heartbeat phase=$phase remain=$remainText track=${currentTrack.title} downloaded=${state.downloadedBytes}/${state.totalBytes} playableSec=$currentPlayableSec aheadSec=$currentAheadSec posMs=$positionMs durationMs=$durationMs"
                 )
                 lastHeartbeatMs = now
             }
@@ -1477,7 +1472,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun chooseDownloadControlPhase(
         remainingSec: Long,
-        currentPlayableSec: Long,
+        currentAheadSec: Long,
+        playbackPositionKnown: Boolean,
         currentTrackComplete: Boolean,
         hasNextTrack: Boolean,
         nextPlayableSec: Long
@@ -1491,15 +1487,24 @@ class MainActivity : AppCompatActivity() {
             }
             return DownloadControlPhase.IDLE
         }
-        if (currentPlayableSec < DOWNLOAD_WINDOW_SEC) {
+        if (!playbackPositionKnown && !currentTrackComplete) {
             return DownloadControlPhase.MAINTAIN_CURRENT_WINDOW
+        }
+        if (currentAheadSec < DOWNLOAD_WINDOW_SEC) {
+            return DownloadControlPhase.MAINTAIN_CURRENT_WINDOW
+        }
+        if (!currentTrackComplete) {
+            return DownloadControlPhase.FINISH_CURRENT_TRACK
+        }
+        if (hasNextTrack && nextPlayableSec in 0 until DOWNLOAD_WINDOW_SEC) {
+            return DownloadControlPhase.PREFETCH_NEXT_WINDOW
         }
         return DownloadControlPhase.IDLE
     }
 
     private fun describeIdleReason(
         remainingSec: Long,
-        currentPlayableSec: Long,
+        currentAheadSec: Long,
         currentTrackComplete: Boolean,
         hasNextTrack: Boolean,
         nextPlayableSec: Long
@@ -1516,7 +1521,10 @@ class MainActivity : AppCompatActivity() {
             }
             return "near-end-waiting-next-window"
         }
-        if (currentPlayableSec >= DOWNLOAD_WINDOW_SEC) {
+        if (hasNextTrack && nextPlayableSec >= DOWNLOAD_WINDOW_SEC && currentAheadSec >= DOWNLOAD_WINDOW_SEC) {
+            return "current-window-ready-next-window-ready"
+        }
+        if (currentAheadSec >= DOWNLOAD_WINDOW_SEC) {
             return "current-window-ready"
         }
         return "no-op"
@@ -2151,6 +2159,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun resolveCfReferenceDomain(): String {
+        val input = cfRefDomainInput.text?.toString()?.trim().orEmpty()
+        if (input.isNotEmpty()) {
+            return input
+        }
+        return getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .getString(KEY_CF_REF_DOMAIN, "")
+            .orEmpty()
+            .trim()
+    }
+
     private fun resolveDnsForHost(
         hostname: String,
         embyHost: String,
@@ -2537,7 +2556,6 @@ class MainActivity : AppCompatActivity() {
         lrcApiStatusValue.text = state.lrcApiStatusText
         trackValue.text = state.currentTrack
         playbackValue.setText(state.playbackStatusRes)
-        actionFeedback.text = state.feedbackText
         playPauseButton.setText(state.playPauseLabelRes)
         playPauseButton.isEnabled = state.playPauseEnabled
         nextButton.isEnabled = state.nextEnabled
@@ -2574,7 +2592,6 @@ class MainActivity : AppCompatActivity() {
         const val DEFAULT_ESTIMATED_BITRATE_BPS = 192_000L
         const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
         const val UI_PROGRESS_REFRESH_MS = 1_000L
-        const val PLAYBACK_PROGRESS_LOG_INTERVAL_MS = 5_000L
         const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2

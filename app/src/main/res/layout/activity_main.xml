@@ -171,20 +171,6 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/action_feedback"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="@drawable/field_surface"
-                        android:fontFamily="monospace"
-                        android:lineSpacingExtra="2dp"
-                        android:maxLines="12"
-                        android:padding="12dp"
-                        android:text="@string/feedback_need_emby"
-                        android:textColor="@color/text_secondary"
-                        android:textIsSelectable="true"
-                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <LinearLayout

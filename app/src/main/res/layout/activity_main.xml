@@ -19,7 +19,8 @@
             android:fontFamily="sans-serif-medium"
             android:text="@string/app_name"
             android:textColor="@color/text_primary"
-            android:textSize="18sp" />
+            android:textSize="18sp"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="match_parent"
@@ -28,7 +29,8 @@
             android:fontFamily="sans-serif"
             android:text="@string/label_nav"
             android:textColor="@color/text_muted"
-            android:textSize="12sp" />
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/nav_home"
@@ -126,7 +128,8 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_now_playing"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:visibility="gone" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -163,7 +166,8 @@
                                 android:fontFamily="sans-serif"
                                 android:text="@string/label_track"
                                 android:textColor="@color/text_muted"
-                                android:textSize="11sp" />
+                                android:textSize="11sp"
+                                android:visibility="gone" />
 
                             <TextView
                                 android:id="@+id/track_value"
@@ -184,7 +188,8 @@
                                 android:fontFamily="sans-serif"
                                 android:text="@string/label_playback"
                                 android:textColor="@color/text_muted"
-                                android:textSize="11sp" />
+                                android:textSize="11sp"
+                                android:visibility="gone" />
 
                             <TextView
                                 android:id="@+id/playback_value"
@@ -236,7 +241,8 @@
                         android:fontFamily="monospace"
                         android:text="@string/download_progress_placeholder"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:visibility="gone" />
 
                     <LinearLayout
                         android:layout_width="match_parent"

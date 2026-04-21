@@ -43,6 +43,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

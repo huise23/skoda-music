@@ -224,3 +224,8 @@
   - removed `com.google.android.exoplayer:extension-okhttp:2.17.1` from Gradle dependencies.
   - switched Exo playback data source from `OkHttpDataSource.Factory` to `DefaultHttpDataSource.Factory`.
   - kept OkHttp client for Emby API/download control path and CF IPv4 DNS optimization.
+- Completed `T-S3-UI-013` (ai-execution):
+  - added playback auto-skip-on-error path for decode failures (`code=4003` / renderer-related errors) with request-level dedupe.
+  - added `PlaybackEngine.seekTo` and wired draggable `SeekBar` interaction in Home page.
+  - restructured Home playback module to reference target frame (`cover entry + info + progress + Prev/Play/Next`), while keeping existing glass colors/styles unchanged.
+  - synced `.ai/context` execution files (`CURRENT_STATUS/NEXT_STEPS/HANDOFF/TASK_QUEUE`) and appended new decision notes.

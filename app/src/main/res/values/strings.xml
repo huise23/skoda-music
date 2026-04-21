@@ -30,9 +30,14 @@
     <string name="download_progress_format">Download: %1$s / %2$s (playable %3$s / %4$s)</string>
     <string name="action_play">Play</string>
     <string name="action_pause">Pause</string>
+    <string name="action_prev">Prev</string>
     <string name="action_next">Next</string>
+    <string name="action_recommend_listen">听推荐</string>
+    <string name="label_cover_entry">Cover</string>
     <string name="feedback_idle">Action feedback: idle</string>
     <string name="feedback_play_pressed">Action feedback: Play/Pause pressed</string>
+    <string name="feedback_prev_pressed">Action feedback: switched to previous track</string>
+    <string name="feedback_prev_to_start">Action feedback: at first track, restart from beginning</string>
     <string name="feedback_next_pressed">Action feedback: switched to next track</string>
     <string name="feedback_need_emby">Action feedback: load tracks from Emby first</string>
     <string name="feedback_emby_testing">Action feedback: testing Emby connection</string>
@@ -62,6 +67,9 @@
     <string name="feedback_queue_recommend_failed_empty">Action feedback: queue recommend returned empty audio list</string>
     <string name="feedback_queue_recommend_failed_apply">Action feedback: queue recommend apply failed, keep existing queue</string>
     <string name="feedback_queue_recommend_success">Action feedback: queue updated, replaced %1$d pending tracks with %2$d recommendations</string>
+    <string name="feedback_seek_failed">Action feedback: seek failed</string>
+    <string name="feedback_auto_skipped_failed_track">Action feedback: current track decode failed, auto skipped to next</string>
+    <string name="feedback_no_next_after_failed_track">Action feedback: track decode failed and no next track available</string>
     <string name="toast_playing">Playback changed to Playing</string>
     <string name="toast_paused">Playback changed to Paused</string>
     <string name="toast_next">Switched to next track</string>

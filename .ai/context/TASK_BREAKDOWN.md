@@ -1,6 +1,6 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-21 15:25
+Last Updated: 2026-04-21 18:05
 
 ## T-S3-RB-008
 - Task ID: `T-S3-RB-008`
@@ -95,6 +95,30 @@ Last Updated: 2026-04-21 15:25
   - 设备环境不可控导致结果波动
 - Size: M
 - Minimal Loop: No
+
+## T-S3-UI-013
+- Task ID: `T-S3-UI-013`
+- Title: Home 播放模块重排 + 可拖动进度 + 解码失败自动切歌
+- Goal: 按用户截图参考重排 Home 播放模块（不改颜色/玻璃风格），并落地解码失败自动切下一首与可拖动进度条。
+- Why: 当前车机出现 `MediaCodecAudioRenderer/code=4003` 失败场景，需从“失败即停”改为“自动跳过”，同时使播放交互更贴近车机主流样式。
+- Dependencies: `T-S3-LOG-011`
+- Inputs:
+  - 用户提供截图（模块框架参考）
+  - `MainActivity.kt` 播放引擎与回调链路
+  - `activity_main.xml` 现有 Home 页面布局
+- Expected Outputs:
+  - `PlaybackEngine` 增加 `seekTo` 并接线 `SeekBar` 拖动定位
+  - 下载/缓存链路 `onError` 统一进入自动切歌处理
+  - Home 模块调整为“封面入口 + 信息区 + 进度条 + 三键控制”结构
+  - 保持现有玻璃态资源与配色不变
+- Done Criteria:
+  - `code=4003` 等解码失败场景触发自动切下一首
+  - 进度条可拖动并在松手后生效
+  - UI 结构符合用户参考方向，且无主题资源重构
+- Risks:
+  - 无本地 `gradlew`，只能做静态核对，编译/实机验证需外部环境
+- Size: M
+- Minimal Loop: Yes
 
 ## Blocked Candidates (Carry Forward)
 

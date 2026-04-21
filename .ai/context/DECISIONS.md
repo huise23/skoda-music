@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-21 16:40
+Last Updated: 2026-04-21 18:05
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -135,3 +135,10 @@ Last Updated: 2026-04-21 16:40
 - 决策: `minSdk=17` 前提下不使用 `com.google.android.exoplayer:extension-okhttp:2.17.1`（其库清单要求 `minSdk 21`）。
 - 决策: Exo 播放数据源改用 `DefaultHttpDataSource.Factory`，确保 APK 清单合并不再触发 `uses-sdk` 冲突。
 - 决策: Emby 业务请求与下载控制仍保留 OkHttp 客户端（DNS 优选/日志链路不变）；仅 Exo 播放器数据源不再绑定 OkHttp 扩展。
+
+## 2026-04-21 18:05 - T-S3-UI-013 执行决策（自动切歌 + SeekBar + Home 重排）
+- 决策: `MediaCodecAudioRenderer/code=4003` 归入“解码失败”场景，播放失败默认策略为“自动切下一首”而非停播等待。
+- 决策: 下载链路与缓存链路的播放错误处理统一口径，避免两条链路行为不一致。
+- 决策: 增加同 `requestId` 错误去重，防止一次错误触发重复跳歌。
+- 决策: 播放进度交互改为可拖动 `SeekBar`；拖动中暂停自动刷新写回，松手后执行 seek。
+- 决策: Home 模块按用户参考图做结构重排，但保持现有颜色与 glass 资源，不做视觉主题切换。

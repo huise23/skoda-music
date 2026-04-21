@@ -1,11 +1,13 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-21 16:40
+Last Updated: 2026-04-21 18:05
 
 ## Highest Priority
 - [ ] 执行 `T-S3-VAL-012`：API17 实机专项回归与证据回填（优选 IP + 30s 调度）。
 
 ## Immediate Actions
+- [ ] 基于 `T-S3-UI-013` 新增回归：验证 `code=4003` 等解码失败自动切歌是否稳定，避免重复跳歌/死循环。
+- [ ] 验证 SeekBar 拖动定位：拖动中 UI 不抖动、松手后定位生效、失败时反馈正确。
 - [ ] 按检查口径覆盖首播、弱网、连续切歌、临近结束预下载、下一曲衔接至少 5 轮。
 
 ## Pending Confirmation

@@ -17,6 +17,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -66,6 +67,13 @@ class MainActivity : AppCompatActivity() {
         IDLE
     }
 
+    private enum class PlaybackFailureCategory {
+        DECODER_FAILURE,
+        SOURCE_FAILURE,
+        NETWORK_FAILURE,
+        UNKNOWN
+    }
+
     private interface PlaybackEngineCallback {
         fun onPrepared()
         fun onCompletion()
@@ -78,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         fun prepare(source: Uri, callback: PlaybackEngineCallback)
         fun play(): Boolean
         fun pause()
+        fun seekTo(positionMs: Long): Boolean
         fun isPlaying(): Boolean
         fun currentPositionMs(): Long
         fun durationMs(): Long
@@ -164,6 +173,16 @@ class MainActivity : AppCompatActivity() {
             try {
                 exoPlayer?.pause()
             } catch (_: Exception) {
+            }
+        }
+
+        override fun seekTo(positionMs: Long): Boolean {
+            val player = exoPlayer ?: return false
+            return try {
+                player.seekTo(positionMs.coerceAtLeast(0L))
+                true
+            } catch (_: Exception) {
+                false
             }
         }
 
@@ -291,12 +310,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var playbackProgressValue: TextView
+    private lateinit var playbackSeekBar: SeekBar
     private lateinit var downloadProgressValue: TextView
     private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
     private lateinit var libraryTracksContainer: LinearLayout
+    private lateinit var prevButton: Button
     private lateinit var playPauseButton: Button
     private lateinit var nextButton: Button
+    private lateinit var recommendHomeButton: Button
     private lateinit var recommendQueueButton: Button
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
@@ -324,6 +346,10 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
+    private var isUserSeeking: Boolean = false
+    private var pendingSeekPositionMs: Long = -1L
+    private val playbackErrorHandleLock = Any()
+    private var playbackErrorHandledRequestId: Int = -1
     private val dnsCacheLock = Any()
     private val cfPreferredIpv4Cache = LinkedHashMap<String, Pair<Long, List<InetAddress>>>()
     private val downloadStateLock = Any()
@@ -357,12 +383,15 @@ class MainActivity : AppCompatActivity() {
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
         playbackProgressValue = findViewById(R.id.playback_progress_value)
+        playbackSeekBar = findViewById(R.id.playback_seek_bar)
         downloadProgressValue = findViewById(R.id.download_progress_value)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
         queueTracksContainer = findViewById(R.id.queue_tracks_container)
         libraryTracksContainer = findViewById(R.id.library_tracks_container)
+        prevButton = findViewById(R.id.btn_prev)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
+        recommendHomeButton = findViewById(R.id.btn_recommend_home)
         recommendQueueButton = findViewById(R.id.btn_recommend_queue)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
@@ -419,6 +448,76 @@ class MainActivity : AppCompatActivity() {
         }
         recommendQueueButton.setOnClickListener {
             requestQueueRecommendations()
+        }
+        recommendHomeButton.setOnClickListener {
+            requestQueueRecommendations()
+        }
+        playbackSeekBar.max = SEEK_BAR_MAX
+        playbackSeekBar.progress = 0
+        playbackSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) {
+                    return
+                }
+                val track = loadedTracks.getOrNull(currentTrackIndex) ?: return
+                val durationMs = resolveTrackDurationMs(track, playbackEngine?.durationMs() ?: -1L)
+                if (durationMs <= 0L) {
+                    return
+                }
+                pendingSeekPositionMs = ((progress.toLong() * durationMs) / SEEK_BAR_MAX.toLong()).coerceIn(0L, durationMs)
+                playbackProgressValue.text = getString(
+                    R.string.playback_progress_format,
+                    formatDurationClock(pendingSeekPositionMs.coerceAtLeast(0L)),
+                    formatDurationClock(durationMs)
+                )
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = true
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val targetMs = pendingSeekPositionMs
+                pendingSeekPositionMs = -1L
+                isUserSeeking = false
+                applySeekTarget(targetMs)
+            }
+        })
+
+        prevButton.setOnClickListener {
+            appendRuntimeLog("ui click prev")
+            if (loadedTracks.isEmpty()) {
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+                return@setOnClickListener
+            }
+            if (currentTrackIndex <= 0) {
+                currentTrackIndex = 0
+                syncNativeQueueToCurrentIndex()
+                updateState {
+                    it.copy(
+                        currentTrack = loadedTracks.first().title,
+                        feedbackText = getString(R.string.feedback_prev_to_start),
+                        nextEnabled = hasNextTrack()
+                    )
+                }
+                rebuildTrackLists()
+                playTrackAtCurrentIndex()
+                return@setOnClickListener
+            }
+            currentTrackIndex = (currentTrackIndex - 1).coerceAtLeast(0)
+            syncNativeQueueToCurrentIndex()
+            updateState {
+                it.copy(
+                    currentTrack = loadedTracks[currentTrackIndex].title,
+                    feedbackText = getString(R.string.feedback_prev_pressed),
+                    nextEnabled = hasNextTrack(),
+                    isPlaying = true,
+                    playbackStatusRes = R.string.status_playing,
+                    playPauseLabelRes = R.string.action_pause
+                )
+            }
+            rebuildTrackLists()
+            playTrackAtCurrentIndex()
         }
 
         playPauseButton.setOnClickListener {
@@ -822,13 +921,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshProgressMetrics() {
-        if (!this::playbackProgressValue.isInitialized || !this::downloadProgressValue.isInitialized) {
+        if (!this::playbackProgressValue.isInitialized || !this::downloadProgressValue.isInitialized || !this::playbackSeekBar.isInitialized) {
             return
         }
         val track = loadedTracks.getOrNull(currentTrackIndex)
         if (track == null) {
             playbackProgressValue.text = getString(R.string.playback_progress_placeholder)
             downloadProgressValue.text = getString(R.string.download_progress_placeholder)
+            if (!isUserSeeking) {
+                playbackSeekBar.progress = 0
+            }
             return
         }
 
@@ -851,6 +953,14 @@ class MainActivity : AppCompatActivity() {
             positionText,
             totalText
         )
+        if (!isUserSeeking) {
+            val seekProgress = if (durationMs > 0L) {
+                ((positionMs * SEEK_BAR_MAX.toLong()) / durationMs).toInt().coerceIn(0, SEEK_BAR_MAX)
+            } else {
+                0
+            }
+            playbackSeekBar.progress = seekProgress
+        }
 
         val state = getOrCreateTrackDownloadState(track)
         val downloadedBytes = state.downloadedBytes.coerceAtLeast(0L)
@@ -876,6 +986,98 @@ class MainActivity : AppCompatActivity() {
             durationText
         )
 
+    }
+
+    private fun applySeekTarget(targetMs: Long) {
+        if (targetMs < 0L) {
+            refreshProgressMetrics()
+            return
+        }
+        val engine = playbackEngine
+        if (engine == null) {
+            refreshProgressMetrics()
+            return
+        }
+        val ok = engine.seekTo(targetMs)
+        appendRuntimeLog("play seek targetMs=$targetMs ok=$ok")
+        if (!ok) {
+            updateState {
+                it.copy(feedbackText = getString(R.string.feedback_seek_failed))
+            }
+        }
+        refreshProgressMetrics()
+    }
+
+    private fun categorizePlaybackError(code: Int, detail: String): PlaybackFailureCategory {
+        val lower = detail.lowercase(Locale.US)
+        if (code == 4003 ||
+            code in 4000..4099 ||
+            lower.contains("mediacodec") ||
+            lower.contains("renderer") ||
+            lower.contains("decode")
+        ) {
+            return PlaybackFailureCategory.DECODER_FAILURE
+        }
+        if (code in 2000..2099 || lower.contains("timeout") || lower.contains("network") || lower.contains("connection")) {
+            return PlaybackFailureCategory.NETWORK_FAILURE
+        }
+        if (lower.contains("http") || lower.contains("container") || lower.contains("unsupported") || lower.contains("parser")) {
+            return PlaybackFailureCategory.SOURCE_FAILURE
+        }
+        return PlaybackFailureCategory.UNKNOWN
+    }
+
+    private fun handlePlaybackErrorAutoSkip(
+        requestId: Int,
+        code: Int,
+        detail: String,
+        source: String
+    ) {
+        if (requestId != playbackRequestId) {
+            return
+        }
+        val category = categorizePlaybackError(code, detail)
+        synchronized(playbackErrorHandleLock) {
+            if (playbackErrorHandledRequestId == requestId) {
+                return
+            }
+            playbackErrorHandledRequestId = requestId
+        }
+        val track = loadedTracks.getOrNull(currentTrackIndex)
+        appendRuntimeLog(
+            "playback error source=$source requestId=$requestId category=$category code=$code detail=$detail track=${track?.title ?: "<unknown>"}"
+        )
+        runOnUiThread {
+            if (requestId != playbackRequestId) {
+                return@runOnUiThread
+            }
+            val nextTitle = moveToNextTrack()
+            if (nextTitle != null) {
+                updateState {
+                    it.copy(
+                        currentTrack = nextTitle,
+                        isPlaying = false,
+                        playbackStatusRes = R.string.status_paused,
+                        playPauseLabelRes = R.string.action_play,
+                        nextEnabled = hasNextTrack(),
+                        feedbackText = getString(R.string.feedback_auto_skipped_failed_track)
+                    )
+                }
+                rebuildTrackLists()
+                playTrackAtCurrentIndex()
+            } else {
+                updateState {
+                    it.copy(
+                        isPlaying = false,
+                        playbackStatusRes = R.string.status_paused,
+                        playPauseLabelRes = R.string.action_play,
+                        nextEnabled = false,
+                        feedbackText = getString(R.string.feedback_no_next_after_failed_track)
+                    )
+                }
+                rebuildTrackLists()
+            }
+        }
     }
 
     private fun resolveTrackDurationMs(track: EmbyTrack, durationMsHint: Long): Long {
@@ -1140,6 +1342,9 @@ class MainActivity : AppCompatActivity() {
         if (loadedTracks.isEmpty()) {
             return
         }
+        synchronized(playbackErrorHandleLock) {
+            playbackErrorHandledRequestId = -1
+        }
         val base = embySessionBaseUrl
         val userId = embySessionUserId
         val token = embyAccessToken
@@ -1259,8 +1464,12 @@ class MainActivity : AppCompatActivity() {
                         if (requestId != playbackRequestId) {
                             return
                         }
-                        appendRuntimeLog("play error requestId=$requestId code=$code detail=$detail source=download")
-                        triggerCachedFallback("Action feedback: download play error ($code/$detail), trying cached file")
+                        handlePlaybackErrorAutoSkip(
+                            requestId = requestId,
+                            code = code,
+                            detail = detail,
+                            source = "download"
+                        )
                     }
 
                     override fun onBufferingStart() {
@@ -1820,17 +2029,12 @@ class MainActivity : AppCompatActivity() {
                                 if (requestId != playbackRequestId) {
                                     return
                                 }
-                                appendRuntimeLog("cache playback error requestId=$requestId code=$code detail=$detail")
-                                runOnUiThread {
-                                    updateState {
-                                        it.copy(
-                                            isPlaying = false,
-                                            playbackStatusRes = R.string.status_paused,
-                                            playPauseLabelRes = R.string.action_play,
-                                            feedbackText = "Action feedback: cached play failed ($code)"
-                                        )
-                                    }
-                                }
+                                handlePlaybackErrorAutoSkip(
+                                    requestId = requestId,
+                                    code = code,
+                                    detail = detail,
+                                    source = "cache"
+                                )
                             }
 
                             override fun onBufferingStart() {
@@ -2561,7 +2765,9 @@ class MainActivity : AppCompatActivity() {
         playbackValue.setText(state.playbackStatusRes)
         playPauseButton.setText(state.playPauseLabelRes)
         playPauseButton.isEnabled = state.playPauseEnabled
+        prevButton.isEnabled = loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
+        recommendHomeButton.isEnabled = loadedTracks.isNotEmpty()
         testEmbyButton.isEnabled = state.testEmbyEnabled
         testLrcApiButton.isEnabled = state.testLrcApiEnabled
     }
@@ -2595,6 +2801,7 @@ class MainActivity : AppCompatActivity() {
         const val DEFAULT_ESTIMATED_BITRATE_BPS = 192_000L
         const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
         const val UI_PROGRESS_REFRESH_MS = 1_000L
+        const val SEEK_BAR_MAX = 1000
         const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2

@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-04-21 16:40
+Last Updated: 2026-04-21 18:05
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -8,8 +8,8 @@ Last Updated: 2026-04-21 16:40
 - 当前阶段: S3 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）
 
 ## Current Goal
-- 目标 1: 完成 `T-S3-NET-009/DL-010/LOG-011`，形成可回归版本。
-- 目标 2: 推进 `T-S3-VAL-012` 实机验证并回填证据。
+- 目标 1: 推进 `T-S3-VAL-012` 实机验证并回填证据。
+- 目标 2: 回归 `T-S3-UI-013`（自动切歌与可拖动进度）在 API17 设备上的稳定性。
 
 ## Plan Hand-off
 - 本轮 `ai-execution` 已完成 `T-S3-NET-009`：
@@ -57,6 +57,11 @@ Last Updated: 2026-04-21 16:40
   - 使用 `StyledPlayerView`
   - 缓存保留最近 20 首
 - 说明: 本地环境缺少 `gradle/gradlew.bat`，编译型验证需走 CI 或设备实测。
+- 本轮 `ai-execution` 已完成 `T-S3-UI-013`：
+  - `MainActivity.kt` 扩展 `PlaybackEngine.seekTo`，并接入 `SeekBar` 拖动定位（拖动中不覆盖、松手 seek）。
+  - 下载/缓存两条播放回调的 `onError` 统一走自动切歌处理，新增错误分类与去重处理。
+  - Home 页重排为“封面入口 + 右侧信息 + 进度条 + Prev/Play/Next”，并新增“听推荐”入口复用现有推荐逻辑。
+  - 视觉约束保持：沿用现有 glass 资源与颜色，不改主题体系。
 
 ## Local Gemini Delta (Uncommitted)
 - 工作区检测到 Gemini 本地改动（未提交）：

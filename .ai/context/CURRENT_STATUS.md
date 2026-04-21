@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-21 16:55
+Last Updated: 2026-04-21 18:05
 
 ## Stage
 - 阶段判断: S1/S2 基础交互已完成，当前处于 S3「API17 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）」执行阶段。
@@ -31,6 +31,11 @@ Last Updated: 2026-04-21 16:55
 - 已完成 `T-S3-DL-010`：下载控制线程按 30s 窗口状态机运行（`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`），满足“当前可播 <30s 下载、>=30s 暂停；剩余播放 <30s 先补完当前再预下下一曲前30s”口径。
 - 已完成 `T-S3-LOG-011`：补齐下载调度与优选 IPv4 诊断日志（phase 切换、暂停原因、chunk 开始/成功/跳过、DNS cache-hit/refresh、优选命中与系统回退原因）。
 - 已完成 API17 构建兼容修复：移除 `extension-okhttp:2.17.1`（`minSdk 21` 约束），Exo 数据源改为 `DefaultHttpDataSource.Factory`，保留 Emby 业务请求与下载控制的 OkHttp 链路。
+- 已完成 `T-S3-UI-013`：
+  - Home 播放区按参考图重排为“封面入口 + 信息区 + 进度条 + 三键控制（Prev/Play/Next）”。
+  - 保持现有颜色与玻璃风格资源，不做主题重构。
+  - `PlaybackEngine` 增加 `seekTo`，进度条支持拖动定位（拖动时暂停自动刷新，松手后 seek）。
+  - 播放错误链路（download/cache）统一改为自动切下一首，并补充错误分类日志（含 `code=4003` 解码失败场景）。
 
 ## Not Started / Unknown
 - API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。
@@ -58,6 +63,7 @@ Last Updated: 2026-04-21 16:55
 - 执行补充: `T-S3-DL-010` 已落地，下载状态机与阈值常量已在 `MainActivity.kt` 接线（`DOWNLOAD_WINDOW_SEC=30`）。
 - 执行补充: `T-S3-LOG-011` 已落地，日志可直接支撑 `T-S3-VAL-012` 的实机复盘与证据留存。
 - 本地处置: 本轮错误实现已按用户要求回滚。
+- 本轮实现说明: 已完成代码与资源接线，但本地无 `gradlew`，尚未完成编译型验证。
 
 ## Local Pending Changes (Gemini)
 - 当前工作区存在一批未提交的 Gemini 本地改动（UI 玻璃态视觉 + 推荐页自动刷新）。

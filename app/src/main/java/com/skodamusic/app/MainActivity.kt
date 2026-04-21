@@ -24,10 +24,10 @@ import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
-import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSource
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
 import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultDataSource
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
 import okhttp3.Dns
 import okhttp3.MediaType
@@ -1802,9 +1802,12 @@ class MainActivity : AppCompatActivity() {
         if (existing != null) {
             return existing
         }
+        // Keep API17 compatibility: avoid exoplayer extension-okhttp (minSdk 21 in 2.17.1).
+        // Streaming path uses Exo default HTTP stack; Emby API/download control path still uses OkHttp client.
         val defaultDataSourceFactory = DefaultDataSource.Factory(
             this,
-            OkHttpDataSource.Factory(httpClient)
+            DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
         )
         val created = ExoPlaybackEngine(this, defaultDataSourceFactory)
         playbackEngine = created

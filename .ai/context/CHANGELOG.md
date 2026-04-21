@@ -220,3 +220,7 @@
   - enhanced download scheduler diagnostics with explicit pause reasons and phase transition context.
   - added chunk-level logs (`start/ok/skip-completed/skip-eof`) with playable-second and completion snapshots.
   - enhanced CF IPv4 diagnostics with cache-hit/refresh, selected IP preview, bypass/fallback reason, and system DNS failure type.
+- Applied API17 compatibility hotfix for build failure:
+  - removed `com.google.android.exoplayer:extension-okhttp:2.17.1` from Gradle dependencies.
+  - switched Exo playback data source from `OkHttpDataSource.Factory` to `DefaultHttpDataSource.Factory`.
+  - kept OkHttp client for Emby API/download control path and CF IPv4 DNS optimization.

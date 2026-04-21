@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-21 16:40
+Last Updated: 2026-04-21 16:55
 
 ## Stage
 - 阶段判断: S1/S2 基础交互已完成，当前处于 S3「API17 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）」执行阶段。
@@ -30,6 +30,7 @@ Last Updated: 2026-04-21 16:40
 - 已完成 `T-S3-NET-009`：接入 CF 优选 IPv4 解析链路（参考域名->候选 IPv4），业务请求 Host 保持 Emby 域名；鉴权/拉库/推荐/播放/下载统一走可注入 DNS 的 OkHttp 客户端并支持系统 DNS 回退。
 - 已完成 `T-S3-DL-010`：下载控制线程按 30s 窗口状态机运行（`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`），满足“当前可播 <30s 下载、>=30s 暂停；剩余播放 <30s 先补完当前再预下下一曲前30s”口径。
 - 已完成 `T-S3-LOG-011`：补齐下载调度与优选 IPv4 诊断日志（phase 切换、暂停原因、chunk 开始/成功/跳过、DNS cache-hit/refresh、优选命中与系统回退原因）。
+- 已完成 API17 构建兼容修复：移除 `extension-okhttp:2.17.1`（`minSdk 21` 约束），Exo 数据源改为 `DefaultHttpDataSource.Factory`，保留 Emby 业务请求与下载控制的 OkHttp 链路。
 
 ## Not Started / Unknown
 - API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。

@@ -130,3 +130,8 @@ Last Updated: 2026-04-21 16:40
 - 决策: 调度日志保留“阶段 + 关键指标 + 暂停原因”三元组，确保可复盘“为何下载继续/暂停”。
 - 决策: 下载分块日志固定包含 `start/ok/skip/exception`，并携带 `written/downloaded/total/playableSec/complete` 快照。
 - 决策: DNS 日志固定包含 `cache-hit/cache-refresh/selectedIP/fallback reason`，用于实机快速定位节点命中与回退路径。
+
+## 2026-04-21 16:55 - API17 兼容修复（Exo extension-okhttp 移除）
+- 决策: `minSdk=17` 前提下不使用 `com.google.android.exoplayer:extension-okhttp:2.17.1`（其库清单要求 `minSdk 21`）。
+- 决策: Exo 播放数据源改用 `DefaultHttpDataSource.Factory`，确保 APK 清单合并不再触发 `uses-sdk` 冲突。
+- 决策: Emby 业务请求与下载控制仍保留 OkHttp 客户端（DNS 优选/日志链路不变）；仅 Exo 播放器数据源不再绑定 OkHttp 扩展。

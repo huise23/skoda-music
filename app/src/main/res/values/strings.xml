@@ -21,6 +21,7 @@
     <string name="label_now_playing">Now Playing</string>
     <string name="label_controls">Controls</string>
     <string name="label_runtime_logs">Runtime Logs (tap to expand)</string>
+    <string name="build_id_placeholder">build: local</string>
     <string name="status_playing">Playing</string>
     <string name="status_paused">Paused</string>
     <string name="playback_progress_placeholder">Progress: --:-- / --:--</string>

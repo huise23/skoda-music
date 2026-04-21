@@ -13,6 +13,9 @@ android {
     val ciVersionName = (project.findProperty("ciVersionName") as String?)
         ?.trim()
         .orEmpty()
+    val ciGitShortSha = (project.findProperty("ciGitShortSha") as String?)
+        ?.trim()
+        .orEmpty()
 
     defaultConfig {
         applicationId = "com.skodamusic.app"
@@ -20,6 +23,11 @@ android {
         targetSdk = 34
         versionCode = ciVersionCode ?: 1
         versionName = if (ciVersionName.isNotEmpty()) ciVersionName else "0.1.0"
+        buildConfigField(
+            "String",
+            "GIT_SHORT_SHA",
+            "\"${if (ciGitShortSha.isNotEmpty()) ciGitShortSha else "local"}\""
+        )
         multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

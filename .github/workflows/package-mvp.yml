@@ -178,11 +178,13 @@ jobs:
             gradle --no-daemon --stacktrace \
               -PciVersionCode="${CI_VERSION_CODE}" \
               -PciVersionName="${CI_VERSION_NAME}" \
+              -PciGitShortSha="${SHORT_SHA}" \
               :app:assembleRelease :app:bundleRelease
           else
             gradle --no-daemon --stacktrace \
               -PciVersionCode="${CI_VERSION_CODE}" \
               -PciVersionName="${CI_VERSION_NAME}" \
+              -PciGitShortSha="${SHORT_SHA}" \
               :app:assembleRelease
           fi
 

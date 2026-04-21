@@ -287,6 +287,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lrcApiBaseUrlInput: EditText
     private lateinit var embyStatusValue: TextView
     private lateinit var lrcApiStatusValue: TextView
+    private lateinit var buildIdBadge: TextView
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var playbackProgressValue: TextView
@@ -352,6 +353,7 @@ class MainActivity : AppCompatActivity() {
         lrcApiBaseUrlInput = findViewById(R.id.lrcapi_base_url_input)
         embyStatusValue = findViewById(R.id.emby_status_value)
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
+        buildIdBadge = findViewById(R.id.build_id_badge)
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
         playbackProgressValue = findViewById(R.id.playback_progress_value)
@@ -372,6 +374,7 @@ class MainActivity : AppCompatActivity() {
         pageQueue = findViewById(R.id.page_queue)
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
+        buildIdBadge.text = "build: ${BuildConfig.GIT_SHORT_SHA}"
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()

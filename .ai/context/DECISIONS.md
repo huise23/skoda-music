@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-20 13:02
+Last Updated: 2026-04-21 16:40
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -103,3 +103,30 @@ Last Updated: 2026-04-20 13:02
 - 决策: 主播放入口改为仅使用 Emby Download 端点（`buildEmbyDownloadUrl`）。
 - 决策: Exo LoadControl 起播/补缓阈值固定为：起播 `>=3s`、重缓冲 `>=1s`。
 - 决策: 缓存下载候选 URL 收敛为 Download 单端点，不再主动回退 stream/transcode URL。
+
+## 2026-04-21 15:25 - 讨论纠偏与新硬约束确认
+- 决策: “优选域名”仅作为 CF 优选节点参考来源，不作为业务播放/下载域名。
+- 决策: 认证/拉库/播放请求 URL 的 Host 维持用户自己的 Emby 域名，不替换为第三方域名。
+- 决策: 网络优化仅做 IPv4，明确不做 IPv6（v6）链路，原因是目标车机不支持。
+- 决策: 下载调度改为 30s 窗口规则：
+  - 当前曲目已下载可播时长 `<30s` 继续下载；
+  - 当前曲目已下载可播时长 `>30s` 暂停下载；
+  - 当当前曲目剩余播放时长 `<30s` 时，先下载完当前剩余，再预下载下一曲前 `30s`，并重复上述规则。
+- 决策: 废弃本轮错误实现思路（“优选域名直接播放”“缓冲抖动自动切策略”），本地代码已按用户要求回滚。
+
+## 2026-04-21 16:05 - T-S3-NET-009 执行结果（CF 优选 IPv4 接线）
+- 决策: Emby 网络请求统一迁移至 OkHttp 客户端，便于在不改 URL Host 的前提下注入 DNS 解析策略。
+- 决策: 解析策略固定为 IPv4-only；当参考域名解析有效时，优先返回其 IPv4 候选，再拼接系统解析 IPv4 作为回退序列。
+- 决策: 播放链路通过 `ExoPlayer extension-okhttp` 复用同一客户端，确保拉库/播放/下载路径策略一致。
+- 决策: 参考域名配置项仅用于“获取候选节点”，不改变业务 URL 展示与请求 Host。
+
+## 2026-04-21 16:25 - T-S3-DL-010 执行结果（30s 下载窗口状态机）
+- 决策: 下载调度统一收敛为 4 态：`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`。
+- 决策: 非临近结束时仅维护当前曲目 30s 可播窗口：`currentPlayableSec < 30` 下载，`>=30` 暂停。
+- 决策: 临近结束（`remainingPlaySec < 30`）时优先补完当前曲目，完成后再预下载下一曲前 30s。
+- 决策: 状态机阈值常量固定为 `DOWNLOAD_WINDOW_SEC=30`，并保留分块下载 + 空闲轮询机制。
+
+## 2026-04-21 16:40 - T-S3-LOG-011 执行结果（下载调度与优选 IP 日志补齐）
+- 决策: 调度日志保留“阶段 + 关键指标 + 暂停原因”三元组，确保可复盘“为何下载继续/暂停”。
+- 决策: 下载分块日志固定包含 `start/ok/skip/exception`，并携带 `written/downloaded/total/playableSec/complete` 快照。
+- 决策: DNS 日志固定包含 `cache-hit/cache-refresh/selectedIP/fallback reason`，用于实机快速定位节点命中与回退路径。

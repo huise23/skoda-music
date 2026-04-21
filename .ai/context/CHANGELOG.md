@@ -204,3 +204,19 @@
   - switched primary playback URL from stream endpoint to download endpoint
   - configured Exo load control to start at `>=3s` playable buffer and rebuffer at `>=1s`
   - restricted cache download candidates to download endpoint only
+
+## 2026-04-21
+- Completed `T-S3-RB-008`: rolled back incorrect local implementation based on clarified requirements.
+- Completed `T-S3-NET-009` (ai-execution):
+  - added CF reference-domain setting (`cf_ref_domain_input`) and persisted it with Emby credentials.
+  - migrated Emby auth/list/recommend/download HTTP flow to OkHttp client with injectable DNS strategy.
+  - added IPv4-only CF preferred DNS chain: reference-domain IPv4 candidates first, then system IPv4 fallback.
+  - integrated ExoPlayer `extension-okhttp` and wired playback data source to share the same network strategy.
+- Completed `T-S3-DL-010` (ai-execution):
+  - implemented 30s download-window state machine in download controller loop.
+  - applied rule set: maintain current track window (`<30s` download, `>=30s` idle), and near-end (`remaining<30s`) finish current before prefetching next track first 30s.
+  - added scheduling constants (`DOWNLOAD_WINDOW_SEC`, `DOWNLOAD_CHUNK_BYTES`, `DOWNLOAD_CONTROLLER_IDLE_MS`) and phase transition logs.
+- Completed `T-S3-LOG-011` (ai-execution):
+  - enhanced download scheduler diagnostics with explicit pause reasons and phase transition context.
+  - added chunk-level logs (`start/ok/skip-completed/skip-eof`) with playable-second and completion snapshots.
+  - enhanced CF IPv4 diagnostics with cache-hit/refresh, selected IP preview, bypass/fallback reason, and system DNS failure type.

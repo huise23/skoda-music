@@ -55,4 +55,6 @@ dependencies {
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
     implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:extension-okhttp:$exoPlayerVersion")
+    implementation("com.squareup.okhttp3:okhttp:3.12.13")
 }

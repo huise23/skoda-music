@@ -1,17 +1,39 @@
 # HANDOFF
 
-Last Updated: 2026-04-20 13:02
+Last Updated: 2026-04-21 16:40
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
 - 当前主干: `master@55dc676`（已落盘 minSdk17 红线与日志口径）
-- 当前阶段: S3 播放内核重构（ExoPlayer 2.x + download 边下边播）
+- 当前阶段: S3 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）
 
 ## Current Goal
-- 目标 1: 完成 `T-S3-UI-004/LOG-005/CACHE-006`，形成可回归版本。
-- 目标 2: 推进 `T-S3-VAL-007` 实机验证并回填证据。
+- 目标 1: 完成 `T-S3-NET-009/DL-010/LOG-011`，形成可回归版本。
+- 目标 2: 推进 `T-S3-VAL-012` 实机验证并回填证据。
 
 ## Plan Hand-off
+- 本轮 `ai-execution` 已完成 `T-S3-NET-009`：
+  - 新增设置项 `CF Preferred Reference Domain`（仅参考，不替换 Emby 业务域名）。
+  - Emby 相关请求链路（鉴权/拉库/推荐/播放/下载）统一切换到支持自定义 DNS 的 OkHttp 客户端。
+  - DNS 解析策略为 IPv4-only：优先使用“参考域名解析得到的候选 IPv4”，并拼接系统 IPv4 作为回退。
+  - ExoPlayer 接入 `extension-okhttp`，通过 `DefaultDataSource + OkHttpDataSource` 复用同一网络策略。
+- 本轮 `ai-execution` 已完成 `T-S3-DL-010`：
+  - 下载控制循环切换为 30s 窗口状态机：`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`。
+  - 非临近结束时：当前曲目 `downloadedPlayableSec < 30s` 才继续下载，`>=30s` 进入 `IDLE`（暂停下载）。
+  - 临近结束（`remainingPlaySec < 30s`）时：优先补完当前曲目，完成后再预下载下一曲前 `30s`。
+  - 新增并落地状态机常量：`DOWNLOAD_WINDOW_SEC=30`、`DOWNLOAD_CHUNK_BYTES`、`DOWNLOAD_CONTROLLER_IDLE_MS`。
+- 本轮 `ai-execution` 已完成 `T-S3-LOG-011`：
+  - 下载调度日志补齐：phase 切换日志中保留 `remainingSec/currentPlayableSec/nextPlayableSec`，并新增 `IDLE` 原因日志。
+  - 下载分块日志补齐：新增 `chunk start / chunk ok / skip-completed / skip-eof`，便于定位“为什么继续/暂停下载”。
+  - DNS 诊断日志补齐：新增 `cache-hit/cache-refresh`、`selected IP`、`bypass/fallback` 与系统 DNS 失败原因。
+- 本轮纠偏已完成 `T-S3-RB-008`：
+  - 按用户要求回滚本地错误实现代码改动。
+  - 仅保留 `.ai/context` 规划与决策文档更新。
+- 本轮讨论确认新口径：
+  - “优选域名”仅用于获取 CF 优选节点信息，不作为业务 URL。
+  - Emby 业务域名保持不变（认证/拉库/播放一致）。
+  - 网络链路仅做 IPv4，不做 IPv6（v6）。
+  - 下载调度采用 30s 窗口规则（当前曲目与下一曲预下载联动）。
 - 本轮 `ai-execution` 已完成 `T-S3-DL-003`：
   - 主播放 URL 改为 `buildEmbyDownloadUrl(...)`，不再主动使用 stream 端点。
   - 缓冲策略改为 `>=3s` 起播、`<1s` 重缓冲（通过 Exo LoadControl）。
@@ -46,9 +68,7 @@ Last Updated: 2026-04-20 13:02
 - 当前状态：仅完成差异汇总与 `.ai` 回写，尚未对这批改动做提交或回归结论。
 
 ## Recommended Next Action
-1. 先执行 `T-S3-UI-004`：接入 `StyledPlayerView` 并保持现有交互壳稳定。
-2. 紧接执行 `T-S3-LOG-005`：按既定口径清理登录/加载敏感与冗余日志。
-3. 再执行 `T-S3-CACHE-006`，准备 `T-S3-VAL-007` 实机回归。
+1. 执行 `T-S3-VAL-012`：按专项清单完成 API17 实机回归闭环并回填证据。
 
 ## Read First In New Session
 1. `.ai/context/PLAN.md`

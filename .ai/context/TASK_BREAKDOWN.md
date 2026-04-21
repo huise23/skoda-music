@@ -1,145 +1,98 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-20 12:08
+Last Updated: 2026-04-21 15:25
 
-## T-S3-PLY-001
-- Task ID: `T-S3-PLY-001`
-- Title: ExoPlayer 2.x 版本探针与依赖固定（API17）
-- Goal: 在不改 `minSdk=17` 前提下确认可用旧版 ExoPlayer，并锁定版本。
-- Why: S3 方案可行性的第一前置，避免后续改造建立在错误版本假设上。
+## T-S3-RB-008
+- Task ID: `T-S3-RB-008`
+- Title: 回滚错误实现并恢复基线
+- Goal: 撤销本轮错误理解下的本地代码改动，恢复稳定基线。
+- Why: 当前实现方向与用户确认口径冲突，继续叠加会扩大偏差。
 - Dependencies: 无
 - Inputs:
-  - `app/build.gradle.kts`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `DECISIONS.md`（S3 新决策）
+  - 本地 Git 工作区差异
+  - 用户指令“本地已有代码改动直接回滚”
 - Expected Outputs:
-  - 固定 ExoPlayer 2.x 版本依赖说明（首选 + 备选降级版本）
-  - API17 兼容性结论（可运行/需降级）
+  - 代码改动回滚完成
+  - 仅保留 `.ai/context` 规划文档更新
 - Done Criteria:
-  - 依赖版本已固定且被文档记录。
-  - 给出后续任务使用的唯一版本基线。
+  - `git status --short` 不含业务代码残留变更
 - Risks:
-  - 旧版依赖可用性、传递依赖冲突。
+  - 误回滚用户自身改动
 - Size: S
 - Minimal Loop: Yes
 
-## T-S3-PLY-002
-- Task ID: `T-S3-PLY-002`
-- Title: 播放引擎抽象与 MediaPlayer 主路径替换
-- Goal: 引入统一播放引擎接口并将主播放路径切到 ExoPlayer。
-- Why: 当前 `MainActivity` 直接操作 `MediaPlayer`，扩展边下边播困难。
-- Dependencies: `T-S3-PLY-001`
+## T-S3-NET-009
+- Task ID: `T-S3-NET-009`
+- Title: CF 优选 IPv4 解析链路接线（Emby 域名保持不变）
+- Goal: 用参考域名得到优选 IPv4 节点，并用于 Emby 域名请求的解析优选。
+- Why: 用户目标是“加速自己 Emby URL”，不是更换业务域名。
+- Dependencies: `T-S3-RB-008`
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `MainActivity.kt` 当前下载/播放请求链路
+  - 用户配置项（Emby Base URL + CF 优选参考域名）
 - Expected Outputs:
-  - 清晰的播放引擎边界（prepare/play/pause/release/状态回调）
-  - 原 `MediaPlayer` 主路径移除或下沉为临时兜底
+  - IPv4-only 候选 IP 获取、排序与回退机制
+  - 请求日志可追踪命中 IP 与回退路径
 - Done Criteria:
-  - 播放/暂停/下一曲链路在新引擎下可执行。
-  - 不再通过旧 `MediaPlayer` stream 主路径触发播放。
+  - 请求 Host 仍是 Emby 域名
+  - 优选失败可自动回退系统 DNS
 - Risks:
-  - 状态回调与现有 UI 状态机耦合，易出现状态不同步。
+  - 参考域名不可用导致优选收益不稳定
 - Size: M
 - Minimal Loop: Yes
 
-## T-S3-DL-003
-- Task ID: `T-S3-DL-003`
-- Title: Download-only 边下边播链路落地
-- Goal: 仅使用 download 端点实现可播即播。
-- Why: 用户要求停止 stream 端点主链路，并支持“1秒级可感知起播”。
-- Dependencies: `T-S3-PLY-002`
+## T-S3-DL-010
+- Task ID: `T-S3-DL-010`
+- Title: 30s 下载窗口调度状态机
+- Goal: 严格按用户定义控制当前曲目与下一曲预下载。
+- Why: 需要在“不卡顿”和“不浪费带宽”间按固定规则平衡。
+- Dependencies: `T-S3-NET-009`
 - Inputs:
-  - `MainActivity.kt` 中 Emby URL 构建与播放接线路径
+  - 当前曲目时长、已播放时长、已下载估算时长
+  - 下一曲曲目信息与下载任务管理
 - Expected Outputs:
-  - 仅 download 请求链路
-  - 可播放内容 `>=3s` 即起播
-  - 低缓冲 `<1s` 自动补缓与恢复
+  - 当前曲目：`downloadedPlayableSec < 30` 继续下载，`> 30` 暂停下载
+  - 临近结束：`remainingPlaySec < 30` 时，先补完当前曲目，再预下载下一曲前 30s
 - Done Criteria:
-  - 日志可验证无主动 stream 端点请求。
-  - 弱网下可见 buffering->resume 闭环。
+  - 状态切换符合规则，且无永久停下载/重复拉起抖动
 - Risks:
-  - 阈值需在目标设备上调参；过激阈值会造成频繁补缓。
-- Size: M
-- Minimal Loop: Yes
+  - 可播秒数估算偏差导致触发点不准
+- Size: L
+- Minimal Loop: No
 
-## T-S3-UI-004
-- Task ID: `T-S3-UI-004`
-- Title: `StyledPlayerView` 接入与现有壳层融合
-- Goal: 引入可美化播放器控件，保持现有 4 导航交互逻辑。
-- Why: 用户明确要求支持播放器美化与优化。
-- Dependencies: `T-S3-PLY-002`
+## T-S3-LOG-011
+- Task ID: `T-S3-LOG-011`
+- Title: 下载调度与优选 IP 诊断日志补齐
+- Goal: 让“为什么下载暂停/恢复、为什么切换节点”可追踪。
+- Why: 该阶段调度逻辑复杂，没有日志无法实机快速定位。
+- Dependencies: `T-S3-DL-010`
 - Inputs:
-  - `app/src/main/res/layout/activity_main.xml`
-  - `MainActivity.kt`
+  - 现有 runtime log 面板
+  - 调度状态机事件
 - Expected Outputs:
-  - `StyledPlayerView` 嵌入 Home 播放区域
-  - 现有按钮与状态文本与播放器状态一致
+  - 关键日志：优选命中 IP、回退原因、`downloadedPlayableSec`、`remainingPlaySec`、下一曲预下载阶段
 - Done Criteria:
-  - UI 不破坏 Queue/Library 单击切歌逻辑。
-  - 播放状态（播放/缓冲/暂停）可见且一致。
+  - 复盘日志可还原一次完整播放周期的决策过程
 - Risks:
-  - 控件接入后可能与现有按钮行为重复或冲突。
-- Size: M
-- Minimal Loop: Yes
-
-## T-S3-LOG-005
-- Task ID: `T-S3-LOG-005`
-- Title: 登录/加载日志口径收敛
-- Goal: 移除敏感与冗余日志，保留诊断必要日志。
-- Why: 已确认“移除登录/加载日志”是日志口径收敛，不是功能删除。
-- Dependencies: `T-S3-PLY-002`
-- Inputs:
-  - `MainActivity.kt` 日志输出点
-  - `DECISIONS.md` 日志口径
-- Expected Outputs:
-  - 鉴权、payload 预览、冗余加载样本日志下线
-  - 保留阶段结果、错误码、异常类型、关键耗时
-- Done Criteria:
-  - 运行日志中不再出现登录/加载敏感信息。
-  - 故障时仍可定位到阶段与错误类型。
-- Risks:
-  - 过度删日志会降低排障效率。
+  - 日志过量影响可读性
 - Size: S
 - Minimal Loop: Yes
 
-## T-S3-CACHE-006
-- Task ID: `T-S3-CACHE-006`
-- Title: “最近20首”缓存保留与清理治理
-- Goal: 在边下边播场景下提升二次播放速度并控制空间。
-- Why: 用户已明确“缓存保留最近20首”。
-- Dependencies: `T-S3-DL-003`
+## T-S3-VAL-012
+- Task ID: `T-S3-VAL-012`
+- Title: API17 实机专项回归（优选 IP + 30s 调度）
+- Goal: 验证新策略在目标车机上的稳定性与体感收益。
+- Why: 该优化高度依赖真实网络环境，必须实机闭环。
+- Dependencies: `T-S3-LOG-011`
 - Inputs:
-  - 缓存目录与缓存命名规则
-  - `MainActivity.kt` 下载与回放路径
+  - API17 车机设备
+  - Runtime 日志、关键操作录屏/截图
 - Expected Outputs:
-  - 最近20首保留策略
-  - 过期/总量清理策略
+  - 首播、弱网、切歌、临近结束预下载、下一曲衔接的 PASS/FAIL 结果
 - Done Criteria:
-  - 缓存命中可用于加速二次播放。
-  - 缓存文件数量可稳定限制在 20 条以内。
+  - 至少覆盖 5 轮连续切歌场景且无严重阻断
 - Risks:
-  - 清理时机不当可能删到正在播放文件。
-- Size: S
-- Minimal Loop: Yes
-
-## T-S3-VAL-007
-- Task ID: `T-S3-VAL-007`
-- Title: API17 播放专项回归与证据回填
-- Goal: 验证 S3 播放改造在目标车机可用并形成证据。
-- Why: 播放改造涉及内核替换，必须有实机结果闭环。
-- Dependencies: `T-S3-UI-004`, `T-S3-LOG-005`, `T-S3-CACHE-006`
-- Inputs:
-  - API17 实机
-  - 运行日志与关键操作录像/截图
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-- Expected Outputs:
-  - 首播、弱网补缓、切歌、缓存复用的 PASS/FAIL 结论
-  - 缺陷清单与复现条件
-- Done Criteria:
-  - 至少覆盖：首次播放、连续播放、弱网补缓、下一曲、二次播放缓存命中。
-  - 结果已回填到 `.ai/context`。
-- Risks:
-  - 强依赖人工设备时段，进度不可控。
+  - 设备环境不可控导致结果波动
 - Size: M
 - Minimal Loop: No
 

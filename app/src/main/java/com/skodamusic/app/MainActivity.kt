@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.net.Uri
 import android.view.Gravity
@@ -23,7 +24,16 @@ import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
+import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSource
+import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
+import com.google.android.exoplayer2.upstream.DataSource
+import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
+import okhttp3.Dns
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -32,14 +42,27 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URLEncoder
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.LinkedHashMap
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
+    private enum class DownloadControlPhase {
+        MAINTAIN_CURRENT_WINDOW,
+        FINISH_CURRENT_TRACK,
+        PREFETCH_NEXT_WINDOW,
+        IDLE
+    }
+
     private interface PlaybackEngineCallback {
         fun onPrepared()
         fun onCompletion()
@@ -53,11 +76,14 @@ class MainActivity : AppCompatActivity() {
         fun play(): Boolean
         fun pause()
         fun isPlaying(): Boolean
+        fun currentPositionMs(): Long
+        fun durationMs(): Long
         fun release()
     }
 
     private class ExoPlaybackEngine(
-        private val context: Context
+        private val context: Context,
+        private val dataSourceFactory: DataSource.Factory
     ) : PlaybackEngine {
         private var exoPlayer: SimpleExoPlayer? = null
 
@@ -73,6 +99,7 @@ class MainActivity : AppCompatActivity() {
                 .build()
             val player = SimpleExoPlayer.Builder(context)
                 .setLoadControl(loadControl)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
                 .build()
             exoPlayer = player
 
@@ -145,6 +172,23 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        override fun currentPositionMs(): Long {
+            return try {
+                exoPlayer?.currentPosition ?: -1L
+            } catch (_: Exception) {
+                -1L
+            }
+        }
+
+        override fun durationMs(): Long {
+            return try {
+                val value = exoPlayer?.duration ?: -1L
+                if (value <= 0L) -1L else value
+            } catch (_: Exception) {
+                -1L
+            }
+        }
+
         override fun release() {
             releaseInternal()
         }
@@ -185,7 +229,8 @@ class MainActivity : AppCompatActivity() {
     private data class EmbyCredentials(
         val baseUrl: String,
         val username: String,
-        val password: String
+        val password: String,
+        val cfReferenceDomain: String
     )
 
     private data class LrcApiCredentials(
@@ -223,7 +268,16 @@ class MainActivity : AppCompatActivity() {
         val feedbackText: String
     )
 
+    private data class TrackDownloadState(
+        val trackId: String,
+        var totalBytes: Long = -1L,
+        var downloadedBytes: Long = 0L,
+        var completed: Boolean = false,
+        var bitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
+    )
+
     private lateinit var embyBaseUrlInput: EditText
+    private lateinit var cfRefDomainInput: EditText
     private lateinit var embyUsernameInput: EditText
     private lateinit var embyPasswordInput: EditText
     private lateinit var lrcApiBaseUrlInput: EditText
@@ -264,12 +318,23 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
+    private val dnsCacheLock = Any()
+    private val cfPreferredIpv4Cache = LinkedHashMap<String, Pair<Long, List<InetAddress>>>()
+    private val downloadStateLock = Any()
+    private val trackDownloadStates = LinkedHashMap<String, TrackDownloadState>()
+    @Volatile private var lastKnownBitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
+    @Volatile private var downloadControllerRequestId: Int = -1
+    @Volatile private var downloadControllerStop = false
+    private var downloadControllerThread: Thread? = null
+    private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
+        ?: throw IllegalStateException("json media type parse failed")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
+        cfRefDomainInput = findViewById(R.id.cf_ref_domain_input)
         embyUsernameInput = findViewById(R.id.emby_username_input)
         embyPasswordInput = findViewById(R.id.emby_password_input)
         lrcApiBaseUrlInput = findViewById(R.id.lrcapi_base_url_input)
@@ -323,6 +388,7 @@ class MainActivity : AppCompatActivity() {
         runtimeLogDialog?.dismiss()
         super.onDestroy()
         playbackRequestId += 1
+        stopDownloadController()
         releasePlayer()
     }
 
@@ -387,6 +453,7 @@ class MainActivity : AppCompatActivity() {
                 playTrackAtCurrentIndex()
             } else {
                 playbackRequestId += 1
+                stopDownloadController()
                 releasePlayer()
             }
         }
@@ -395,7 +462,8 @@ class MainActivity : AppCompatActivity() {
             val credentials = EmbyCredentials(
                 baseUrl = embyBaseUrlInput.text.toString().trim(),
                 username = embyUsernameInput.text.toString().trim(),
-                password = embyPasswordInput.text.toString().trim()
+                password = embyPasswordInput.text.toString().trim(),
+                cfReferenceDomain = cfRefDomainInput.text.toString().trim()
             )
             appendRuntimeLog("ui click test emby base=${credentials.baseUrl}")
 
@@ -600,13 +668,15 @@ class MainActivity : AppCompatActivity() {
         recommendQueueButton.isEnabled = false
         updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_loading)) }
         appendRuntimeLog("queue recommend start size=${loadedTracks.size} currentIndex=$currentTrackIndex")
+        val embyClient = buildEmbyHttpClient(base, cfRefDomainInput.text.toString().trim())
 
         Thread {
             val response = executeGet(
                 endpoint = buildEmbyRecommendedItemsUrl(base, userId, token),
                 token = token,
                 requestLabel = "GET /Users/{id}/Items (Queue Recommend)",
-                log = { message -> appendRuntimeLog("queue recommend $message") }
+                log = { message -> appendRuntimeLog("queue recommend $message") },
+                httpClient = embyClient
             )
             if (response.code !in 200..299) {
                 runOnUiThread {
@@ -741,7 +811,8 @@ class MainActivity : AppCompatActivity() {
         val credentials = EmbyCredentials(
             baseUrl = embyBaseUrlInput.text.toString().trim(),
             username = embyUsernameInput.text.toString().trim(),
-            password = embyPasswordInput.text.toString().trim()
+            password = embyPasswordInput.text.toString().trim(),
+            cfReferenceDomain = cfRefDomainInput.text.toString().trim()
         )
         if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
             appendRuntimeLog("queue auto refresh skip trigger=$trigger reason=missing-emby-credentials")
@@ -781,6 +852,7 @@ class MainActivity : AppCompatActivity() {
                         embyAccessToken = result.accessToken
                         currentTrackIndex = 0
                         playbackRequestId += 1
+                        stopDownloadController()
                         releasePlayer()
                         val firstTrack = loadedTracks.firstOrNull()?.title
                             ?: getString(R.string.track_not_loaded)
@@ -814,6 +886,7 @@ class MainActivity : AppCompatActivity() {
                         embyAccessToken = null
                         currentTrackIndex = 0
                         playbackRequestId += 1
+                        stopDownloadController()
                         releasePlayer()
                         updateState {
                             it.copy(
@@ -940,6 +1013,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun pausePlayback() {
         playbackRequestId += 1
+        stopDownloadController()
         playbackEngine?.pause()
         updateState {
             it.copy(
@@ -972,12 +1046,22 @@ class MainActivity : AppCompatActivity() {
 
         currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val track = loadedTracks[currentTrackIndex]
+        val nextTrack = loadedTracks.getOrNull(currentTrackIndex + 1)
         val downloadUrl = buildEmbyDownloadUrl(base, track.id, token)
+        val embyClient = buildEmbyHttpClient(base, cfRefDomainInput.text.toString().trim())
         val requestId = ++playbackRequestId
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
         appendRuntimeLog("play request track=${track.title} downloadUrl=$downloadUrl requestId=$requestId")
         releasePlayer()
+        startDownloadController(
+            requestId = requestId,
+            embyBase = base,
+            token = token,
+            currentTrack = track,
+            nextTrack = nextTrack,
+            httpClient = embyClient
+        )
 
         fun triggerCachedFallback(feedback: String) {
             if (requestId != playbackRequestId) {
@@ -992,6 +1076,7 @@ class MainActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 releasePlayer()
+                stopDownloadController()
                 updateState {
                     it.copy(
                         isPlaying = false,
@@ -1000,12 +1085,12 @@ class MainActivity : AppCompatActivity() {
                         feedbackText = feedback
                     )
                 }
-                downloadAndPlayTrack(track, base, token, requestId)
+                downloadAndPlayTrack(track, base, token, requestId, embyClient)
             }
         }
 
         try {
-            val engine = ensurePlaybackEngine()
+            val engine = ensurePlaybackEngine(embyClient)
             appendRuntimeLog("play mode=download-only-url requestId=$requestId")
             engine.prepare(
                 source = Uri.parse(downloadUrl),
@@ -1142,11 +1227,362 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startDownloadController(
+        requestId: Int,
+        embyBase: String,
+        token: String,
+        currentTrack: EmbyTrack,
+        nextTrack: EmbyTrack?,
+        httpClient: OkHttpClient
+    ) {
+        stopDownloadController()
+        downloadControllerStop = false
+        downloadControllerRequestId = requestId
+        val worker = Thread {
+            runDownloadController(
+                requestId = requestId,
+                embyBase = embyBase,
+                token = token,
+                currentTrack = currentTrack,
+                nextTrack = nextTrack,
+                httpClient = httpClient
+            )
+        }
+        worker.name = "download-controller-$requestId"
+        worker.isDaemon = true
+        downloadControllerThread = worker
+        worker.start()
+    }
+
+    private fun stopDownloadController() {
+        downloadControllerStop = true
+        downloadControllerRequestId = -1
+        downloadControllerThread?.interrupt()
+        downloadControllerThread = null
+    }
+
+    private fun runDownloadController(
+        requestId: Int,
+        embyBase: String,
+        token: String,
+        currentTrack: EmbyTrack,
+        nextTrack: EmbyTrack?,
+        httpClient: OkHttpClient
+    ) {
+        appendRuntimeLog("dl-ctl start requestId=$requestId current=${currentTrack.title}")
+        var lastPhase: DownloadControlPhase? = null
+        while (!downloadControllerStop && requestId == playbackRequestId) {
+            val durationMs = playbackEngine?.durationMs() ?: -1L
+            val positionMs = playbackEngine?.currentPositionMs() ?: -1L
+            val remainingSec = if (durationMs > 0L && positionMs >= 0L) {
+                ((durationMs - positionMs).coerceAtLeast(0L) / 1000L)
+            } else {
+                Long.MAX_VALUE
+            }
+            val currentPlayableSec = estimatePlayableSeconds(currentTrack, durationMs)
+            val currentComplete = isTrackDownloadComplete(currentTrack, durationMs)
+            val nextPlayableSec = if (nextTrack != null) {
+                estimatePlayableSeconds(nextTrack, -1L)
+            } else {
+                -1L
+            }
+            val phase = chooseDownloadControlPhase(
+                remainingSec = remainingSec,
+                currentPlayableSec = currentPlayableSec,
+                currentTrackComplete = currentComplete,
+                hasNextTrack = nextTrack != null,
+                nextPlayableSec = nextPlayableSec
+            )
+            if (phase != lastPhase) {
+                appendRuntimeLog(
+                    "dl-ctl phase=$phase remainSec=$remainingSec currentPlayableSec=$currentPlayableSec nextPlayableSec=$nextPlayableSec"
+                )
+                if (phase == DownloadControlPhase.IDLE) {
+                    appendRuntimeLog(
+                        "dl-ctl pause reason=${describeIdleReason(remainingSec, currentPlayableSec, currentComplete, nextTrack != null, nextPlayableSec)}"
+                    )
+                }
+                lastPhase = phase
+            }
+
+            val didWork = when (phase) {
+                DownloadControlPhase.MAINTAIN_CURRENT_WINDOW,
+                DownloadControlPhase.FINISH_CURRENT_TRACK -> {
+                    downloadChunkForTrack(
+                        track = currentTrack,
+                        embyBase = embyBase,
+                        token = token,
+                        httpClient = httpClient,
+                        durationMsHint = durationMs,
+                        maxChunkBytes = DOWNLOAD_CHUNK_BYTES
+                    )
+                }
+                DownloadControlPhase.PREFETCH_NEXT_WINDOW -> {
+                    if (nextTrack == null) {
+                        false
+                    } else {
+                        downloadChunkForTrack(
+                            track = nextTrack,
+                            embyBase = embyBase,
+                            token = token,
+                            httpClient = httpClient,
+                            durationMsHint = -1L,
+                            maxChunkBytes = DOWNLOAD_CHUNK_BYTES
+                        )
+                    }
+                }
+                DownloadControlPhase.IDLE -> false
+            }
+
+            if (!didWork) {
+                try {
+                    Thread.sleep(DOWNLOAD_CONTROLLER_IDLE_MS)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+        }
+        appendRuntimeLog("dl-ctl stop requestId=$requestId")
+    }
+
+    private fun chooseDownloadControlPhase(
+        remainingSec: Long,
+        currentPlayableSec: Long,
+        currentTrackComplete: Boolean,
+        hasNextTrack: Boolean,
+        nextPlayableSec: Long
+    ): DownloadControlPhase {
+        if (remainingSec < DOWNLOAD_WINDOW_SEC) {
+            if (!currentTrackComplete) {
+                return DownloadControlPhase.FINISH_CURRENT_TRACK
+            }
+            if (hasNextTrack && nextPlayableSec in 0 until DOWNLOAD_WINDOW_SEC) {
+                return DownloadControlPhase.PREFETCH_NEXT_WINDOW
+            }
+            return DownloadControlPhase.IDLE
+        }
+        if (currentPlayableSec < DOWNLOAD_WINDOW_SEC) {
+            return DownloadControlPhase.MAINTAIN_CURRENT_WINDOW
+        }
+        return DownloadControlPhase.IDLE
+    }
+
+    private fun describeIdleReason(
+        remainingSec: Long,
+        currentPlayableSec: Long,
+        currentTrackComplete: Boolean,
+        hasNextTrack: Boolean,
+        nextPlayableSec: Long
+    ): String {
+        if (remainingSec < DOWNLOAD_WINDOW_SEC) {
+            if (!hasNextTrack) {
+                return "near-end-no-next-track"
+            }
+            if (!currentTrackComplete) {
+                return "near-end-current-not-complete"
+            }
+            if (nextPlayableSec >= DOWNLOAD_WINDOW_SEC) {
+                return "near-end-next-window-ready"
+            }
+            return "near-end-waiting-next-window"
+        }
+        if (currentPlayableSec >= DOWNLOAD_WINDOW_SEC) {
+            return "current-window-ready"
+        }
+        return "no-op"
+    }
+
+    private fun isTrackDownloadComplete(track: EmbyTrack, durationMsHint: Long): Boolean {
+        val state = getOrCreateTrackDownloadState(track)
+        if (state.completed) {
+            return true
+        }
+        if (durationMsHint > 0L) {
+            val durationSec = durationMsHint / 1000L
+            if (durationSec > 0L) {
+                val playableSec = estimatePlayableSeconds(track, durationMsHint)
+                if (playableSec + 1 >= durationSec) {
+                    synchronized(downloadStateLock) {
+                        state.completed = true
+                    }
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun estimatePlayableSeconds(track: EmbyTrack, durationMsHint: Long): Long {
+        val state = getOrCreateTrackDownloadState(track)
+        if (durationMsHint > 0L && state.totalBytes > 0L) {
+            val durationSec = durationMsHint / 1000L
+            if (durationSec > 0L) {
+                return ((state.downloadedBytes.toDouble() / state.totalBytes.toDouble()) * durationSec.toDouble()).toLong()
+            }
+        }
+        val bitrate = state.bitrateBps.coerceAtLeast(64_000L)
+        return ((state.downloadedBytes * 8L) / bitrate).coerceAtLeast(0L)
+    }
+
+    private fun getOrCreateTrackDownloadState(track: EmbyTrack): TrackDownloadState {
+        val cacheFile = File(cacheDir, "emby_${track.id}.cache")
+        synchronized(downloadStateLock) {
+            val existing = trackDownloadStates[track.id]
+            if (existing != null) {
+                val fileLen = cacheFile.length().coerceAtLeast(0L)
+                if (fileLen > existing.downloadedBytes) {
+                    existing.downloadedBytes = fileLen
+                }
+                if (existing.totalBytes > 0L && existing.downloadedBytes >= existing.totalBytes) {
+                    existing.completed = true
+                }
+                return existing
+            }
+            val created = TrackDownloadState(
+                trackId = track.id,
+                downloadedBytes = cacheFile.length().coerceAtLeast(0L),
+                bitrateBps = lastKnownBitrateBps
+            )
+            trackDownloadStates[track.id] = created
+            if (trackDownloadStates.size > TRACK_DOWNLOAD_STATE_MAX_SIZE) {
+                val iterator = trackDownloadStates.entries.iterator()
+                if (iterator.hasNext()) {
+                    iterator.next()
+                    iterator.remove()
+                }
+            }
+            return created
+        }
+    }
+
+    private fun downloadChunkForTrack(
+        track: EmbyTrack,
+        embyBase: String,
+        token: String,
+        httpClient: OkHttpClient,
+        durationMsHint: Long,
+        maxChunkBytes: Long
+    ): Boolean {
+        val state = getOrCreateTrackDownloadState(track)
+        if (state.completed) {
+            appendRuntimeLog("dl-ctl chunk skip-completed track=${track.title}")
+            return false
+        }
+        val file = File(cacheDir, "emby_${track.id}.cache")
+        val start = file.length().coerceAtLeast(0L)
+        if (state.totalBytes > 0L && start >= state.totalBytes) {
+            synchronized(downloadStateLock) {
+                state.downloadedBytes = start
+                state.completed = true
+            }
+            appendRuntimeLog("dl-ctl chunk skip-eof track=${track.title} bytes=$start")
+            return false
+        }
+        val end = if (state.totalBytes > 0L) {
+            (start + maxChunkBytes - 1L).coerceAtMost(state.totalBytes - 1L)
+        } else {
+            start + maxChunkBytes - 1L
+        }
+        appendRuntimeLog("dl-ctl chunk start track=${track.title} range=$start-$end")
+        val request = Request.Builder()
+            .url(buildEmbyDownloadUrl(embyBase, track.id, token))
+            .get()
+            .header("Accept", "audio/*")
+            .header("X-Emby-Token", token)
+            .header("Range", "bytes=$start-$end")
+            .build()
+        val callClient = httpClient.newBuilder()
+            .connectTimeout(10000L, TimeUnit.MILLISECONDS)
+            .readTimeout(20000L, TimeUnit.MILLISECONDS)
+            .build()
+        try {
+            callClient.newCall(request).execute().use { response ->
+                val code = response.code()
+                if (code !in 200..299) {
+                    appendRuntimeLog("dl-ctl chunk fail code=$code track=${track.title}")
+                    return false
+                }
+                if (code == 200 && start > 0L) {
+                    appendRuntimeLog("dl-ctl range-unsupported track=${track.title} start=$start")
+                    return false
+                }
+                val responseBody = response.body() ?: return false
+                var written = 0L
+                responseBody.byteStream().use { input ->
+                    java.io.RandomAccessFile(file, "rw").use { raf ->
+                        if (code == 206) {
+                            raf.seek(start)
+                        } else {
+                            raf.setLength(0L)
+                            raf.seek(0L)
+                        }
+                        val buffer = ByteArray(8192)
+                        var len = input.read(buffer)
+                        while (len >= 0) {
+                            if (len > 0) {
+                                raf.write(buffer, 0, len)
+                                written += len.toLong()
+                            }
+                            len = input.read(buffer)
+                        }
+                    }
+                }
+                if (written <= 0L) {
+                    return false
+                }
+
+                val totalBytesFromHeader = parseTotalBytesFromResponse(response, start)
+                synchronized(downloadStateLock) {
+                    state.downloadedBytes = file.length().coerceAtLeast(0L)
+                    if (totalBytesFromHeader > 0L) {
+                        state.totalBytes = totalBytesFromHeader
+                    }
+                    if (state.totalBytes > 0L && state.downloadedBytes >= state.totalBytes) {
+                        state.completed = true
+                    }
+                    if (durationMsHint > 0L && state.totalBytes > 0L) {
+                        val bitrate = ((state.totalBytes * 8L * 1000L) / durationMsHint).coerceAtLeast(64_000L)
+                        state.bitrateBps = bitrate
+                        lastKnownBitrateBps = bitrate
+                    }
+                }
+                val playableSecAfter = estimatePlayableSeconds(track, durationMsHint)
+                appendRuntimeLog(
+                    "dl-ctl chunk ok track=${track.title} written=$written downloaded=${state.downloadedBytes} total=${state.totalBytes} playableSec=$playableSecAfter complete=${state.completed}"
+                )
+                return true
+            }
+        } catch (e: Exception) {
+            appendRuntimeLog("dl-ctl chunk exception track=${track.title} type=${e.javaClass.simpleName}")
+            return false
+        }
+    }
+
+    private fun parseTotalBytesFromResponse(response: okhttp3.Response, start: Long): Long {
+        val contentRange = response.header("Content-Range").orEmpty()
+        if (contentRange.isNotEmpty()) {
+            val slashIndex = contentRange.lastIndexOf('/')
+            if (slashIndex >= 0 && slashIndex + 1 < contentRange.length) {
+                val tail = contentRange.substring(slashIndex + 1).trim()
+                val parsed = tail.toLongOrNull() ?: -1L
+                if (parsed > 0L) {
+                    return parsed
+                }
+            }
+        }
+        val bodyLength = response.body()?.contentLength() ?: -1L
+        if (bodyLength > 0L) {
+            return if (response.code() == 206) start + bodyLength else bodyLength
+        }
+        return -1L
+    }
+
     private fun downloadAndPlayTrack(
         track: EmbyTrack,
         embyBase: String,
         token: String,
-        requestId: Int
+        requestId: Int,
+        httpClient: OkHttpClient
     ) {
         appendRuntimeLog("cache fallback start requestId=$requestId track=${track.title}")
         runOnUiThread {
@@ -1163,7 +1599,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         Thread {
-            val cacheFile = downloadTrackToCache(track, embyBase, token)
+            val cacheFile = downloadTrackToCache(track, embyBase, token, httpClient)
             runOnUiThread {
                 if (requestId != playbackRequestId) {
                     return@runOnUiThread
@@ -1184,7 +1620,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     appendRuntimeLog("cache fallback file ready requestId=$requestId path=${cacheFile.absolutePath} size=${cacheFile.length()}")
                     releasePlayer()
-                    val engine = ensurePlaybackEngine()
+                    val engine = ensurePlaybackEngine(httpClient)
                     engine.prepare(
                         source = Uri.fromFile(cacheFile),
                         callback = object : PlaybackEngineCallback {
@@ -1296,70 +1732,81 @@ class MainActivity : AppCompatActivity() {
     private fun downloadTrackToCache(
         track: EmbyTrack,
         embyBase: String,
-        token: String
+        token: String,
+        httpClient: OkHttpClient
     ): File? {
         val candidateUrls = listOf(
             buildEmbyDownloadUrl(embyBase, track.id, token)
         )
         for (candidateUrl in candidateUrls) {
-            var connection: HttpURLConnection? = null
             try {
                 appendRuntimeLog("emby download try GET $candidateUrl")
-                connection = (URL(candidateUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 10000
-                    readTimeout = 20000
-                    instanceFollowRedirects = true
-                    setRequestProperty("Accept", "audio/*")
-                    setRequestProperty("X-Emby-Token", token)
-                }
-                val code = connection.responseCode
-                if (code !in 200..299) {
-                    appendRuntimeLog("emby download non-2xx code=$code url=$candidateUrl")
-                    Log.w(LOG_TAG, "downloadTrackToCache HTTP $code url=$candidateUrl")
-                    continue
-                }
-                val file = File(cacheDir, "emby_${track.id}.cache")
-                connection.inputStream.use { input ->
-                    FileOutputStream(file, false).use { out ->
-                        val buffer = ByteArray(8192)
-                        var len = input.read(buffer)
-                        while (len >= 0) {
-                            if (len > 0) {
-                                out.write(buffer, 0, len)
-                            }
-                            len = input.read(buffer)
-                        }
-                        out.flush()
+                val request = Request.Builder()
+                    .url(candidateUrl)
+                    .get()
+                    .header("Accept", "audio/*")
+                    .header("X-Emby-Token", token)
+                    .build()
+                val callClient = httpClient.newBuilder()
+                    .connectTimeout(10000L, TimeUnit.MILLISECONDS)
+                    .readTimeout(20000L, TimeUnit.MILLISECONDS)
+                    .build()
+                callClient.newCall(request).execute().use { response ->
+                    val code = response.code()
+                    if (code !in 200..299) {
+                        appendRuntimeLog("emby download non-2xx code=$code url=$candidateUrl")
+                        Log.w(LOG_TAG, "downloadTrackToCache HTTP $code url=$candidateUrl")
+                        return@use
                     }
+                    val responseBody = response.body()
+                    if (responseBody == null) {
+                        appendRuntimeLog("emby download empty body url=$candidateUrl")
+                        return@use
+                    }
+                    val file = File(cacheDir, "emby_${track.id}.cache")
+                    responseBody.byteStream().use { input ->
+                        FileOutputStream(file, false).use { out ->
+                            val buffer = ByteArray(8192)
+                            var len = input.read(buffer)
+                            while (len >= 0) {
+                                if (len > 0) {
+                                    out.write(buffer, 0, len)
+                                }
+                                len = input.read(buffer)
+                            }
+                            out.flush()
+                        }
+                    }
+                    if (file.length() <= 0L) {
+                        appendRuntimeLog("emby download empty file url=$candidateUrl")
+                        Log.e(LOG_TAG, "downloadTrackToCache empty file url=$candidateUrl")
+                        file.delete()
+                        return@use
+                    }
+                    appendRuntimeLog("emby download success bytes=${file.length()} url=$candidateUrl")
+                    return file
                 }
-                if (file.length() <= 0L) {
-                    appendRuntimeLog("emby download empty file url=$candidateUrl")
-                    Log.e(LOG_TAG, "downloadTrackToCache empty file url=$candidateUrl")
-                    file.delete()
-                    continue
-                }
-                appendRuntimeLog("emby download success bytes=${file.length()} url=$candidateUrl")
-                return file
             } catch (e: Exception) {
                 appendRuntimeLog("emby download exception type=${e.javaClass.simpleName} msg=${e.message} url=$candidateUrl")
                 Log.w(
                     LOG_TAG,
                     "downloadTrackToCache failed url=$candidateUrl: ${e.javaClass.simpleName} ${e.message}"
                 )
-            } finally {
-                connection?.disconnect()
             }
         }
         return null
     }
 
-    private fun ensurePlaybackEngine(): PlaybackEngine {
+    private fun ensurePlaybackEngine(httpClient: OkHttpClient): PlaybackEngine {
         val existing = playbackEngine
         if (existing != null) {
             return existing
         }
-        val created = ExoPlaybackEngine(this)
+        val defaultDataSourceFactory = DefaultDataSource.Factory(
+            this,
+            OkHttpDataSource.Factory(httpClient)
+        )
+        val created = ExoPlaybackEngine(this, defaultDataSourceFactory)
         playbackEngine = created
         return created
     }
@@ -1378,6 +1825,7 @@ class MainActivity : AppCompatActivity() {
 
         return try {
             val embyBase = normalizeEmbyBase(credentials.baseUrl)
+            val embyClient = buildEmbyHttpClient(embyBase, credentials.cfReferenceDomain)
             logger("base=$embyBase")
             logger("auth-mode=username-password")
 
@@ -1385,7 +1833,8 @@ class MainActivity : AppCompatActivity() {
                 embyBase = embyBase,
                 username = credentials.username,
                 password = credentials.password,
-                log = logger
+                log = logger,
+                httpClient = embyClient
             ) ?: return failedResult(
                 headline = "Action feedback: Emby authentication failed",
                 logs = logs
@@ -1399,7 +1848,8 @@ class MainActivity : AppCompatActivity() {
                 endpoint = recommendedEndpoint,
                 token = auth.accessToken,
                 requestLabel = "GET /Users/{id}/Items (Random/20)",
-                log = logger
+                log = logger,
+                httpClient = embyClient
             )
             if (recommendedResponse.code !in 200..299) {
                 return failedResult(
@@ -1447,51 +1897,47 @@ class MainActivity : AppCompatActivity() {
         embyBase: String,
         username: String,
         password: String,
-        log: (String) -> Unit
+        log: (String) -> Unit,
+        httpClient: OkHttpClient
     ): AuthByNameResult? {
-        var connection: HttpURLConnection? = null
         return try {
             val endpoint = buildAuthenticateByNameUrl(embyBase)
             log("POST $endpoint")
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 6000
-                readTimeout = 10000
-                doOutput = true
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-
             val body = JSONObject()
                 .put("Username", username)
                 .put("Pw", password)
                 .toString()
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
-                writer.write(body)
+            val requestBody = RequestBody.create(jsonMediaType, body)
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(requestBody)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json; charset=utf-8")
+                .build()
+            val callClient = httpClient.newBuilder()
+                .connectTimeout(6000L, TimeUnit.MILLISECONDS)
+                .readTimeout(10000L, TimeUnit.MILLISECONDS)
+                .build()
+            callClient.newCall(request).execute().use { response ->
+                val code = response.code()
+                val payload = response.body()?.string().orEmpty()
+                log("POST $endpoint -> HTTP $code")
+                log("auth body=${previewPayload(payload)}")
+                if (code !in 200..299) {
+                    return null
+                }
+                val root = JSONObject(payload)
+                val token = root.optString("AccessToken").trim()
+                val userId = root.optJSONObject("User")?.optString("Id")?.trim().orEmpty()
+                if (token.isEmpty() || userId.isEmpty()) {
+                    log("auth response missing token/user")
+                    return null
+                }
+                return AuthByNameResult(accessToken = token, userId = userId)
             }
-
-            val code = connection.responseCode
-            val payload = readAll(if (code in 200..299) connection.inputStream else connection.errorStream)
-            log("POST $endpoint -> HTTP $code")
-            log("auth body=${previewPayload(payload)}")
-
-            if (code !in 200..299) {
-                return null
-            }
-
-            val root = JSONObject(payload)
-            val token = root.optString("AccessToken").trim()
-            val userId = root.optJSONObject("User")?.optString("Id")?.trim().orEmpty()
-            if (token.isEmpty() || userId.isEmpty()) {
-                log("auth response missing token/user")
-                return null
-            }
-            AuthByNameResult(accessToken = token, userId = userId)
         } catch (e: Exception) {
             log("auth exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
             null
-        } finally {
-            connection?.disconnect()
         }
     }
 
@@ -1499,27 +1945,176 @@ class MainActivity : AppCompatActivity() {
         endpoint: String,
         token: String,
         requestLabel: String,
-        log: (String) -> Unit
+        log: (String) -> Unit,
+        httpClient: OkHttpClient
     ): HttpResult {
-        var connection: HttpURLConnection? = null
         return try {
             log("$requestLabel url=$endpoint")
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 10000
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("X-Emby-Token", token)
+            val request = Request.Builder()
+                .url(endpoint)
+                .get()
+                .header("Accept", "application/json")
+                .header("X-Emby-Token", token)
+                .build()
+            val callClient = httpClient.newBuilder()
+                .connectTimeout(6000L, TimeUnit.MILLISECONDS)
+                .readTimeout(10000L, TimeUnit.MILLISECONDS)
+                .build()
+            callClient.newCall(request).execute().use { response ->
+                val code = response.code()
+                val payload = response.body()?.string().orEmpty()
+                log("$requestLabel -> HTTP $code, body=${previewPayload(payload)}")
+                HttpResult(code = code, payload = payload)
             }
-            val code = connection.responseCode
-            val payload = readAll(if (code in 200..299) connection.inputStream else connection.errorStream)
-            log("$requestLabel -> HTTP $code, body=${previewPayload(payload)}")
-            HttpResult(code = code, payload = payload)
         } catch (e: Exception) {
             log("$requestLabel exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
             HttpResult(code = -1, payload = "")
-        } finally {
-            connection?.disconnect()
+        }
+    }
+
+    private fun buildEmbyHttpClient(embyBase: String, cfReferenceRaw: String): OkHttpClient {
+        val embyHost = try {
+            URL(embyBase).host.trim()
+        } catch (_: Exception) {
+            ""
+        }
+        if (embyHost.isEmpty()) {
+            return OkHttpClient()
+        }
+        val refHost = parseCfReferenceHost(cfReferenceRaw)
+        if (refHost.isNullOrEmpty()) {
+            appendRuntimeLog("cf-opt disabled reason=empty-reference-domain host=$embyHost")
+            return OkHttpClient()
+        }
+        appendRuntimeLog("cf-opt enabled embyHost=$embyHost referenceHost=$refHost ipv6=disabled")
+        return OkHttpClient.Builder()
+            .dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    return resolveDnsForHost(hostname, embyHost, refHost)
+                }
+            })
+            .connectTimeout(10000L, TimeUnit.MILLISECONDS)
+            .readTimeout(20000L, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
+    private fun parseCfReferenceHost(raw: String): String? {
+        val trimmed = raw.trim().trim('/')
+        if (trimmed.isEmpty()) {
+            return null
+        }
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+        return try {
+            URL(withScheme).host.trim().takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun resolveDnsForHost(
+        hostname: String,
+        embyHost: String,
+        referenceHost: String
+    ): List<InetAddress> {
+        val systemResolved = safeLookupIpv4(hostname)
+        if (!hostname.equals(embyHost, ignoreCase = true)) {
+            if (systemResolved.isNotEmpty()) {
+                appendRuntimeLog("cf-opt bypass host=$hostname reason=non-emby ipv4Count=${systemResolved.size}")
+                return systemResolved
+            }
+            appendRuntimeLog("cf-opt bypass-fail host=$hostname reason=non-emby-no-ipv4")
+            throw UnknownHostException("No IPv4 address for host: $hostname")
+        }
+
+        val preferredFromReference = resolvePreferredCfIpv4Candidates(referenceHost)
+        if (preferredFromReference.isEmpty()) {
+            appendRuntimeLog("cf-opt fallback reason=reference-resolve-empty host=$hostname")
+            if (systemResolved.isNotEmpty()) {
+                return systemResolved
+            }
+            throw UnknownHostException("No IPv4 address for emby host: $hostname")
+        }
+
+        val merged = ArrayList<InetAddress>(preferredFromReference.size + systemResolved.size)
+        val dedupe = HashSet<String>()
+        for (addr in preferredFromReference) {
+            if (dedupe.add(addr.hostAddress ?: "")) {
+                merged.add(addr)
+            }
+        }
+        for (addr in systemResolved) {
+            if (dedupe.add(addr.hostAddress ?: "")) {
+                merged.add(addr)
+            }
+        }
+        val preview = merged.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
+        val selected = merged.firstOrNull()?.hostAddress ?: "?"
+        appendRuntimeLog(
+            "cf-opt dns host=$hostname selected=$selected preferredCount=${preferredFromReference.size} systemCount=${systemResolved.size} merged=${merged.size} sample=$preview"
+        )
+        if (merged.isNotEmpty()) {
+            return merged
+        }
+        if (systemResolved.isNotEmpty()) {
+            appendRuntimeLog("cf-opt fallback reason=merge-empty-use-system host=$hostname systemCount=${systemResolved.size}")
+            return systemResolved
+        }
+        throw UnknownHostException("No IPv4 address after cf-opt merge for host: $hostname")
+    }
+
+    private fun resolvePreferredCfIpv4Candidates(referenceHost: String): List<InetAddress> {
+        val now = SystemClock.elapsedRealtime()
+        synchronized(dnsCacheLock) {
+            val cached = cfPreferredIpv4Cache[referenceHost]
+            if (cached != null && now - cached.first < CF_IP_CACHE_TTL_MS) {
+                val preview = cached.second.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
+                appendRuntimeLog(
+                    "cf-opt cache-hit referenceHost=$referenceHost ageMs=${now - cached.first} ipv4Count=${cached.second.size} sample=$preview"
+                )
+                return cached.second
+            }
+        }
+        val resolved = safeLookupIpv4(referenceHost)
+        val deduped = LinkedHashMap<String, InetAddress>()
+        for (addr in resolved) {
+            val key = addr.hostAddress ?: continue
+            if (!deduped.containsKey(key)) {
+                deduped[key] = addr
+            }
+            if (deduped.size >= MAX_CF_IP_CANDIDATES) {
+                break
+            }
+        }
+        val result = deduped.values.toList()
+        val resolvedPreview = result.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
+        appendRuntimeLog("cf-opt cache-refresh referenceHost=$referenceHost ipv4Count=${result.size} sample=$resolvedPreview")
+        synchronized(dnsCacheLock) {
+            cfPreferredIpv4Cache[referenceHost] = now to result
+            if (cfPreferredIpv4Cache.size > CF_IP_CACHE_MAX_HOSTS) {
+                val iterator = cfPreferredIpv4Cache.entries.iterator()
+                if (iterator.hasNext()) {
+                    iterator.next()
+                    iterator.remove()
+                }
+            }
+        }
+        return result
+    }
+
+    private fun safeLookupIpv4(host: String): List<InetAddress> {
+        return try {
+            Dns.SYSTEM.lookup(host)
+                .filterIsInstance<Inet4Address>()
+        } catch (_: SocketTimeoutException) {
+            appendRuntimeLog("cf-opt system-dns-timeout host=$host")
+            emptyList()
+        } catch (e: Exception) {
+            appendRuntimeLog("cf-opt system-dns-fail host=$host type=${e.javaClass.simpleName}")
+            emptyList()
         }
     }
 
@@ -1681,6 +2276,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadSavedCredentials() {
         val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
         embyBaseUrlInput.setText(prefs.getString(KEY_BASE_URL, "").orEmpty())
+        cfRefDomainInput.setText(prefs.getString(KEY_CF_REF_DOMAIN, "").orEmpty())
         embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
         embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
         lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
@@ -1690,6 +2286,7 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
             .edit()
             .putString(KEY_BASE_URL, credentials.baseUrl)
+            .putString(KEY_CF_REF_DOMAIN, credentials.cfReferenceDomain)
             .putString(KEY_USERNAME, credentials.username)
             .putString(KEY_PASSWORD, credentials.password)
             .apply()
@@ -1812,6 +2409,7 @@ class MainActivity : AppCompatActivity() {
         const val LOG_TAG = "SkodaMusicEmby"
         const val PREFS_EMBY = "emby_credentials"
         const val KEY_BASE_URL = "base_url"
+        const val KEY_CF_REF_DOMAIN = "cf_ref_domain"
         const val KEY_USERNAME = "username"
         const val KEY_PASSWORD = "password"
         const val KEY_LRCAPI_BASE_URL = "lrcapi_base_url"
@@ -1825,6 +2423,15 @@ class MainActivity : AppCompatActivity() {
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
         const val LOAD_CONTROL_PLAYBACK_MS = 3_000
         const val LOAD_CONTROL_REBUFFER_MS = 1_000
+        const val CF_IP_CACHE_TTL_MS = 60_000L
+        const val CF_IP_CACHE_MAX_HOSTS = 8
+        const val MAX_CF_IP_CANDIDATES = 6
+        const val MAX_CF_IP_PREVIEW = 3
+        const val DOWNLOAD_WINDOW_SEC = 30L
+        const val DOWNLOAD_CHUNK_BYTES = 512L * 1024L
+        const val DOWNLOAD_CONTROLLER_IDLE_MS = 300L
+        const val TRACK_DOWNLOAD_STATE_MAX_SIZE = 48
+        const val DEFAULT_ESTIMATED_BITRATE_BPS = 192_000L
         const val STREAM_PREPARE_TIMEOUT_MS = 45_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2

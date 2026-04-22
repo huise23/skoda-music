@@ -340,6 +340,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeRecommendPanel: View
     private lateinit var homeLyricsPanel: View
     private lateinit var homeRecommendList: LinearLayout
+    private lateinit var homeLyricsScroll: ScrollView
     private lateinit var homeLyricsText: TextView
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
@@ -428,6 +429,7 @@ class MainActivity : AppCompatActivity() {
         homeRecommendPanel = findViewById(R.id.home_recommend_panel)
         homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
         homeRecommendList = findViewById(R.id.home_recommend_list)
+        homeLyricsScroll = findViewById(R.id.home_lyrics_scroll)
         homeLyricsText = findViewById(R.id.home_lyrics_text)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
@@ -795,6 +797,10 @@ class MainActivity : AppCompatActivity() {
             null,
             if (showRecommend) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD
         )
+        if (!showRecommend) {
+            val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
+            renderHomeLyricsByPosition(positionMs)
+        }
     }
 
     private fun bindLibraryPaging() {
@@ -1032,6 +1038,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
         homeLyricsText.text = builder
+        centerHomeLyricsLine(activeIndex)
+    }
+
+    private fun centerHomeLyricsLine(activeIndex: Int) {
+        homeLyricsText.post {
+            val layout = homeLyricsText.layout ?: return@post
+            if (activeIndex < 0 || activeIndex >= layout.lineCount) {
+                return@post
+            }
+            val lineCenter = (layout.getLineTop(activeIndex) + layout.getLineBottom(activeIndex)) / 2
+            val viewportCenter = homeLyricsScroll.height / 2
+            val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
+            val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)
+            homeLyricsScroll.scrollTo(0, targetScroll)
+        }
     }
 
     private fun findActiveLyricIndex(positionMs: Long): Int {
@@ -1084,7 +1105,7 @@ class MainActivity : AppCompatActivity() {
 
             title.text = if (isCurrent) "\u25B6 ${track.title}" else track.title
             title.setTextColor(resources.getColor(R.color.text_primary))
-            title.textSize = 16f
+            title.textSize = if (source == ListSource.LIBRARY) 17f else 16f
             title.setTypeface(
                 null,
                 if (isCurrent) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
@@ -1093,7 +1114,7 @@ class MainActivity : AppCompatActivity() {
             val artistLabel = track.artist.ifBlank { getString(R.string.track_artist_server) }
             artist.text = artistLabel
             artist.setTextColor(resources.getColor(R.color.text_secondary))
-            artist.textSize = 13f
+            artist.textSize = if (source == ListSource.LIBRARY) 14f else 13f
 
             row.addView(title)
             row.addView(artist)

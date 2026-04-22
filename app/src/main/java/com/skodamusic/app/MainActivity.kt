@@ -318,6 +318,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prevButton: Button
     private lateinit var playPauseButton: Button
     private lateinit var nextButton: Button
+    private lateinit var homeTabRecommendButton: Button
+    private lateinit var homeTabLyricsButton: Button
+    private lateinit var homeRecommendPanel: View
+    private lateinit var homeLyricsPanel: View
+    private lateinit var homeRecommendPreview: TextView
+    private lateinit var homeLyricsText: TextView
     private lateinit var recommendHomeButton: Button
     private lateinit var recommendQueueButton: Button
     private lateinit var testEmbyButton: Button
@@ -346,6 +352,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
+    private var showingHomeRecommendTab: Boolean = true
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -391,6 +398,12 @@ class MainActivity : AppCompatActivity() {
         prevButton = findViewById(R.id.btn_prev)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
+        homeTabRecommendButton = findViewById(R.id.btn_home_tab_recommend)
+        homeTabLyricsButton = findViewById(R.id.btn_home_tab_lyrics)
+        homeRecommendPanel = findViewById(R.id.home_recommend_panel)
+        homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
+        homeRecommendPreview = findViewById(R.id.home_recommend_preview)
+        homeLyricsText = findViewById(R.id.home_lyrics_text)
         recommendHomeButton = findViewById(R.id.btn_recommend_home)
         recommendQueueButton = findViewById(R.id.btn_recommend_queue)
         testEmbyButton = findViewById(R.id.btn_test_emby)
@@ -404,6 +417,7 @@ class MainActivity : AppCompatActivity() {
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
         buildIdBadge.text = "build: ${BuildConfig.GIT_SHORT_SHA}"
+        switchHomeTab(showRecommend = true)
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()
@@ -451,6 +465,12 @@ class MainActivity : AppCompatActivity() {
         }
         recommendHomeButton.setOnClickListener {
             requestQueueRecommendations()
+        }
+        homeTabRecommendButton.setOnClickListener {
+            switchHomeTab(showRecommend = true)
+        }
+        homeTabLyricsButton.setOnClickListener {
+            switchHomeTab(showRecommend = false)
         }
         playbackSeekBar.max = SEEK_BAR_MAX
         playbackSeekBar.progress = 0
@@ -681,6 +701,42 @@ class MainActivity : AppCompatActivity() {
             highlightCurrent = false,
             emptyRes = R.string.library_empty
         )
+        renderHomeRecommendationPreview()
+    }
+
+    private fun switchHomeTab(showRecommend: Boolean) {
+        showingHomeRecommendTab = showRecommend
+        homeRecommendPanel.visibility = if (showRecommend) View.VISIBLE else View.GONE
+        homeLyricsPanel.visibility = if (showRecommend) View.GONE else View.VISIBLE
+        homeTabRecommendButton.setBackgroundResource(
+            if (showRecommend) R.drawable.button_primary else R.drawable.button_secondary
+        )
+        homeTabLyricsButton.setBackgroundResource(
+            if (showRecommend) R.drawable.button_secondary else R.drawable.button_primary
+        )
+        homeTabRecommendButton.setTextColor(
+            resources.getColor(if (showRecommend) R.color.white else R.color.text_primary)
+        )
+        homeTabLyricsButton.setTextColor(
+            resources.getColor(if (showRecommend) R.color.text_primary else R.color.white)
+        )
+    }
+
+    private fun renderHomeRecommendationPreview() {
+        if (loadedTracks.isEmpty()) {
+            homeRecommendPreview.text = getString(R.string.home_recommend_placeholder)
+            return
+        }
+        val preview = loadedTracks
+            .take(8)
+            .mapIndexed { index, track -> "${index + 1}. ${track.title}" }
+            .joinToString("\n")
+        homeRecommendPreview.text = preview
+    }
+
+    private fun renderHomeLyricsPreview(currentTrack: String) {
+        val displayTrack = if (currentTrack.isBlank()) getString(R.string.track_not_loaded) else currentTrack
+        homeLyricsText.text = getString(R.string.home_lyrics_placeholder) + "\n\n" + displayTrack
     }
 
     private fun renderTrackContainer(
@@ -2768,6 +2824,7 @@ class MainActivity : AppCompatActivity() {
         lrcApiStatusValue.text = state.lrcApiStatusText
         trackValue.text = state.currentTrack
         playbackValue.setText(state.playbackStatusRes)
+        renderHomeLyricsPreview(state.currentTrack)
         playPauseButton.setText(state.playPauseLabelRes)
         playPauseButton.isEnabled = state.playPauseEnabled
         prevButton.isEnabled = loadedTracks.isNotEmpty()

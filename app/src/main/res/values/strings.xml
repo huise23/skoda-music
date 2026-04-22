@@ -33,6 +33,11 @@
     <string name="action_prev">Prev</string>
     <string name="action_next">Next</string>
     <string name="action_recommend_listen">听推荐</string>
+    <string name="home_tab_recommend">推荐</string>
+    <string name="home_tab_lyrics">歌词</string>
+    <string name="home_recommend_list_title">推荐列表</string>
+    <string name="home_recommend_placeholder">暂无推荐，先完成 Emby 登录后会在这里显示列表。</string>
+    <string name="home_lyrics_placeholder">歌词内容\n\n当前为占位展示，后续会接入实时歌词。</string>
     <string name="label_cover_entry">Cover</string>
     <string name="feedback_idle">Action feedback: idle</string>
     <string name="feedback_play_pressed">Action feedback: Play/Pause pressed</string>

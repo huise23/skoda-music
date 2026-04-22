@@ -60,6 +60,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.net.URLEncoder
 import java.net.URL
+import java.text.Collator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
@@ -904,6 +905,7 @@ class MainActivity : AppCompatActivity() {
                         existingIds.add(track.id)
                     }
                 }
+                libraryTracks.sortWith(trackTitleComparator())
                 libraryNextStartIndex = (start + pageTracks.size).coerceAtLeast(libraryTracks.size)
                 libraryTotalRecordCount = totalCount.coerceAtLeast(libraryTracks.size)
                 appendRuntimeLog(
@@ -919,26 +921,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHomeRecommendationPreview() {
         homeRecommendList.removeAllViews()
-        val fallbackServerArtist = getString(R.string.track_artist_server)
-        val recommendations: List<Pair<String, String>> = if (loadedTracks.isNotEmpty()) {
-            loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
-        } else {
-            listOf(
-                "公路混音 1" to fallbackServerArtist,
-                "公路混音 2" to fallbackServerArtist,
-                "夜航巡游" to "Skoda Band",
-                "日落循环" to "Skoda Band",
-                "高速回响" to fallbackServerArtist,
-                "雨后余音" to fallbackServerArtist
+        if (loadedTracks.isEmpty()) {
+            val empty = TextView(this)
+            empty.text = getString(R.string.home_recommend_placeholder)
+            empty.setTextColor(resources.getColor(R.color.text_secondary))
+            empty.textSize = 16f
+            empty.gravity = Gravity.CENTER
+            empty.setPadding(dpToPx(12), dpToPx(22), dpToPx(12), dpToPx(22))
+            empty.setBackgroundResource(R.drawable.row_recommend_idle)
+            homeRecommendList.addView(
+                empty,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
+            return
         }
+        val fallbackServerArtist = getString(R.string.track_artist_server)
+        val recommendations: List<Pair<String, String>> =
+            loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
 
         recommendations.forEachIndexed { index, item ->
-            val isCurrent = if (loadedTracks.isNotEmpty()) {
-                index == currentTrackIndex
-            } else {
-                uiState.currentTrack == item.first
-            }
+            val isCurrent = index == currentTrackIndex
             val row = LinearLayout(this)
             row.orientation = LinearLayout.VERTICAL
             row.gravity = Gravity.CENTER_VERTICAL
@@ -962,17 +967,7 @@ class MainActivity : AppCompatActivity() {
             row.addView(title)
             row.addView(artist)
             row.setOnClickListener {
-                if (loadedTracks.isNotEmpty()) {
-                    playFromList(index, ListSource.QUEUE)
-                } else {
-                    previewArtistOverride = item.second
-                    updateState {
-                        it.copy(
-                            currentTrack = item.first,
-                            feedbackText = getString(R.string.feedback_need_emby)
-                        )
-                    }
-                }
+                playFromList(index, ListSource.QUEUE)
             }
 
             val params = LinearLayout.LayoutParams(
@@ -1009,14 +1004,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildHomeLyricsLines(trackName: String): List<LyricLine> {
-        val cleanName = trackName.ifBlank { getString(R.string.track_not_loaded) }
-        return listOf(
-            LyricLine(1_000L, "$cleanName - Drive Mix"),
-            LyricLine(6_000L, "城市灯影掠过车窗"),
-            LyricLine(13_000L, "双手握稳方向，节拍开始升温"),
-            LyricLine(21_000L, "道路与旋律在今夜同频"),
-            LyricLine(30_000L, "继续前行，让律动不停")
-        )
+        val fallbackText = getString(R.string.home_lyrics_placeholder)
+        return listOf(LyricLine(0L, fallbackText))
     }
 
     private fun requestLyricsFromLrcApi(trackName: String, artistName: String, trackKey: String) {
@@ -1243,11 +1232,29 @@ class MainActivity : AppCompatActivity() {
     private fun centerHomeLyricsLine(activeIndex: Int) {
         homeLyricsText.post {
             val layout = homeLyricsText.layout ?: return@post
+            val viewportHeight = homeLyricsScroll.height
+            if (viewportHeight <= 0) {
+                return@post
+            }
             if (activeIndex < 0 || activeIndex >= layout.lineCount) {
                 return@post
             }
+
+            val lineHeight = (layout.getLineBottom(activeIndex) - layout.getLineTop(activeIndex)).coerceAtLeast(dpToPx(20))
+            val dynamicVerticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
+            if (homeLyricsText.paddingTop != dynamicVerticalPadding || homeLyricsText.paddingBottom != dynamicVerticalPadding) {
+                homeLyricsText.setPadding(
+                    homeLyricsText.paddingLeft,
+                    dynamicVerticalPadding,
+                    homeLyricsText.paddingRight,
+                    dynamicVerticalPadding
+                )
+                homeLyricsText.post { centerHomeLyricsLine(activeIndex) }
+                return@post
+            }
+
             val lineCenter = (layout.getLineTop(activeIndex) + layout.getLineBottom(activeIndex)) / 2
-            val viewportCenter = homeLyricsScroll.height / 2
+            val viewportCenter = viewportHeight / 2
             val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
             val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)
             homeLyricsScroll.scrollTo(0, targetScroll)
@@ -3133,6 +3140,20 @@ class MainActivity : AppCompatActivity() {
             artist = artist,
             runtimeTicks = item.optLong("RunTimeTicks", -1L)
         )
+    }
+
+    private fun trackTitleComparator(): Comparator<EmbyTrack> {
+        val collator = Collator.getInstance(Locale.CHINA).apply {
+            strength = Collator.PRIMARY
+        }
+        return Comparator { left, right ->
+            val titleCompare = collator.compare(left.title.trim(), right.title.trim())
+            if (titleCompare != 0) {
+                titleCompare
+            } else {
+                left.id.compareTo(right.id, ignoreCase = true)
+            }
+        }
     }
 
     private fun readTextWithLineBreaks(stream: InputStream?): String {

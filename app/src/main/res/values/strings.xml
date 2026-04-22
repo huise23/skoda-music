@@ -38,8 +38,8 @@
     <string name="home_tab_recommend">队列</string>
     <string name="home_tab_lyrics">歌词</string>
     <string name="home_recommend_list_title">队列列表</string>
-    <string name="home_recommend_placeholder">暂无队列，先完成 Emby 登录后会在这里显示列表。</string>
-    <string name="home_lyrics_placeholder">歌词内容\n\n当前为占位展示，后续会接入实时歌词。</string>
+    <string name="home_recommend_placeholder">暂无队列歌曲，下拉刷新获取。</string>
+    <string name="home_lyrics_placeholder">暂无歌词</string>
     <string name="label_cover_entry">封面</string>
     <string name="feedback_idle">动作反馈：空闲</string>
     <string name="feedback_play_pressed">动作反馈：播放/暂停已触发</string>
@@ -105,11 +105,11 @@
     <string name="label_queue">播放队列</string>
     <string name="action_recommend_queue">推荐 20 首</string>
     <string name="action_clear_queue">清空队列</string>
-    <string name="queue_placeholder">队列页占位</string>
+    <string name="queue_placeholder">暂无队列数据</string>
     <string name="queue_empty">队列为空，请先从 Emby 加载曲目。</string>
     <string name="label_library">媒体库</string>
     <string name="hint_library_search">搜索歌曲、歌手、专辑</string>
-    <string name="library_placeholder">媒体库占位</string>
+    <string name="library_placeholder">暂无媒体库数据</string>
     <string name="library_empty">媒体库为空，请先从 Emby 拉取数据。</string>
     <string name="app_name_version">v1.0.0 玻璃版</string>
 </resources>

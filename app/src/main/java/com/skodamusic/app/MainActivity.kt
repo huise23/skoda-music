@@ -23,11 +23,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.MediaItem
@@ -329,6 +331,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
     private lateinit var libraryTracksContainer: LinearLayout
+    private lateinit var homeRecommendRefresh: SwipeRefreshLayout
     private lateinit var prevButton: ImageButton
     private lateinit var playPauseButton: ImageButton
     private lateinit var nextButton: ImageButton
@@ -338,9 +341,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeLyricsPanel: View
     private lateinit var homeRecommendList: LinearLayout
     private lateinit var homeLyricsText: TextView
-    private lateinit var recommendHomeButton: Button
-    private lateinit var recommendQueueButton: Button
-    private lateinit var clearQueueButton: Button
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var navHomeButton: ImageButton
@@ -349,11 +349,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var navSettingsButton: ImageButton
     private lateinit var pageHome: View
     private lateinit var pageQueue: View
-    private lateinit var pageLibrary: View
+    private lateinit var pageLibrary: ScrollView
     private lateinit var pageSettings: View
     private lateinit var uiState: UiState
 
     private var loadedTracks: List<EmbyTrack> = emptyList()
+    private val libraryTracks = mutableListOf<EmbyTrack>()
+    private var libraryLoadInFlight: Boolean = false
+    private var libraryNextStartIndex: Int = 0
+    private var libraryTotalRecordCount: Int = Int.MAX_VALUE
+    private var libraryPagingBound: Boolean = false
     private var embySessionBaseUrl: String? = null
     private var embySessionUserId: String? = null
     private var embyAccessToken: String? = null
@@ -412,6 +417,7 @@ class MainActivity : AppCompatActivity() {
         playbackSeekBar = findViewById(R.id.playback_seek_bar)
         downloadProgressValue = findViewById(R.id.download_progress_value)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
+        homeRecommendRefresh = findViewById(R.id.home_recommend_refresh)
         queueTracksContainer = findViewById(R.id.queue_tracks_container)
         libraryTracksContainer = findViewById(R.id.library_tracks_container)
         prevButton = findViewById(R.id.btn_prev)
@@ -423,9 +429,6 @@ class MainActivity : AppCompatActivity() {
         homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
         homeRecommendList = findViewById(R.id.home_recommend_list)
         homeLyricsText = findViewById(R.id.home_lyrics_text)
-        recommendHomeButton = findViewById(R.id.btn_recommend_home)
-        recommendQueueButton = findViewById(R.id.btn_recommend_queue)
-        clearQueueButton = findViewById(R.id.btn_clear_queue)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         navHomeButton = findViewById(R.id.nav_home)
@@ -436,9 +439,10 @@ class MainActivity : AppCompatActivity() {
         pageQueue = findViewById(R.id.page_queue)
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
-        buildIdBadge.text = "build: ${BuildConfig.GIT_SHORT_SHA}"
+        buildIdBadge.text = "构建: ${BuildConfig.GIT_SHORT_SHA}"
         configureModernHomeShell()
-        switchHomeTab(showRecommend = true)
+        switchHomeTab(showRecommend = false)
+        bindLibraryPaging()
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()
@@ -516,21 +520,24 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.runtime_log_label).setOnClickListener {
             showRuntimeLogsFullscreen()
         }
-        recommendQueueButton.setOnClickListener {
-            requestQueueRecommendations()
-        }
-        clearQueueButton.setOnClickListener {
-            appendRuntimeLog("ui click clear queue")
-            if (loadedTracks.isEmpty()) {
-                updateState { it.copy(feedbackText = getString(R.string.feedback_queue_already_empty)) }
-                showToast(R.string.toast_queue_already_empty)
-                return@setOnClickListener
+        homeRecommendRefresh.setOnRefreshListener {
+            val credentials = EmbyCredentials(
+                baseUrl = embyBaseUrlInput.text.toString().trim(),
+                username = embyUsernameInput.text.toString().trim(),
+                password = embyPasswordInput.text.toString().trim(),
+                cfReferenceDomain = resolveCfReferenceDomain()
+            )
+            if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
+                homeRecommendRefresh.isRefreshing = false
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+                showToast(R.string.toast_emby_failed)
+                return@setOnRefreshListener
             }
-            clearQueueAndResetPlayback()
-            showToast(R.string.toast_queue_cleared)
-        }
-        recommendHomeButton.setOnClickListener {
-            requestQueueRecommendations()
+            requestTracksFromEmby(credentials) {
+                runOnUiThread {
+                    homeRecommendRefresh.isRefreshing = false
+                }
+            }
         }
         homeTabRecommendButton.setOnClickListener {
             switchHomeTab(showRecommend = true)
@@ -712,9 +719,6 @@ class MainActivity : AppCompatActivity() {
         navHomeButton.setOnClickListener {
             switchPage(PAGE_HOME)
         }
-        navQueueButton.setOnClickListener {
-            switchPage(PAGE_QUEUE)
-        }
         navLibraryButton.setOnClickListener {
             switchPage(PAGE_LIBRARY)
         }
@@ -726,18 +730,17 @@ class MainActivity : AppCompatActivity() {
     private fun switchPage(targetPage: Int) {
         selectedPage = targetPage
         pageHome.visibility = if (selectedPage == PAGE_HOME) View.VISIBLE else View.GONE
-        pageQueue.visibility = if (selectedPage == PAGE_QUEUE) View.VISIBLE else View.GONE
+        pageQueue.visibility = View.GONE
         pageLibrary.visibility = if (selectedPage == PAGE_LIBRARY) View.VISIBLE else View.GONE
         pageSettings.visibility = if (selectedPage == PAGE_SETTINGS) View.VISIBLE else View.GONE
         updateNavigationVisualState()
-        if (selectedPage == PAGE_QUEUE) {
-            maybeAutoRefreshQueueRecommendations("enter-queue-page")
+        if (selectedPage == PAGE_LIBRARY) {
+            ensureLibraryTracksLoaded("enter-library-page")
         }
     }
 
     private fun updateNavigationVisualState() {
         setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME, android.R.drawable.ic_menu_view)
-        setNavButtonSelected(navQueueButton, selectedPage == PAGE_QUEUE, android.R.drawable.ic_menu_sort_by_size)
         setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY, android.R.drawable.ic_menu_agenda)
         setNavButtonSelected(navSettingsButton, selectedPage == PAGE_SETTINGS, android.R.drawable.ic_menu_manage)
     }
@@ -755,13 +758,15 @@ class MainActivity : AppCompatActivity() {
             container = queueTracksContainer,
             tracks = loadedTracks,
             highlightCurrent = true,
-            emptyRes = R.string.queue_empty
+            emptyRes = R.string.queue_empty,
+            source = ListSource.QUEUE
         )
         renderTrackContainer(
             container = libraryTracksContainer,
-            tracks = loadedTracks,
+            tracks = libraryTracks,
             highlightCurrent = false,
-            emptyRes = R.string.library_empty
+            emptyRes = R.string.library_empty,
+            source = ListSource.LIBRARY
         )
         renderHomeRecommendationPreview()
     }
@@ -792,19 +797,130 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun bindLibraryPaging() {
+        if (libraryPagingBound) {
+            return
+        }
+        libraryPagingBound = true
+        pageLibrary.viewTreeObserver.addOnScrollChangedListener {
+            if (selectedPage != PAGE_LIBRARY) {
+                return@addOnScrollChangedListener
+            }
+            if (isLibraryNearBottom()) {
+                loadMoreLibraryTracks("library-scroll")
+            }
+        }
+    }
+
+    private fun isLibraryNearBottom(): Boolean {
+        val child = pageLibrary.getChildAt(0) ?: return false
+        val distanceToBottom = child.bottom - (pageLibrary.height + pageLibrary.scrollY)
+        return distanceToBottom <= dpToPx(220)
+    }
+
+    private fun ensureLibraryTracksLoaded(trigger: String) {
+        if (libraryTracks.isEmpty()) {
+            resetAndLoadLibraryTracks(trigger)
+            return
+        }
+        if (isLibraryNearBottom()) {
+            loadMoreLibraryTracks("$trigger-near-bottom")
+        }
+    }
+
+    private fun resetAndLoadLibraryTracks(trigger: String) {
+        libraryTracks.clear()
+        libraryNextStartIndex = 0
+        libraryTotalRecordCount = Int.MAX_VALUE
+        rebuildTrackLists()
+        loadMoreLibraryTracks("$trigger-reset")
+    }
+
+    private fun loadMoreLibraryTracks(trigger: String) {
+        if (libraryLoadInFlight) {
+            return
+        }
+        if (libraryNextStartIndex >= libraryTotalRecordCount) {
+            return
+        }
+        val base = embySessionBaseUrl
+        val userId = embySessionUserId
+        val token = embyAccessToken
+        if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
+            val credentials = EmbyCredentials(
+                baseUrl = embyBaseUrlInput.text.toString().trim(),
+                username = embyUsernameInput.text.toString().trim(),
+                password = embyPasswordInput.text.toString().trim(),
+                cfReferenceDomain = resolveCfReferenceDomain()
+            )
+            if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
+                return
+            }
+            requestTracksFromEmby(credentials) {
+                runOnUiThread {
+                    if (!embySessionBaseUrl.isNullOrBlank() && !embySessionUserId.isNullOrBlank() && !embyAccessToken.isNullOrBlank()) {
+                        loadMoreLibraryTracks("$trigger-auth-ready")
+                    }
+                }
+            }
+            return
+        }
+        val start = libraryNextStartIndex
+        val limit = LIBRARY_PAGE_SIZE
+        libraryLoadInFlight = true
+        appendRuntimeLog("library load start trigger=$trigger start=$start limit=$limit")
+        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
+        Thread {
+            val endpoint = buildEmbyLibraryItemsUrl(base, userId, token, start, limit)
+            val response = executeGet(
+                endpoint = endpoint,
+                token = token,
+                requestLabel = "GET /Users/{id}/Items (Library Paging)",
+                log = { message -> appendRuntimeLog("library $message") },
+                httpClient = embyClient
+            )
+            val pageTracks = if (response.code in 200..299) parseTrackItems(response.payload) else emptyList()
+            val totalCount = parseTotalRecordCount(response.payload, start + pageTracks.size)
+            runOnUiThread {
+                libraryLoadInFlight = false
+                if (response.code !in 200..299) {
+                    appendRuntimeLog("library load failed code=${response.code} trigger=$trigger")
+                    return@runOnUiThread
+                }
+                val existingIds = HashSet<String>(libraryTracks.size * 2 + pageTracks.size)
+                libraryTracks.forEach { existingIds.add(it.id) }
+                pageTracks.forEach { track ->
+                    if (!existingIds.contains(track.id)) {
+                        libraryTracks.add(track)
+                        existingIds.add(track.id)
+                    }
+                }
+                libraryNextStartIndex = (start + pageTracks.size).coerceAtLeast(libraryTracks.size)
+                libraryTotalRecordCount = totalCount.coerceAtLeast(libraryTracks.size)
+                appendRuntimeLog(
+                    "library load success trigger=$trigger fetched=${pageTracks.size} list=${libraryTracks.size} next=$libraryNextStartIndex total=$libraryTotalRecordCount"
+                )
+                rebuildTrackLists()
+                if (selectedPage == PAGE_LIBRARY && isLibraryNearBottom()) {
+                    loadMoreLibraryTracks("$trigger-fill-viewport")
+                }
+            }
+        }.start()
+    }
+
     private fun renderHomeRecommendationPreview() {
         homeRecommendList.removeAllViews()
         val fallbackServerArtist = getString(R.string.track_artist_server)
         val recommendations: List<Pair<String, String>> = if (loadedTracks.isNotEmpty()) {
-            loadedTracks.take(8).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
+            loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
         } else {
             listOf(
-                "Road Mix 1" to fallbackServerArtist,
-                "Road Mix 2" to fallbackServerArtist,
-                "Night Cruise" to "Skoda Band",
-                "Sunset Loop" to "Skoda Band",
-                "Highway Echo" to fallbackServerArtist,
-                "After Rain" to fallbackServerArtist
+                "公路混音 1" to fallbackServerArtist,
+                "公路混音 2" to fallbackServerArtist,
+                "夜航巡游" to "Skoda Band",
+                "日落循环" to "Skoda Band",
+                "高速回响" to fallbackServerArtist,
+                "雨后余音" to fallbackServerArtist
             )
         }
 
@@ -872,10 +988,10 @@ class MainActivity : AppCompatActivity() {
         val cleanName = trackName.ifBlank { getString(R.string.track_not_loaded) }
         return listOf(
             LyricLine(1_000L, "$cleanName - Drive Mix"),
-            LyricLine(6_000L, "City lights slide across the glass"),
-            LyricLine(13_000L, "Hands on wheel, rhythm starts to rise"),
-            LyricLine(21_000L, "Road and music stay in sync tonight"),
-            LyricLine(30_000L, "Keep moving, keep the beat alive")
+            LyricLine(6_000L, "城市灯影掠过车窗"),
+            LyricLine(13_000L, "双手握稳方向，节拍开始升温"),
+            LyricLine(21_000L, "道路与旋律在今夜同频"),
+            LyricLine(30_000L, "继续前行，让律动不停")
         )
     }
 
@@ -932,7 +1048,8 @@ class MainActivity : AppCompatActivity() {
         container: LinearLayout,
         tracks: List<EmbyTrack>,
         highlightCurrent: Boolean,
-        emptyRes: Int
+        emptyRes: Int,
+        source: ListSource
     ) {
         container.removeAllViews()
         if (tracks.isEmpty()) {
@@ -981,7 +1098,6 @@ class MainActivity : AppCompatActivity() {
             row.addView(title)
             row.addView(artist)
             row.setOnClickListener {
-                val source = if (highlightCurrent) ListSource.QUEUE else ListSource.LIBRARY
                 playFromList(index, source)
             }
             val params = LinearLayout.LayoutParams(
@@ -995,44 +1111,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun clearQueueAndResetPlayback() {
-        loadedTracks = emptyList()
-        currentTrackIndex = 0
-        previewArtistOverride = null
-        playbackRequestId += 1
-        stopDownloadController()
-        releasePlayer()
-        updateState {
-            it.copy(
-                currentTrack = getString(R.string.track_not_loaded),
-                playbackStatusRes = R.string.status_paused,
-                playPauseLabelRes = R.string.action_play,
-                isPlaying = false,
-                playPauseEnabled = false,
-                nextEnabled = false,
-                feedbackText = getString(R.string.feedback_queue_cleared)
-            )
-        }
-        rebuildTrackLists()
-    }
-
     private fun playFromList(index: Int, source: ListSource) {
-        if (loadedTracks.isEmpty()) {
+        val targetTracks = if (source == ListSource.LIBRARY) libraryTracks else loadedTracks
+        if (targetTracks.isEmpty()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
             return
         }
 
-        val safeIndex = index.coerceIn(0, loadedTracks.lastIndex)
-        currentTrackIndex = safeIndex
+        if (source == ListSource.LIBRARY) {
+            val safeLibraryIndex = index.coerceIn(0, targetTracks.lastIndex)
+            val endExclusive = (safeLibraryIndex + DEFAULT_HOME_QUEUE_SIZE).coerceAtMost(targetTracks.size)
+            loadedTracks = targetTracks.subList(safeLibraryIndex, endExclusive)
+            currentTrackIndex = 0
+        } else {
+            val safeIndex = index.coerceIn(0, loadedTracks.lastIndex)
+            currentTrackIndex = safeIndex
+        }
         previewArtistOverride = loadedTracks[currentTrackIndex].artist.ifBlank { null }
         syncNativeQueueToCurrentIndex()
         val first = loadedTracks[currentTrackIndex].title
 
-        val feedbackRes = if (source == ListSource.QUEUE) {
-            R.string.feedback_play_now_queue
-        } else {
-            R.string.feedback_play_now_library
-        }
+        val feedbackRes = if (source == ListSource.QUEUE) R.string.feedback_play_now_queue else R.string.feedback_play_now_library
         updateState {
             it.copy(
                 currentTrack = first,
@@ -1045,122 +1144,6 @@ class MainActivity : AppCompatActivity() {
         }
         rebuildTrackLists()
         playTrackAtCurrentIndex()
-    }
-
-    private fun requestQueueRecommendations() {
-        if (loadedTracks.isEmpty()) {
-            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
-            showToast(R.string.toast_queue_recommend_failed)
-            return
-        }
-        if (!NativePlaybackBridge.isAvailable()) {
-            updateState {
-                it.copy(
-                    feedbackText = getString(R.string.feedback_native_unavailable),
-                    nextEnabled = false
-                )
-            }
-            showToast(R.string.toast_queue_recommend_failed)
-            return
-        }
-        val base = embySessionBaseUrl
-        val userId = embySessionUserId
-        val token = embyAccessToken
-        if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
-            updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_missing_session)) }
-            showToast(R.string.toast_queue_recommend_failed)
-            return
-        }
-
-        recommendQueueButton.isEnabled = false
-        updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_loading)) }
-        appendRuntimeLog("queue recommend start size=${loadedTracks.size} currentIndex=$currentTrackIndex")
-        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
-
-        Thread {
-            val response = executeGet(
-                endpoint = buildEmbyRecommendedItemsUrl(base, userId, token),
-                token = token,
-                requestLabel = "GET /Users/{id}/Items (Queue Recommend)",
-                log = { message -> appendRuntimeLog("queue recommend $message") },
-                httpClient = embyClient
-            )
-            if (response.code !in 200..299) {
-                runOnUiThread {
-                    recommendQueueButton.isEnabled = true
-                    updateState {
-                        it.copy(
-                            feedbackText = getString(
-                                R.string.feedback_queue_recommend_failed_http,
-                                response.code
-                            )
-                        )
-                    }
-                    showToast(R.string.toast_queue_recommend_failed)
-                }
-                return@Thread
-            }
-
-            val recommendedTracks = parseTrackItems(response.payload)
-            if (recommendedTracks.isEmpty()) {
-                runOnUiThread {
-                    recommendQueueButton.isEnabled = true
-                    updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_empty)) }
-                    showToast(R.string.toast_queue_recommend_failed)
-                }
-                return@Thread
-            }
-
-            runOnUiThread {
-                val replacedCount = applyQueueRecommendationReplacement(recommendedTracks)
-                recommendQueueButton.isEnabled = true
-                if (replacedCount < 0) {
-                    updateState { it.copy(feedbackText = getString(R.string.feedback_queue_recommend_failed_apply)) }
-                    showToast(R.string.toast_queue_recommend_failed)
-                    return@runOnUiThread
-                }
-                appendRuntimeLog(
-                    "queue recommend success replaced=$replacedCount recommendations=${recommendedTracks.size}"
-                )
-                updateState {
-                    it.copy(
-                        feedbackText = getString(
-                            R.string.feedback_queue_recommend_success,
-                            replacedCount,
-                            recommendedTracks.size
-                        ),
-                        nextEnabled = hasNextTrack()
-                    )
-                }
-                showToast(R.string.toast_queue_recommend_success)
-            }
-        }.start()
-    }
-
-    private fun applyQueueRecommendationReplacement(recommendedTracks: List<EmbyTrack>): Int {
-        if (loadedTracks.isEmpty()) {
-            return -1
-        }
-        val previousTracks = loadedTracks
-        val previousCurrentIndex = currentTrackIndex
-        val safeCurrentIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
-        val playedSegment = previousTracks.take(safeCurrentIndex + 1)
-        if (playedSegment.isEmpty()) {
-            return -1
-        }
-
-        loadedTracks = playedSegment + recommendedTracks
-        currentTrackIndex = playedSegment.lastIndex
-        previewArtistOverride = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
-        if (!syncNativeQueueToCurrentIndex()) {
-            loadedTracks = previousTracks
-            currentTrackIndex = previousCurrentIndex
-            previewArtistOverride = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
-            return -1
-        }
-
-        rebuildTrackLists()
-        return (previousTracks.size - (safeCurrentIndex + 1)).coerceAtLeast(0)
     }
 
     private fun hasNextTrack(): Boolean {
@@ -1392,7 +1375,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatDurationClock(durationMs: Long): String {
         if (durationMs < 0L) {
-            return "--:--"
+            return "00:00"
         }
         val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
         val hours = totalSeconds / 3600L
@@ -1454,10 +1437,13 @@ class MainActivity : AppCompatActivity() {
                 try {
                     if (result.success) {
                         appendRuntimeLog("emby load success tracks=${result.tracks.size}")
-                        loadedTracks = result.tracks
+                        loadedTracks = result.tracks.take(DEFAULT_HOME_QUEUE_SIZE)
                         embySessionBaseUrl = result.embyBase
                         embySessionUserId = result.embyUserId
                         embyAccessToken = result.accessToken
+                        libraryTracks.clear()
+                        libraryNextStartIndex = 0
+                        libraryTotalRecordCount = Int.MAX_VALUE
                         currentTrackIndex = 0
                         previewArtistOverride = loadedTracks.firstOrNull()?.artist?.takeIf { it.isNotBlank() }
                         playbackRequestId += 1
@@ -1470,7 +1456,7 @@ class MainActivity : AppCompatActivity() {
                         val feedbackTail = if (nativeSynced) {
                             result.feedbackText
                         } else {
-                            result.feedbackText + "\n- native queue unavailable, playback stays in degraded mode"
+                            result.feedbackText + "\n- 原生队列不可用，播放保持降级模式"
                         }
                         updateState {
                             it.copy(
@@ -1486,10 +1472,16 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         rebuildTrackLists()
+                        if (selectedPage == PAGE_LIBRARY) {
+                            ensureLibraryTracksLoaded("emby-load-success")
+                        }
                         showToast(R.string.toast_emby_success)
                     } else {
                         appendRuntimeLog("emby load failed")
                         loadedTracks = emptyList()
+                        libraryTracks.clear()
+                        libraryNextStartIndex = 0
+                        libraryTotalRecordCount = Int.MAX_VALUE
                         embySessionBaseUrl = null
                         embySessionUserId = null
                         embyAccessToken = null
@@ -1651,7 +1643,7 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: missing playback session"
+                    feedbackText = "动作反馈：播放会话缺失"
                 )
             }
             return
@@ -1721,7 +1713,7 @@ class MainActivity : AppCompatActivity() {
                                     isPlaying = true,
                                     playbackStatusRes = R.string.status_playing,
                                     playPauseLabelRes = R.string.action_pause,
-                                    feedbackText = "Action feedback: playing ${track.title}"
+                                    feedbackText = "动作反馈：正在播放 ${track.title}"
                                 )
                             }
                         }
@@ -1780,7 +1772,7 @@ class MainActivity : AppCompatActivity() {
                                     isPlaying = true,
                                     playbackStatusRes = R.string.status_playing,
                                     playPauseLabelRes = R.string.action_pause,
-                                    feedbackText = "Action feedback: buffering ${track.title}"
+                                    feedbackText = "动作反馈：缓冲中 ${track.title}"
                                 )
                             }
                         }
@@ -1797,7 +1789,7 @@ class MainActivity : AppCompatActivity() {
                                     isPlaying = true,
                                     playbackStatusRes = R.string.status_playing,
                                     playPauseLabelRes = R.string.action_pause,
-                                    feedbackText = "Action feedback: playing ${track.title}"
+                                    feedbackText = "动作反馈：正在播放 ${track.title}"
                                 )
                             }
                         }
@@ -1810,7 +1802,7 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: preparing ${track.title}"
+                    feedbackText = "动作反馈：准备播放 ${track.title}"
                 )
             }
             Thread {
@@ -1833,13 +1825,13 @@ class MainActivity : AppCompatActivity() {
                         return@runOnUiThread
                     }
                     appendRuntimeLog("play timeout guard confirmed requestId=$requestId")
-                    triggerCachedFallback("Action feedback: download play timeout, trying cached file")
+                    triggerCachedFallback("动作反馈：下载播放超时，切换本地缓存播放")
                 }
             }.start()
         } catch (e: Exception) {
             appendRuntimeLog("play setup exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
             triggerCachedFallback(
-                "Action feedback: download setup failed (${e.javaClass.simpleName}), trying cached file"
+                "动作反馈：下载链路初始化失败（${e.javaClass.simpleName}），切换本地缓存播放"
             )
         }
     }
@@ -2244,7 +2236,7 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    feedbackText = "Action feedback: downloading cached ${track.title}"
+                    feedbackText = "动作反馈：正在下载缓存 ${track.title}"
                 )
             }
         }
@@ -2261,7 +2253,7 @@ class MainActivity : AppCompatActivity() {
                             isPlaying = false,
                             playbackStatusRes = R.string.status_paused,
                             playPauseLabelRes = R.string.action_play,
-                            feedbackText = "Action feedback: download fallback failed"
+                            feedbackText = "动作反馈：缓存回退下载失败"
                         )
                     }
                     return@runOnUiThread
@@ -2286,7 +2278,7 @@ class MainActivity : AppCompatActivity() {
                                             isPlaying = true,
                                             playbackStatusRes = R.string.status_playing,
                                             playPauseLabelRes = R.string.action_pause,
-                                            feedbackText = "Action feedback: playing cached ${track.title}"
+                                            feedbackText = "动作反馈：正在播放缓存 ${track.title}"
                                         )
                                     }
                                 }
@@ -2355,7 +2347,7 @@ class MainActivity : AppCompatActivity() {
                             isPlaying = false,
                             playbackStatusRes = R.string.status_paused,
                             playPauseLabelRes = R.string.action_play,
-                            feedbackText = "Action feedback: buffering cached ${track.title}"
+                            feedbackText = "动作反馈：缓存缓冲中 ${track.title}"
                         )
                     }
                 } catch (e: Exception) {
@@ -2366,7 +2358,7 @@ class MainActivity : AppCompatActivity() {
                             isPlaying = false,
                             playbackStatusRes = R.string.status_paused,
                             playPauseLabelRes = R.string.action_play,
-                            feedbackText = "Action feedback: cached play failed (${e.javaClass.simpleName})"
+                            feedbackText = "动作反馈：缓存播放失败（${e.javaClass.simpleName}）"
                         )
                     }
                 }
@@ -2484,28 +2476,28 @@ class MainActivity : AppCompatActivity() {
                 log = logger,
                 httpClient = embyClient
             ) ?: return failedResult(
-                headline = "Action feedback: Emby authentication failed",
+                headline = "动作反馈：Emby 鉴权失败",
                 logs = logs
             )
 
             logger("auth success user=${shortId(auth.userId)}")
 
             val recommendedEndpoint =
-                buildEmbyRecommendedItemsUrl(embyBase, auth.userId, auth.accessToken)
+                buildEmbyRecommendedItemsUrl(embyBase, auth.userId, auth.accessToken, DEFAULT_HOME_QUEUE_SIZE)
             val recommendedResponse = executeGet(
                 endpoint = recommendedEndpoint,
                 token = auth.accessToken,
-                requestLabel = "GET /Users/{id}/Items (Random/20)",
+                requestLabel = "GET /Users/{id}/Items (Random/${DEFAULT_HOME_QUEUE_SIZE})",
                 log = logger,
                 httpClient = embyClient
             )
             if (recommendedResponse.code !in 200..299) {
                 return failedResult(
-                    headline = "Action feedback: Emby random items request failed (HTTP ${recommendedResponse.code})",
+                    headline = "动作反馈：Emby 随机拉取失败（HTTP ${recommendedResponse.code}）",
                     logs = logs
                 )
             }
-            val source = "random-20"
+            val source = "随机-${DEFAULT_HOME_QUEUE_SIZE}"
             val tracks = parseTrackItems(recommendedResponse.payload)
 
             logger("tracks=${tracks.size}")
@@ -2515,7 +2507,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (tracks.isEmpty()) {
                 return failedResult(
-                    headline = "Action feedback: no audio items returned",
+                    headline = "动作反馈：未返回可播放音频",
                     logs = logs
                 )
             }
@@ -2793,13 +2785,34 @@ class MainActivity : AppCompatActivity() {
     private fun buildEmbyRecommendedItemsUrl(
         embyBase: String,
         userId: String,
-        token: String
+        token: String,
+        limit: Int = DEFAULT_HOME_QUEUE_SIZE
     ): String {
         val params = mutableListOf(
             "IncludeItemTypes=Audio",
             "Recursive=true",
             "SortBy=Random",
-            "Limit=20",
+            "Limit=${limit.coerceAtLeast(1)}",
+            "api_key=${urlEncode(token)}"
+        )
+        return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
+    }
+
+    private fun buildEmbyLibraryItemsUrl(
+        embyBase: String,
+        userId: String,
+        token: String,
+        startIndex: Int,
+        limit: Int
+    ): String {
+        val params = mutableListOf(
+            "IncludeItemTypes=Audio",
+            "Recursive=true",
+            "SortBy=SortName",
+            "SortOrder=Ascending",
+            "StartIndex=${startIndex.coerceAtLeast(0)}",
+            "Limit=${limit.coerceAtLeast(1)}",
+            "EnableTotalRecordCount=true",
             "api_key=${urlEncode(token)}"
         )
         return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
@@ -2854,6 +2867,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return out
+    }
+
+    private fun parseTotalRecordCount(jsonText: String, fallback: Int): Int {
+        val trimmed = jsonText.trim()
+        if (trimmed.isEmpty() || !trimmed.startsWith("{")) {
+            return fallback
+        }
+        return try {
+            val root = JSONObject(trimmed)
+            val total = root.optInt("TotalRecordCount", fallback)
+            if (total <= 0) fallback else total
+        } catch (_: Exception) {
+            fallback
+        }
     }
 
     private fun extractTrack(item: JSONObject?): EmbyTrack? {
@@ -3084,7 +3111,6 @@ class MainActivity : AppCompatActivity() {
         playPauseButton.setColorFilter(resources.getColor(R.color.white))
         prevButton.isEnabled = loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
-        recommendHomeButton.isEnabled = loadedTracks.isNotEmpty()
         testEmbyButton.isEnabled = state.testEmbyEnabled
         testLrcApiButton.isEnabled = state.testLrcApiEnabled
     }
@@ -3124,8 +3150,9 @@ class MainActivity : AppCompatActivity() {
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val PAGE_HOME = 0
-        const val PAGE_QUEUE = 1
-        const val PAGE_LIBRARY = 2
-        const val PAGE_SETTINGS = 3
+        const val PAGE_LIBRARY = 1
+        const val PAGE_SETTINGS = 2
+        const val DEFAULT_HOME_QUEUE_SIZE = 20
+        const val LIBRARY_PAGE_SIZE = 40
     }
 }

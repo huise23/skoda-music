@@ -54,7 +54,8 @@
             android:contentDescription="@string/nav_queue"
             android:padding="16dp"
             android:scaleType="centerInside"
-            android:src="@android:drawable/ic_menu_sort_by_size" />
+            android:src="@android:drawable/ic_menu_sort_by_size"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/nav_library"
@@ -126,8 +127,9 @@
                         android:layout_height="match_parent"
                         android:layout_weight="1"
                         android:background="@drawable/panel_player_card"
+                        android:gravity="center_vertical"
                         android:orientation="vertical"
-                        android:padding="20dp">
+                        android:padding="24dp">
 
                         <TextView
                             android:id="@+id/track_value"
@@ -176,7 +178,6 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:background="@drawable/panel_progress_card"
                             android:orientation="horizontal">
 
                             <TextView
@@ -186,11 +187,9 @@
                                 android:layout_weight="1"
                                 android:fontFamily="monospace"
                                 android:gravity="start"
-                                android:paddingLeft="14dp"
-                                android:paddingBottom="8dp"
                                 android:text="@string/playback_progress_placeholder"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="13sp" />
+                                android:textSize="18sp" />
 
                             <TextView
                                 android:id="@+id/playback_duration_value"
@@ -198,11 +197,9 @@
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
                                 android:gravity="end"
-                                android:paddingRight="14dp"
-                                android:paddingBottom="8dp"
                                 android:text="@string/playback_progress_placeholder"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="13sp" />
+                                android:textSize="18sp" />
                         </LinearLayout>
 
                         <TextView
@@ -219,7 +216,7 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="16dp"
+                            android:layout_marginTop="24dp"
                             android:gravity="center"
                             android:orientation="horizontal">
 
@@ -285,11 +282,11 @@
                                 android:layout_width="0dp"
                                 android:layout_height="40dp"
                                 android:layout_weight="1"
-                                android:background="@drawable/tab_home_selected"
+                                android:background="@drawable/tab_home_unselected"
                                 android:fontFamily="sans-serif-medium"
-                                android:text="Recs"
+                                android:text="@string/home_tab_recommend"
                                 android:textAllCaps="false"
-                                android:textColor="@color/white"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="15sp" />
 
                             <Space
@@ -301,11 +298,11 @@
                                 android:layout_width="0dp"
                                 android:layout_height="40dp"
                                 android:layout_weight="1"
-                                android:background="@drawable/tab_home_unselected"
+                                android:background="@drawable/tab_home_selected"
                                 android:fontFamily="sans-serif-medium"
-                                android:text="Lyrics"
+                                android:text="@string/home_tab_lyrics"
                                 android:textAllCaps="false"
-                                android:textColor="@color/text_secondary"
+                                android:textColor="@color/white"
                                 android:textSize="15sp" />
                         </LinearLayout>
 
@@ -326,19 +323,25 @@
                                 android:textSize="12sp"
                                 android:visibility="gone" />
 
-                            <ScrollView
-                                android:id="@+id/home_recommend_preview"
+                            <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                                android:id="@+id/home_recommend_refresh"
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:layout_marginTop="8dp"
-                                android:fillViewport="true">
+                                android:layout_marginTop="8dp">
 
-                                <LinearLayout
-                                    android:id="@+id/home_recommend_list"
+                                <ScrollView
+                                    android:id="@+id/home_recommend_preview"
                                     android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:orientation="vertical" />
-                            </ScrollView>
+                                    android:layout_height="match_parent"
+                                    android:fillViewport="true">
+
+                                    <LinearLayout
+                                        android:id="@+id/home_recommend_list"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:orientation="vertical" />
+                                </ScrollView>
+                            </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
                             <Button
                                 android:id="@+id/btn_recommend_home"
@@ -457,7 +460,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_queue"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -475,7 +478,7 @@
                             android:text="@string/action_recommend_queue"
                             android:textAllCaps="false"
                             android:textColor="@color/text_primary"
-                            android:textSize="14sp" />
+                            android:textSize="18sp" />
 
                         <Space
                             android:layout_width="10dp"
@@ -491,7 +494,7 @@
                             android:text="@string/action_clear_queue"
                             android:textAllCaps="false"
                             android:textColor="@color/text_primary"
-                            android:textSize="14sp" />
+                            android:textSize="18sp" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -529,7 +532,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_library"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <EditText
                         android:id="@+id/library_search_input"
@@ -546,7 +549,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <LinearLayout
                         android:id="@+id/library_tracks_container"
@@ -583,7 +586,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_service_config"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <TextView
                         android:id="@+id/emby_label"
@@ -593,7 +596,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_emby"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <EditText
                         android:id="@+id/emby_base_url_input"
@@ -610,7 +613,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <TextView
                         android:layout_width="match_parent"
@@ -619,7 +622,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_cf_ref_domain"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <EditText
                         android:id="@+id/cf_ref_domain_input"
@@ -636,7 +639,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <TextView
                         android:layout_width="match_parent"
@@ -645,7 +648,7 @@
                         android:fontFamily="sans-serif"
                         android:text="@string/label_cf_ref_note"
                         android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <EditText
                         android:id="@+id/emby_username_input"
@@ -662,7 +665,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <EditText
                         android:id="@+id/emby_password_input"
@@ -679,7 +682,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <TextView
                         android:id="@+id/emby_auth_note"
@@ -689,7 +692,7 @@
                         android:fontFamily="sans-serif"
                         android:text="@string/label_emby_auth_note"
                         android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <Button
                         android:id="@+id/btn_test_emby"
@@ -701,7 +704,7 @@
                         android:text="@string/action_test_emby"
                         android:textAllCaps="false"
                         android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <TextView
                         android:id="@+id/emby_status_value"
@@ -711,7 +714,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/emby_status_not_tested"
                         android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
+                        android:textSize="17sp" />
 
                     <TextView
                         android:id="@+id/lrcapi_label"
@@ -721,7 +724,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_lrcapi"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="16sp" />
 
                     <EditText
                         android:id="@+id/lrcapi_base_url_input"
@@ -738,7 +741,7 @@
                         android:singleLine="true"
                         android:textColor="@color/text_primary"
                         android:textColorHint="@color/text_muted"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <Button
                         android:id="@+id/btn_test_lrcapi"
@@ -750,7 +753,7 @@
                         android:text="@string/action_test_lrcapi"
                         android:textAllCaps="false"
                         android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
+                        android:textSize="18sp" />
 
                     <TextView
                         android:id="@+id/lrcapi_status_value"
@@ -760,7 +763,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/lrcapi_status_not_tested"
                         android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
+                        android:textSize="17sp" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>

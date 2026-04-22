@@ -171,6 +171,10 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="30dp"
+                            android:minHeight="2dp"
+                            android:maxHeight="2dp"
+                            android:paddingTop="0dp"
+                            android:paddingBottom="0dp"
                             android:progressDrawable="@drawable/seekbar_glass_track"
                             android:thumb="@drawable/seekbar_glass_thumb" />
 

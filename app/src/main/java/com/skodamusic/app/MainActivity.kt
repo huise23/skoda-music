@@ -1249,7 +1249,8 @@ class MainActivity : AppCompatActivity() {
                 return@post
             }
 
-            val lineCenter = (layout.getLineTop(activeIndex) + layout.getLineBottom(activeIndex)) / 2
+            val lineCenter = homeLyricsText.paddingTop +
+                (layout.getLineTop(activeIndex) + layout.getLineBottom(activeIndex)) / 2
             val viewportCenter = viewportHeight / 2
             val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
             val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)

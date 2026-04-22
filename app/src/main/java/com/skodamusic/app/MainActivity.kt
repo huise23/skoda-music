@@ -376,6 +376,9 @@ class MainActivity : AppCompatActivity() {
     private var showingHomeRecommendTab: Boolean = true
     private var previewArtistOverride: String? = null
     private var homeLyricsLines: List<LyricLine> = emptyList()
+    private var homeLyricsTrackKey: String = ""
+    private var homeLyricsRequestTrackKey: String? = null
+    private val homeLyricsCache = LinkedHashMap<String, List<LyricLine>>()
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -985,7 +988,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHomeLyricsPreview(currentTrack: String) {
         val displayTrack = if (currentTrack.isBlank()) getString(R.string.track_not_loaded) else currentTrack
-        homeLyricsLines = buildHomeLyricsLines(displayTrack)
+        val displayArtist = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
+            ?: previewArtistOverride
+            ?: ""
+        val trackKey = displayTrack.trim() + "\u0001" + displayArtist.trim()
+        if (trackKey != homeLyricsTrackKey) {
+            homeLyricsTrackKey = trackKey
+            val cached = homeLyricsCache[trackKey]
+            if (cached != null && cached.isNotEmpty()) {
+                homeLyricsLines = cached
+            } else {
+                homeLyricsLines = buildHomeLyricsLines(displayTrack)
+                requestLyricsFromLrcApi(trackName = displayTrack, artistName = displayArtist, trackKey = trackKey)
+            }
+        } else if (homeLyricsLines.isEmpty()) {
+            homeLyricsLines = homeLyricsCache[trackKey] ?: buildHomeLyricsLines(displayTrack)
+        }
         val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
         renderHomeLyricsByPosition(positionMs)
     }
@@ -999,6 +1017,187 @@ class MainActivity : AppCompatActivity() {
             LyricLine(21_000L, "道路与旋律在今夜同频"),
             LyricLine(30_000L, "继续前行，让律动不停")
         )
+    }
+
+    private fun requestLyricsFromLrcApi(trackName: String, artistName: String, trackKey: String) {
+        val cleanTrack = trackName.trim()
+        if (cleanTrack.isEmpty() || cleanTrack == getString(R.string.track_not_loaded)) {
+            return
+        }
+        val baseUrl = resolveLrcApiBaseUrl()
+        if (baseUrl.isEmpty() || !isHttpUrl(baseUrl)) {
+            appendRuntimeLog("lyrics fetch skip reason=invalid-lrcapi-base track=$cleanTrack")
+            return
+        }
+        if (homeLyricsRequestTrackKey == trackKey) {
+            return
+        }
+        homeLyricsRequestTrackKey = trackKey
+        Thread {
+            val fetchedLines = fetchLyricsLinesFromLrcApi(baseUrl, cleanTrack, artistName.trim())
+            runOnUiThread {
+                if (homeLyricsRequestTrackKey == trackKey) {
+                    homeLyricsRequestTrackKey = null
+                }
+                if (homeLyricsTrackKey != trackKey) {
+                    return@runOnUiThread
+                }
+                if (fetchedLines.isEmpty()) {
+                    appendRuntimeLog("lyrics fetch empty track=$cleanTrack artist=$artistName")
+                    return@runOnUiThread
+                }
+                homeLyricsCache[trackKey] = fetchedLines
+                if (homeLyricsCache.size > LYRICS_CACHE_MAX_TRACKS) {
+                    val iterator = homeLyricsCache.entries.iterator()
+                    if (iterator.hasNext()) {
+                        iterator.next()
+                        iterator.remove()
+                    }
+                }
+                homeLyricsLines = fetchedLines
+                val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
+                renderHomeLyricsByPosition(positionMs)
+                appendRuntimeLog("lyrics fetch success track=$cleanTrack lines=${fetchedLines.size}")
+            }
+        }.start()
+    }
+
+    private fun resolveLrcApiBaseUrl(): String {
+        val input = lrcApiBaseUrlInput.text?.toString()?.trim().orEmpty()
+        if (input.isNotEmpty()) {
+            return input
+        }
+        return getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .getString(KEY_LRCAPI_BASE_URL, "")
+            .orEmpty()
+            .trim()
+    }
+
+    private fun fetchLyricsLinesFromLrcApi(baseUrl: String, trackName: String, artistName: String): List<LyricLine> {
+        val endpoint = buildLrcApiLyricsUrl(baseUrl, trackName, artistName)
+        var connection: HttpURLConnection? = null
+        return try {
+            appendRuntimeLog("lyrics fetch GET $endpoint")
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5000
+                readTimeout = 8000
+                instanceFollowRedirects = true
+                setRequestProperty("Accept", "text/plain, application/json")
+            }
+            val code = connection.responseCode
+            val payload = readTextWithLineBreaks(
+                if (code in 200..299) connection.inputStream else connection.errorStream
+            )
+            appendRuntimeLog("lyrics fetch response code=$code body=${previewPayload(payload)}")
+            if (code !in 200..299 || payload.isBlank()) {
+                return emptyList()
+            }
+            val lyricPayload = extractLyricPayload(payload)
+            parseLyricLines(lyricPayload)
+        } catch (e: Exception) {
+            appendRuntimeLog("lyrics fetch exception type=${e.javaClass.simpleName} msg=${e.message}")
+            emptyList()
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun buildLrcApiLyricsUrl(baseUrl: String, trackName: String, artistName: String): String {
+        val normalized = baseUrl.trim().trimEnd('/')
+        val endpoint = if (normalized.endsWith("/lyrics", ignoreCase = true)) {
+            normalized
+        } else {
+            "$normalized/lyrics"
+        }
+        return "$endpoint?title=${urlEncode(trackName)}&artist=${urlEncode(artistName)}"
+    }
+
+    private fun extractLyricPayload(payload: String): String {
+        val trimmed = payload.trim()
+        if (trimmed.isEmpty()) {
+            return ""
+        }
+        if (!trimmed.startsWith("{")) {
+            return trimmed
+        }
+        return try {
+            val root = JSONObject(trimmed)
+            val directKeys = arrayOf("lyrics", "lyric", "lrc", "content")
+            for (key in directKeys) {
+                val text = root.optString(key).trim()
+                if (text.isNotEmpty()) {
+                    return text
+                }
+            }
+            val dataText = root.opt("data")
+            if (dataText is String && dataText.trim().isNotEmpty()) {
+                return dataText.trim()
+            }
+            val dataObj = root.optJSONObject("data")
+            if (dataObj != null) {
+                for (key in directKeys) {
+                    val text = dataObj.optString(key).trim()
+                    if (text.isNotEmpty()) {
+                        return text
+                    }
+                }
+            }
+            trimmed
+        } catch (_: Exception) {
+            trimmed
+        }
+    }
+
+    private fun parseLyricLines(rawLyrics: String): List<LyricLine> {
+        val normalized = rawLyrics
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .trim()
+        if (normalized.isEmpty()) {
+            return emptyList()
+        }
+
+        // Some providers return all LRC tags in one line. Inject newlines before each time tag.
+        val expanded = normalized.replace(
+            Regex("(?<!\\n)\\[(\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?)]"),
+            "\n[$1]"
+        )
+        val timedPattern = Regex("\\[(\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?)]\\s*([^\\[]*)")
+        val parsed = mutableListOf<LyricLine>()
+        timedPattern.findAll(expanded).forEach { match ->
+            val timeTag = match.groupValues[1]
+            val text = match.groupValues[2].replace('\n', ' ').trim()
+            val timeMs = parseLrcTimeTagToMs(timeTag)
+            if (timeMs >= 0L && text.isNotEmpty()) {
+                parsed.add(LyricLine(timeMs = timeMs, text = text))
+            }
+        }
+        if (parsed.isNotEmpty()) {
+            return parsed.sortedBy { it.timeMs }
+        }
+        return emptyList()
+    }
+
+    private fun parseLrcTimeTagToMs(timeTag: String): Long {
+        val parts = timeTag.split(":")
+        if (parts.size != 2) {
+            return -1L
+        }
+        val minute = parts[0].toLongOrNull() ?: return -1L
+        val secPart = parts[1]
+        return if (secPart.contains(".")) {
+            val secSplit = secPart.split(".", limit = 2)
+            if (secSplit.size != 2) {
+                return -1L
+            }
+            val second = secSplit[0].toLongOrNull() ?: return -1L
+            val ms = secSplit[1].padEnd(3, '0').take(3).toLongOrNull() ?: return -1L
+            minute * 60_000L + second * 1_000L + ms
+        } else {
+            val second = secPart.toLongOrNull() ?: return -1L
+            minute * 60_000L + second * 1_000L
+        }
     }
 
     private fun renderHomeLyricsByPosition(positionMs: Long) {
@@ -2936,7 +3135,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun readAll(stream: InputStream?): String {
+    private fun readTextWithLineBreaks(stream: InputStream?): String {
         if (stream == null) {
             return ""
         }
@@ -2944,6 +3143,9 @@ class MainActivity : AppCompatActivity() {
             val sb = StringBuilder()
             var line = reader.readLine()
             while (line != null) {
+                if (sb.isNotEmpty()) {
+                    sb.append('\n')
+                }
                 sb.append(line)
                 line = reader.readLine()
             }
@@ -3175,5 +3377,6 @@ class MainActivity : AppCompatActivity() {
         const val PAGE_SETTINGS = 2
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
+        const val LYRICS_CACHE_MAX_TRACKS = 32
     }
 }

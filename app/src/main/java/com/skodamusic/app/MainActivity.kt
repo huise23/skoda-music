@@ -53,7 +53,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.SocketTimeoutException
@@ -1064,31 +1063,28 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchLyricsLinesFromLrcApi(baseUrl: String, trackName: String, artistName: String): List<LyricLine> {
         val endpoint = buildLrcApiLyricsUrl(baseUrl, trackName, artistName)
-        var connection: HttpURLConnection? = null
+        val lrcApiClient = buildEmbyHttpClient(baseUrl, resolveCfReferenceDomain())
         return try {
             appendRuntimeLog("lyrics fetch GET $endpoint")
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 5000
-                readTimeout = 8000
-                instanceFollowRedirects = true
-                setRequestProperty("Accept", "text/plain, application/json")
+            val request = Request.Builder()
+                .url(endpoint)
+                .get()
+                .header("Accept", "text/plain, application/json")
+                .build()
+            lrcApiClient.newCall(request).execute().use { response ->
+                val code = response.code()
+                val payload = response.body()?.string().orEmpty()
+                appendRuntimeLog("lyrics fetch response code=$code body=${previewPayload(payload)}")
+                if (code !in 200..299 || payload.isBlank()) {
+                    emptyList()
+                } else {
+                    val lyricPayload = extractLyricPayload(payload)
+                    parseLyricLines(lyricPayload)
+                }
             }
-            val code = connection.responseCode
-            val payload = readTextWithLineBreaks(
-                if (code in 200..299) connection.inputStream else connection.errorStream
-            )
-            appendRuntimeLog("lyrics fetch response code=$code body=${previewPayload(payload)}")
-            if (code !in 200..299 || payload.isBlank()) {
-                return emptyList()
-            }
-            val lyricPayload = extractLyricPayload(payload)
-            parseLyricLines(lyricPayload)
         } catch (e: Exception) {
             appendRuntimeLog("lyrics fetch exception type=${e.javaClass.simpleName} msg=${e.message}")
             emptyList()
-        } finally {
-            connection?.disconnect()
         }
     }
 
@@ -1239,8 +1235,8 @@ class MainActivity : AppCompatActivity() {
             if (activeIndex < 0 || activeIndex >= layout.lineCount) {
                 return@post
             }
-
-            val lineHeight = (layout.getLineBottom(activeIndex) - layout.getLineTop(activeIndex)).coerceAtLeast(dpToPx(20))
+            val lineHeight = (layout.getLineBottom(activeIndex) - layout.getLineTop(activeIndex))
+                .coerceAtLeast(dpToPx(20))
             val dynamicVerticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
             if (homeLyricsText.paddingTop != dynamicVerticalPadding || homeLyricsText.paddingBottom != dynamicVerticalPadding) {
                 homeLyricsText.setPadding(
@@ -1703,6 +1699,10 @@ class MainActivity : AppCompatActivity() {
                             ensureLibraryTracksLoaded("emby-load-success")
                         }
                         showToast(R.string.toast_emby_success)
+                        if (loadedTracks.isNotEmpty()) {
+                            appendRuntimeLog("emby load success autoplay-first-track")
+                            playTrackAtCurrentIndex()
+                        }
                     } else {
                         appendRuntimeLog("emby load failed")
                         loadedTracks = emptyList()
@@ -1785,29 +1785,29 @@ class MainActivity : AppCompatActivity() {
                 feedbackText = getString(R.string.feedback_lrcapi_failed)
             )
         }
-        var connection: HttpURLConnection? = null
+        val lrcApiClient = buildEmbyHttpClient(normalized, resolveCfReferenceDomain())
         return try {
             appendRuntimeLog("lrcapi test GET $normalized")
-            connection = (URL(normalized).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 4000
-                readTimeout = 6000
-                instanceFollowRedirects = true
-            }
-            val code = connection.responseCode
-            appendRuntimeLog("lrcapi test response code=$code")
-            if (code in 200..499) {
-                LrcApiTestResult(
-                    success = true,
-                    statusText = getString(R.string.lrcapi_status_connected),
-                    feedbackText = getString(R.string.feedback_lrcapi_autosaved)
-                )
-            } else {
-                LrcApiTestResult(
-                    success = false,
-                    statusText = getString(R.string.lrcapi_status_failed),
-                    feedbackText = getString(R.string.feedback_lrcapi_failed)
-                )
+            val request = Request.Builder()
+                .url(normalized)
+                .get()
+                .build()
+            lrcApiClient.newCall(request).execute().use { response ->
+                val code = response.code()
+                appendRuntimeLog("lrcapi test response code=$code")
+                if (code in 200..499) {
+                    LrcApiTestResult(
+                        success = true,
+                        statusText = getString(R.string.lrcapi_status_connected),
+                        feedbackText = getString(R.string.feedback_lrcapi_autosaved)
+                    )
+                } else {
+                    LrcApiTestResult(
+                        success = false,
+                        statusText = getString(R.string.lrcapi_status_failed),
+                        feedbackText = getString(R.string.feedback_lrcapi_failed)
+                    )
+                }
             }
         } catch (e: Exception) {
             appendRuntimeLog("lrcapi test exception type=${e.javaClass.simpleName} msg=${e.message}")
@@ -1816,8 +1816,6 @@ class MainActivity : AppCompatActivity() {
                 statusText = getString(R.string.lrcapi_status_failed),
                 feedbackText = getString(R.string.feedback_lrcapi_failed)
             )
-        } finally {
-            connection?.disconnect()
         }
     }
 

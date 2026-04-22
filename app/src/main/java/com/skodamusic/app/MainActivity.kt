@@ -9,7 +9,12 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.format.Formatter
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import android.net.Uri
 import android.view.Gravity
@@ -60,6 +65,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
+    private data class LyricLine(
+        val timeMs: Long,
+        val text: String
+    )
+
     private enum class DownloadControlPhase {
         MAINTAIN_CURRENT_WINDOW,
         FINISH_CURRENT_TRACK,
@@ -310,6 +320,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trackValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var playbackProgressValue: TextView
+    private lateinit var playbackDurationValue: TextView
     private lateinit var playbackSeekBar: SeekBar
     private lateinit var downloadProgressValue: TextView
     private lateinit var runtimeLogPreview: TextView
@@ -353,6 +364,7 @@ class MainActivity : AppCompatActivity() {
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
     private var showingHomeRecommendTab: Boolean = true
+    private var homeLyricsLines: List<LyricLine> = emptyList()
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -390,6 +402,7 @@ class MainActivity : AppCompatActivity() {
         trackValue = findViewById(R.id.track_value)
         playbackValue = findViewById(R.id.playback_value)
         playbackProgressValue = findViewById(R.id.playback_progress_value)
+        playbackDurationValue = findViewById(R.id.playback_duration_value)
         playbackSeekBar = findViewById(R.id.playback_seek_bar)
         downloadProgressValue = findViewById(R.id.download_progress_value)
         runtimeLogPreview = findViewById(R.id.runtime_log_preview)
@@ -417,6 +430,7 @@ class MainActivity : AppCompatActivity() {
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
         buildIdBadge.text = "build: ${BuildConfig.GIT_SHORT_SHA}"
+        configureModernHomeShell()
         switchHomeTab(showRecommend = true)
         bindNavigation()
         switchPage(PAGE_HOME)
@@ -453,6 +467,34 @@ class MainActivity : AppCompatActivity() {
         releasePlayer()
     }
 
+    private fun configureModernHomeShell() {
+        trackValue.isSelected = true
+        trackValue.textSize = 36f
+        trackValue.setHorizontallyScrolling(true)
+        trackValue.setSingleLine(true)
+        trackValue.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+        trackValue.marqueeRepeatLimit = -1
+
+        navHomeButton.text = ICON_NAV_HOME
+        navQueueButton.text = ICON_NAV_QUEUE
+        navLibraryButton.text = ICON_NAV_LIBRARY
+        navSettingsButton.text = ICON_NAV_SETTINGS
+        navHomeButton.contentDescription = getString(R.string.nav_home)
+        navQueueButton.contentDescription = getString(R.string.nav_queue)
+        navLibraryButton.contentDescription = getString(R.string.nav_library)
+        navSettingsButton.contentDescription = getString(R.string.nav_settings)
+
+        prevButton.text = ICON_PREV
+        prevButton.contentDescription = getString(R.string.action_prev)
+        playPauseButton.text = ICON_PLAY
+        playPauseButton.contentDescription = getString(R.string.action_play)
+        nextButton.text = ICON_NEXT
+        nextButton.contentDescription = getString(R.string.action_next)
+
+        playbackProgressValue.text = formatDurationClock(-1L)
+        playbackDurationValue.text = formatDurationClock(-1L)
+    }
+
     private fun bindActions() {
         runtimeLogPreview.setOnClickListener {
             showRuntimeLogsFullscreen()
@@ -485,11 +527,8 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 pendingSeekPositionMs = ((progress.toLong() * durationMs) / SEEK_BAR_MAX.toLong()).coerceIn(0L, durationMs)
-                playbackProgressValue.text = getString(
-                    R.string.playback_progress_format,
-                    formatDurationClock(pendingSeekPositionMs.coerceAtLeast(0L)),
-                    formatDurationClock(durationMs)
-                )
+                playbackProgressValue.text = formatDurationClock(pendingSeekPositionMs.coerceAtLeast(0L))
+                playbackDurationValue.text = formatDurationClock(durationMs)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
@@ -681,10 +720,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setNavButtonSelected(button: Button, selected: Boolean) {
         button.setBackgroundResource(
-            if (selected) R.drawable.button_nav_active else R.drawable.button_nav_inactive
+            if (selected) R.drawable.button_nav_icon_active else R.drawable.button_nav_icon_inactive
         )
         button.setTextColor(
-            resources.getColor(if (selected) R.color.white else R.color.text_primary)
+            resources.getColor(if (selected) R.color.white else R.color.text_secondary)
         )
     }
 
@@ -736,7 +775,69 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHomeLyricsPreview(currentTrack: String) {
         val displayTrack = if (currentTrack.isBlank()) getString(R.string.track_not_loaded) else currentTrack
-        homeLyricsText.text = getString(R.string.home_lyrics_placeholder) + "\n\n" + displayTrack
+        homeLyricsLines = buildHomeLyricsLines(displayTrack)
+        val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
+        renderHomeLyricsByPosition(positionMs)
+    }
+
+    private fun buildHomeLyricsLines(trackName: String): List<LyricLine> {
+        val cleanName = trackName.ifBlank { getString(R.string.track_not_loaded) }
+        return listOf(
+            LyricLine(1_000L, "$cleanName - Drive Mix"),
+            LyricLine(6_000L, "City lights slide across the glass"),
+            LyricLine(13_000L, "Hands on wheel, rhythm starts to rise"),
+            LyricLine(21_000L, "Road and music stay in sync tonight"),
+            LyricLine(30_000L, "Keep moving, keep the beat alive")
+        )
+    }
+
+    private fun renderHomeLyricsByPosition(positionMs: Long) {
+        if (homeLyricsLines.isEmpty()) {
+            homeLyricsText.text = getString(R.string.home_lyrics_placeholder)
+            return
+        }
+        val activeIndex = findActiveLyricIndex(positionMs)
+        val builder = SpannableStringBuilder()
+        homeLyricsLines.forEachIndexed { index, line ->
+            val start = builder.length
+            builder.append(line.text)
+            val end = builder.length
+            val isActive = index == activeIndex
+            builder.setSpan(
+                ForegroundColorSpan(resources.getColor(if (isActive) R.color.white else R.color.text_secondary)),
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            builder.setSpan(
+                AbsoluteSizeSpan(if (isActive) 18 else 17, true),
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            if (isActive) {
+                builder.setSpan(
+                    StyleSpan(android.graphics.Typeface.BOLD),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            if (index < homeLyricsLines.lastIndex) {
+                builder.append('\n')
+            }
+        }
+        homeLyricsText.text = builder
+    }
+
+    private fun findActiveLyricIndex(positionMs: Long): Int {
+        var active = 0
+        homeLyricsLines.forEachIndexed { index, line ->
+            if (positionMs >= line.timeMs) {
+                active = index
+            }
+        }
+        return active
     }
 
     private fun renderTrackContainer(
@@ -982,16 +1083,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshProgressMetrics() {
-        if (!this::playbackProgressValue.isInitialized || !this::downloadProgressValue.isInitialized || !this::playbackSeekBar.isInitialized) {
+        if (!this::playbackProgressValue.isInitialized || !this::playbackDurationValue.isInitialized || !this::downloadProgressValue.isInitialized || !this::playbackSeekBar.isInitialized) {
             return
         }
         val track = loadedTracks.getOrNull(currentTrackIndex)
         if (track == null) {
-            playbackProgressValue.text = getString(R.string.playback_progress_placeholder)
+            playbackProgressValue.text = formatDurationClock(-1L)
+            playbackDurationValue.text = formatDurationClock(-1L)
             downloadProgressValue.text = getString(R.string.download_progress_placeholder)
             if (!isUserSeeking) {
                 playbackSeekBar.progress = 0
             }
+            renderHomeLyricsByPosition(0L)
             return
         }
 
@@ -1009,11 +1112,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             "--:--"
         }
-        playbackProgressValue.text = getString(
-            R.string.playback_progress_format,
-            positionText,
-            totalText
-        )
+        playbackProgressValue.text = positionText
+        playbackDurationValue.text = totalText
         if (!isUserSeeking) {
             val seekProgress = if (durationMs > 0L) {
                 ((positionMs * SEEK_BAR_MAX.toLong()) / durationMs).toInt().coerceIn(0, SEEK_BAR_MAX)
@@ -1022,6 +1122,7 @@ class MainActivity : AppCompatActivity() {
             }
             playbackSeekBar.progress = seekProgress
         }
+        renderHomeLyricsByPosition(positionMs)
 
         val state = getOrCreateTrackDownloadState(track)
         val downloadedBytes = state.downloadedBytes.coerceAtLeast(0L)
@@ -2825,7 +2926,10 @@ class MainActivity : AppCompatActivity() {
         trackValue.text = state.currentTrack
         playbackValue.setText(state.playbackStatusRes)
         renderHomeLyricsPreview(state.currentTrack)
-        playPauseButton.setText(state.playPauseLabelRes)
+        prevButton.text = ICON_PREV
+        nextButton.text = ICON_NEXT
+        playPauseButton.text = if (state.isPlaying) ICON_PAUSE else ICON_PLAY
+        playPauseButton.contentDescription = getString(state.playPauseLabelRes)
         playPauseButton.isEnabled = state.playPauseEnabled
         prevButton.isEnabled = loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
@@ -2835,6 +2939,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val ICON_NAV_HOME = "\u2302"
+        const val ICON_NAV_QUEUE = "\u2630"
+        const val ICON_NAV_LIBRARY = "\u25A6"
+        const val ICON_NAV_SETTINGS = "\u2699"
+        const val ICON_PREV = "\u23EE"
+        const val ICON_PLAY = "\u25B6"
+        const val ICON_PAUSE = "\u23F8"
+        const val ICON_NEXT = "\u23ED"
         const val LOG_TAG = "SkodaMusicEmby"
         const val PREFS_EMBY = "emby_credentials"
         const val KEY_BASE_URL = "base_url"

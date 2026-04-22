@@ -24,7 +24,7 @@
     <string name="build_id_placeholder">build: local</string>
     <string name="status_playing">Playing</string>
     <string name="status_paused">Paused</string>
-    <string name="playback_progress_placeholder">Progress: --:-- / --:--</string>
+    <string name="playback_progress_placeholder">--:--</string>
     <string name="playback_progress_format">Progress: %1$s / %2$s</string>
     <string name="download_progress_placeholder">Download: 0 B / ? (playable --:-- / --:--)</string>
     <string name="download_progress_format">Download: %1$s / %2$s (playable %3$s / %4$s)</string>

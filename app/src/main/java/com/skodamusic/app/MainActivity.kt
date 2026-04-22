@@ -660,7 +660,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setNavButtonSelected(button: Button, selected: Boolean) {
-        button.setBackgroundResource(if (selected) R.drawable.button_primary else R.drawable.button_secondary)
+        button.setBackgroundResource(
+            if (selected) R.drawable.button_nav_active else R.drawable.button_nav_inactive
+        )
+        button.setTextColor(
+            resources.getColor(if (selected) R.color.white else R.color.text_primary)
+        )
     }
 
     private fun rebuildTrackLists() {

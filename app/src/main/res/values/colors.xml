@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_primary">#101317</color>
-    <color name="bg_secondary">#171C21</color>
-    <color name="glass_surface">#1F2830</color>
-    <color name="glass_border">#2A333D</color>
-    <color name="glass_surface_pressed">#29343F</color>
-    <color name="surface_panel">#171C21</color>
-    <color name="surface_field">#13191F</color>
-    <color name="surface_border">#2A333D</color>
-    <color name="text_primary">#E6E6E6</color>
-    <color name="text_secondary">#B8C0CA</color>
-    <color name="text_muted">#8A97A4</color>
-    <color name="brand_primary">#2B89C8</color>
-    <color name="brand_primary_pressed">#216FA4</color>
-    <color name="brand_secondary">#1F2830</color>
-    <color name="brand_secondary_pressed">#29343F</color>
-    <color name="chip_bg">#23303B</color>
-    <color name="chip_text">#C9D4DF</color>
+    <color name="bg_primary">#0B121A</color>
+    <color name="bg_secondary">#172536</color>
+    <color name="glass_surface">#1F2A36</color>
+    <color name="glass_border">#3E95A6B8</color>
+    <color name="glass_surface_pressed">#2A3A48</color>
+    <color name="surface_panel">#162431</color>
+    <color name="surface_field">#152532</color>
+    <color name="surface_border">#3A5C6E80</color>
+    <color name="text_primary">#EDF4FA</color>
+    <color name="text_secondary">#A8BAC8</color>
+    <color name="text_muted">#8EA2B2</color>
+    <color name="brand_primary">#5FD3FF</color>
+    <color name="brand_primary_pressed">#2A9FD8</color>
+    <color name="brand_secondary">#243342</color>
+    <color name="brand_secondary_pressed">#2E4353</color>
+    <color name="chip_bg">#233845</color>
+    <color name="chip_text">#C9DDEE</color>
     <color name="white">#FFFFFF</color>
 </resources>

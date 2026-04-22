@@ -1,72 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_main_gradient"
-    android:orientation="horizontal"
-    android:padding="12dp">
+    android:background="@drawable/bg_main_gradient">
+
+    <LinearLayout
+        android:layout_width="640dp"
+        android:layout_height="640dp"
+        android:layout_gravity="start|top"
+        android:layout_marginLeft="-200dp"
+        android:layout_marginTop="-280dp"
+        android:background="@drawable/bg_bubble_blue" />
+
+    <LinearLayout
+        android:layout_width="520dp"
+        android:layout_height="520dp"
+        android:layout_gravity="end|bottom"
+        android:layout_marginRight="-280dp"
+        android:layout_marginBottom="-300dp"
+        android:background="@drawable/bg_bubble_green" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:padding="18dp">
 
     <LinearLayout
         android:layout_width="86dp"
         android:layout_height="match_parent"
-        android:background="@drawable/panel_card"
+        android:background="@drawable/panel_nav_glass"
         android:gravity="center_horizontal"
         android:orientation="vertical"
         android:padding="8dp">
 
-        <Button
+        <ImageButton
             android:id="@+id/nav_home"
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:layout_marginTop="8dp"
             android:background="@drawable/button_nav_icon_active"
-            android:fontFamily="sans-serif-medium"
-            android:text="⌂"
-            android:textAllCaps="false"
-            android:textColor="@color/white"
-            android:textSize="24sp" />
+            android:contentDescription="@string/nav_home"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_view" />
 
-        <Button
+        <ImageButton
             android:id="@+id/nav_queue"
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/button_nav_icon_inactive"
-            android:fontFamily="sans-serif-medium"
-            android:text="☰"
-            android:textAllCaps="false"
-            android:textColor="@color/text_secondary"
-            android:textSize="24sp" />
+            android:contentDescription="@string/nav_queue"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_sort_by_size" />
 
-        <Button
+        <ImageButton
             android:id="@+id/nav_library"
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/button_nav_icon_inactive"
-            android:fontFamily="sans-serif-medium"
-            android:text="▦"
-            android:textAllCaps="false"
-            android:textColor="@color/text_secondary"
-            android:textSize="24sp" />
+            android:contentDescription="@string/nav_library"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_agenda" />
 
-        <Button
+        <ImageButton
             android:id="@+id/nav_settings"
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/button_nav_icon_inactive"
-            android:fontFamily="sans-serif-medium"
-            android:text="⚙"
-            android:textAllCaps="false"
-            android:textColor="@color/text_secondary"
-            android:textSize="24sp" />
+            android:contentDescription="@string/nav_settings"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_manage" />
     </LinearLayout>
 
     <FrameLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:layout_marginLeft="12dp"
+        android:layout_marginLeft="18dp"
+        android:background="@drawable/panel_shell_main"
+        android:padding="16dp"
         android:layout_weight="1">
 
         <TextView
@@ -84,31 +102,32 @@
             android:paddingBottom="4dp"
             android:text="@string/build_id_placeholder"
             android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:textSize="11sp"
+            android:visibility="gone" />
 
-        <ScrollView
+        <FrameLayout
             android:id="@+id/page_home"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:fillViewport="true">
+            android:layout_height="match_parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:orientation="vertical">
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/panel_card"
+                    android:layout_height="match_parent"
                     android:orientation="horizontal"
-                    android:padding="16dp">
+                    android:padding="2dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="3"
-                        android:orientation="vertical">
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@drawable/panel_player_card"
+                        android:orientation="vertical"
+                        android:padding="20dp">
 
                         <TextView
                             android:id="@+id/track_value"
@@ -128,6 +147,17 @@
                             android:textSize="36sp" />
 
                         <TextView
+                            android:id="@+id/track_artist_value"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="@string/track_artist_placeholder"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="24sp" />
+
+                        <TextView
                             android:id="@+id/playback_value"
                             android:layout_width="1dp"
                             android:layout_height="1dp"
@@ -138,12 +168,15 @@
                             android:id="@+id/playback_seek_bar"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:progressDrawable="@drawable/seekbar_glass_track"
+                            android:thumb="@drawable/seekbar_glass_thumb"
                             android:layout_marginTop="18dp" />
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
+                            android:background="@drawable/panel_progress_card"
                             android:orientation="horizontal">
 
                             <TextView
@@ -152,6 +185,9 @@
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:fontFamily="monospace"
+                                android:gravity="start"
+                                android:paddingLeft="14dp"
+                                android:paddingBottom="8dp"
                                 android:text="@string/playback_progress_placeholder"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="13sp" />
@@ -161,6 +197,9 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
+                                android:gravity="end"
+                                android:paddingRight="14dp"
+                                android:paddingBottom="8dp"
                                 android:text="@string/playback_progress_placeholder"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="13sp" />
@@ -174,7 +213,8 @@
                             android:fontFamily="monospace"
                             android:text="@string/download_progress_placeholder"
                             android:textColor="@color/text_muted"
-                            android:textSize="12sp" />
+                            android:textSize="12sp"
+                            android:visibility="gone" />
 
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -183,64 +223,61 @@
                             android:gravity="center"
                             android:orientation="horizontal">
 
-                            <Button
+                            <ImageButton
                                 android:id="@+id/btn_prev"
                                 android:layout_width="78dp"
                                 android:layout_height="78dp"
                                 android:background="@drawable/button_control_secondary"
-                                android:fontFamily="sans-serif-medium"
-                                android:text="⏮"
-                                android:textAllCaps="false"
-                                android:textColor="@color/text_primary"
-                                android:textSize="24sp" />
+                                android:contentDescription="@string/action_prev"
+                                android:padding="20dp"
+                                android:scaleType="centerInside"
+                                android:src="@android:drawable/ic_media_previous" />
 
                             <Space
                                 android:layout_width="34dp"
                                 android:layout_height="1dp" />
 
-                            <Button
+                            <ImageButton
                                 android:id="@+id/btn_play_pause"
                                 android:layout_width="98dp"
                                 android:layout_height="98dp"
                                 android:background="@drawable/button_control_primary"
-                                android:fontFamily="sans-serif-medium"
-                                android:text="▶"
-                                android:textAllCaps="false"
-                                android:textColor="@color/text_primary"
-                                android:textSize="30sp" />
+                                android:contentDescription="@string/action_play"
+                                android:padding="26dp"
+                                android:scaleType="centerInside"
+                                android:src="@android:drawable/ic_media_play" />
 
                             <Space
                                 android:layout_width="34dp"
                                 android:layout_height="1dp" />
 
-                            <Button
+                            <ImageButton
                                 android:id="@+id/btn_next"
                                 android:layout_width="78dp"
                                 android:layout_height="78dp"
                                 android:background="@drawable/button_control_secondary"
-                                android:fontFamily="sans-serif-medium"
-                                android:text="⏭"
-                                android:textAllCaps="false"
-                                android:textColor="@color/text_primary"
-                                android:textSize="24sp" />
+                                android:contentDescription="@string/action_next"
+                                android:padding="20dp"
+                                android:scaleType="centerInside"
+                                android:src="@android:drawable/ic_media_next" />
                         </LinearLayout>
                     </LinearLayout>
 
                     <Space
-                        android:layout_width="14dp"
+                        android:layout_width="16dp"
                         android:layout_height="1dp" />
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="352dp"
                         android:layout_height="match_parent"
-                        android:layout_weight="2"
-                        android:background="@drawable/field_surface"
+                        android:background="@drawable/panel_side_card"
                         android:orientation="vertical"
                         android:padding="12dp">
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:background="@drawable/panel_tab_bar"
                             android:orientation="horizontal">
 
                             <Button
@@ -248,12 +285,12 @@
                                 android:layout_width="0dp"
                                 android:layout_height="40dp"
                                 android:layout_weight="1"
-                                android:background="@drawable/button_primary"
+                                android:background="@drawable/tab_home_selected"
                                 android:fontFamily="sans-serif-medium"
-                                android:text="@string/home_tab_recommend"
+                                android:text="Recs"
                                 android:textAllCaps="false"
-                                android:textColor="@color/text_primary"
-                                android:textSize="13sp" />
+                                android:textColor="@color/white"
+                                android:textSize="15sp" />
 
                             <Space
                                 android:layout_width="8dp"
@@ -264,18 +301,19 @@
                                 android:layout_width="0dp"
                                 android:layout_height="40dp"
                                 android:layout_weight="1"
-                                android:background="@drawable/button_secondary"
+                                android:background="@drawable/tab_home_unselected"
                                 android:fontFamily="sans-serif-medium"
-                                android:text="@string/home_tab_lyrics"
+                                android:text="Lyrics"
                                 android:textAllCaps="false"
-                                android:textColor="@color/text_primary"
-                                android:textSize="13sp" />
+                                android:textColor="@color/text_secondary"
+                                android:textSize="15sp" />
                         </LinearLayout>
 
                         <LinearLayout
                             android:id="@+id/home_recommend_panel"
                             android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
                             android:layout_marginTop="10dp"
                             android:orientation="vertical">
 
@@ -285,19 +323,22 @@
                                 android:fontFamily="sans-serif-medium"
                                 android:text="@string/home_recommend_list_title"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="12sp"
+                                android:visibility="gone" />
 
-                            <TextView
+                            <ScrollView
                                 android:id="@+id/home_recommend_preview"
                                 android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
+                                android:layout_height="match_parent"
                                 android:layout_marginTop="8dp"
-                                android:fontFamily="monospace"
-                                android:lineSpacingExtra="1dp"
-                                android:maxLines="7"
-                                android:text="@string/home_recommend_placeholder"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:fillViewport="true">
+
+                                <LinearLayout
+                                    android:id="@+id/home_recommend_list"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical" />
+                            </ScrollView>
 
                             <Button
                                 android:id="@+id/btn_recommend_home"
@@ -311,27 +352,34 @@
                                 android:text="@string/action_recommend_listen"
                                 android:textAllCaps="false"
                                 android:textColor="@color/text_primary"
-                                android:textSize="13sp" />
+                                android:textSize="13sp"
+                                android:visibility="gone" />
                         </LinearLayout>
 
                         <LinearLayout
                             android:id="@+id/home_lyrics_panel"
                             android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
                             android:layout_marginTop="10dp"
                             android:orientation="vertical"
                             android:visibility="gone">
 
-                            <TextView
-                                android:id="@+id/home_lyrics_text"
+                            <ScrollView
                                 android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="sans-serif"
-                                android:lineSpacingExtra="3dp"
-                                android:maxLines="11"
-                                android:text="@string/home_lyrics_placeholder"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="17sp" />
+                                android:layout_height="match_parent"
+                                android:fillViewport="true">
+
+                                <TextView
+                                    android:id="@+id/home_lyrics_text"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="sans-serif"
+                                    android:lineSpacingExtra="3dp"
+                                    android:text="@string/home_lyrics_placeholder"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="17sp" />
+                            </ScrollView>
 
                             <TextView
                                 android:id="@+id/runtime_log_label"
@@ -341,7 +389,8 @@
                                 android:fontFamily="sans-serif-medium"
                                 android:text="@string/label_runtime_logs"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="12sp"
+                                android:visibility="gone" />
 
                             <TextView
                                 android:id="@+id/runtime_log_preview"
@@ -357,7 +406,8 @@
                                 android:padding="12dp"
                                 android:text="@string/runtime_logs_empty"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="12sp"
+                                android:visibility="gone" />
                         </LinearLayout>
                     </LinearLayout>
 
@@ -380,7 +430,7 @@
                         android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
-        </ScrollView>
+        </FrameLayout>
 
         <ScrollView
             android:id="@+id/page_queue"
@@ -716,4 +766,6 @@
         </ScrollView>
     </FrameLayout>
 
-</LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

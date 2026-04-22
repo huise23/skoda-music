@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -272,6 +273,7 @@ class MainActivity : AppCompatActivity() {
     private data class EmbyTrack(
         val id: String,
         val title: String,
+        val artist: String = "",
         val runtimeTicks: Long = -1L
     )
 
@@ -318,6 +320,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lrcApiStatusValue: TextView
     private lateinit var buildIdBadge: TextView
     private lateinit var trackValue: TextView
+    private lateinit var trackArtistValue: TextView
     private lateinit var playbackValue: TextView
     private lateinit var playbackProgressValue: TextView
     private lateinit var playbackDurationValue: TextView
@@ -326,23 +329,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
     private lateinit var libraryTracksContainer: LinearLayout
-    private lateinit var prevButton: Button
-    private lateinit var playPauseButton: Button
-    private lateinit var nextButton: Button
+    private lateinit var prevButton: ImageButton
+    private lateinit var playPauseButton: ImageButton
+    private lateinit var nextButton: ImageButton
     private lateinit var homeTabRecommendButton: Button
     private lateinit var homeTabLyricsButton: Button
     private lateinit var homeRecommendPanel: View
     private lateinit var homeLyricsPanel: View
-    private lateinit var homeRecommendPreview: TextView
+    private lateinit var homeRecommendList: LinearLayout
     private lateinit var homeLyricsText: TextView
     private lateinit var recommendHomeButton: Button
     private lateinit var recommendQueueButton: Button
+    private lateinit var clearQueueButton: Button
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
-    private lateinit var navHomeButton: Button
-    private lateinit var navQueueButton: Button
-    private lateinit var navLibraryButton: Button
-    private lateinit var navSettingsButton: Button
+    private lateinit var navHomeButton: ImageButton
+    private lateinit var navQueueButton: ImageButton
+    private lateinit var navLibraryButton: ImageButton
+    private lateinit var navSettingsButton: ImageButton
     private lateinit var pageHome: View
     private lateinit var pageQueue: View
     private lateinit var pageLibrary: View
@@ -364,6 +368,7 @@ class MainActivity : AppCompatActivity() {
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
     private var showingHomeRecommendTab: Boolean = true
+    private var previewArtistOverride: String? = null
     private var homeLyricsLines: List<LyricLine> = emptyList()
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
@@ -400,6 +405,7 @@ class MainActivity : AppCompatActivity() {
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
         buildIdBadge = findViewById(R.id.build_id_badge)
         trackValue = findViewById(R.id.track_value)
+        trackArtistValue = findViewById(R.id.track_artist_value)
         playbackValue = findViewById(R.id.playback_value)
         playbackProgressValue = findViewById(R.id.playback_progress_value)
         playbackDurationValue = findViewById(R.id.playback_duration_value)
@@ -415,10 +421,11 @@ class MainActivity : AppCompatActivity() {
         homeTabLyricsButton = findViewById(R.id.btn_home_tab_lyrics)
         homeRecommendPanel = findViewById(R.id.home_recommend_panel)
         homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
-        homeRecommendPreview = findViewById(R.id.home_recommend_preview)
+        homeRecommendList = findViewById(R.id.home_recommend_list)
         homeLyricsText = findViewById(R.id.home_lyrics_text)
         recommendHomeButton = findViewById(R.id.btn_recommend_home)
         recommendQueueButton = findViewById(R.id.btn_recommend_queue)
+        clearQueueButton = findViewById(R.id.btn_clear_queue)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         navHomeButton = findViewById(R.id.nav_home)
@@ -475,21 +482,28 @@ class MainActivity : AppCompatActivity() {
         trackValue.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
         trackValue.marqueeRepeatLimit = -1
 
-        navHomeButton.text = ICON_NAV_HOME
-        navQueueButton.text = ICON_NAV_QUEUE
-        navLibraryButton.text = ICON_NAV_LIBRARY
-        navSettingsButton.text = ICON_NAV_SETTINGS
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
+            playbackSeekBar.splitTrack = false
+        }
+
+        navHomeButton.setImageResource(android.R.drawable.ic_menu_view)
+        navQueueButton.setImageResource(android.R.drawable.ic_menu_sort_by_size)
+        navLibraryButton.setImageResource(android.R.drawable.ic_menu_agenda)
+        navSettingsButton.setImageResource(android.R.drawable.ic_menu_manage)
         navHomeButton.contentDescription = getString(R.string.nav_home)
         navQueueButton.contentDescription = getString(R.string.nav_queue)
         navLibraryButton.contentDescription = getString(R.string.nav_library)
         navSettingsButton.contentDescription = getString(R.string.nav_settings)
 
-        prevButton.text = ICON_PREV
+        prevButton.setImageResource(android.R.drawable.ic_media_previous)
         prevButton.contentDescription = getString(R.string.action_prev)
-        playPauseButton.text = ICON_PLAY
+        playPauseButton.setImageResource(android.R.drawable.ic_media_play)
         playPauseButton.contentDescription = getString(R.string.action_play)
-        nextButton.text = ICON_NEXT
+        nextButton.setImageResource(android.R.drawable.ic_media_next)
         nextButton.contentDescription = getString(R.string.action_next)
+        prevButton.setColorFilter(resources.getColor(R.color.white))
+        playPauseButton.setColorFilter(resources.getColor(R.color.white))
+        nextButton.setColorFilter(resources.getColor(R.color.white))
 
         playbackProgressValue.text = formatDurationClock(-1L)
         playbackDurationValue.text = formatDurationClock(-1L)
@@ -504,6 +518,16 @@ class MainActivity : AppCompatActivity() {
         }
         recommendQueueButton.setOnClickListener {
             requestQueueRecommendations()
+        }
+        clearQueueButton.setOnClickListener {
+            appendRuntimeLog("ui click clear queue")
+            if (loadedTracks.isEmpty()) {
+                updateState { it.copy(feedbackText = getString(R.string.feedback_queue_already_empty)) }
+                showToast(R.string.toast_queue_already_empty)
+                return@setOnClickListener
+            }
+            clearQueueAndResetPlayback()
+            showToast(R.string.toast_queue_cleared)
         }
         recommendHomeButton.setOnClickListener {
             requestQueueRecommendations()
@@ -712,19 +736,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateNavigationVisualState() {
-        setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME)
-        setNavButtonSelected(navQueueButton, selectedPage == PAGE_QUEUE)
-        setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY)
-        setNavButtonSelected(navSettingsButton, selectedPage == PAGE_SETTINGS)
+        setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME, android.R.drawable.ic_menu_view)
+        setNavButtonSelected(navQueueButton, selectedPage == PAGE_QUEUE, android.R.drawable.ic_menu_sort_by_size)
+        setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY, android.R.drawable.ic_menu_agenda)
+        setNavButtonSelected(navSettingsButton, selectedPage == PAGE_SETTINGS, android.R.drawable.ic_menu_manage)
     }
 
-    private fun setNavButtonSelected(button: Button, selected: Boolean) {
+    private fun setNavButtonSelected(button: ImageButton, selected: Boolean, iconRes: Int) {
+        button.setImageResource(iconRes)
         button.setBackgroundResource(
             if (selected) R.drawable.button_nav_icon_active else R.drawable.button_nav_icon_inactive
         )
-        button.setTextColor(
-            resources.getColor(if (selected) R.color.white else R.color.text_secondary)
-        )
+        button.setColorFilter(resources.getColor(if (selected) R.color.white else R.color.text_secondary))
     }
 
     private fun rebuildTrackLists() {
@@ -748,29 +771,94 @@ class MainActivity : AppCompatActivity() {
         homeRecommendPanel.visibility = if (showRecommend) View.VISIBLE else View.GONE
         homeLyricsPanel.visibility = if (showRecommend) View.GONE else View.VISIBLE
         homeTabRecommendButton.setBackgroundResource(
-            if (showRecommend) R.drawable.button_primary else R.drawable.button_secondary
+            if (showRecommend) R.drawable.tab_home_selected else R.drawable.tab_home_unselected
         )
         homeTabLyricsButton.setBackgroundResource(
-            if (showRecommend) R.drawable.button_secondary else R.drawable.button_primary
+            if (showRecommend) R.drawable.tab_home_unselected else R.drawable.tab_home_selected
         )
         homeTabRecommendButton.setTextColor(
-            resources.getColor(if (showRecommend) R.color.white else R.color.text_primary)
+            resources.getColor(if (showRecommend) R.color.white else R.color.text_secondary)
         )
         homeTabLyricsButton.setTextColor(
-            resources.getColor(if (showRecommend) R.color.text_primary else R.color.white)
+            resources.getColor(if (showRecommend) R.color.text_secondary else R.color.white)
+        )
+        homeTabRecommendButton.setTypeface(
+            null,
+            if (showRecommend) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+        )
+        homeTabLyricsButton.setTypeface(
+            null,
+            if (showRecommend) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD
         )
     }
 
     private fun renderHomeRecommendationPreview() {
-        if (loadedTracks.isEmpty()) {
-            homeRecommendPreview.text = getString(R.string.home_recommend_placeholder)
-            return
+        homeRecommendList.removeAllViews()
+        val fallbackServerArtist = getString(R.string.track_artist_server)
+        val recommendations: List<Pair<String, String>> = if (loadedTracks.isNotEmpty()) {
+            loadedTracks.take(8).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
+        } else {
+            listOf(
+                "Road Mix 1" to fallbackServerArtist,
+                "Road Mix 2" to fallbackServerArtist,
+                "Night Cruise" to "Skoda Band",
+                "Sunset Loop" to "Skoda Band",
+                "Highway Echo" to fallbackServerArtist,
+                "After Rain" to fallbackServerArtist
+            )
         }
-        val preview = loadedTracks
-            .take(8)
-            .mapIndexed { index, track -> "${index + 1}. ${track.title}" }
-            .joinToString("\n")
-        homeRecommendPreview.text = preview
+
+        recommendations.forEachIndexed { index, item ->
+            val isCurrent = if (loadedTracks.isNotEmpty()) {
+                index == currentTrackIndex
+            } else {
+                uiState.currentTrack == item.first
+            }
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.VERTICAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            row.minimumHeight = dpToPx(70)
+            row.setBackgroundResource(
+                if (isCurrent) R.drawable.row_recommend_active else R.drawable.row_recommend_idle
+            )
+            row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+
+            val title = TextView(this)
+            title.text = item.first
+            title.setTextColor(resources.getColor(R.color.text_primary))
+            title.textSize = 17f
+            title.setTypeface(null, if (isCurrent) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+
+            val artist = TextView(this)
+            artist.text = item.second
+            artist.setTextColor(resources.getColor(R.color.text_secondary))
+            artist.textSize = 14f
+
+            row.addView(title)
+            row.addView(artist)
+            row.setOnClickListener {
+                if (loadedTracks.isNotEmpty()) {
+                    playFromList(index, ListSource.QUEUE)
+                } else {
+                    previewArtistOverride = item.second
+                    updateState {
+                        it.copy(
+                            currentTrack = item.first,
+                            feedbackText = getString(R.string.feedback_need_emby)
+                        )
+                    }
+                }
+            }
+
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                params.topMargin = dpToPx(8)
+            }
+            homeRecommendList.addView(row, params)
+        }
     }
 
     private fun renderHomeLyricsPreview(currentTrack: String) {
@@ -849,10 +937,11 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         if (tracks.isEmpty()) {
             val empty = TextView(this)
-            empty.setBackgroundResource(R.drawable.field_surface)
+            empty.setBackgroundResource(R.drawable.row_recommend_idle)
             empty.setText(emptyRes)
             empty.setTextColor(resources.getColor(R.color.text_secondary))
-            empty.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            empty.textSize = 14f
+            empty.setPadding(dpToPx(14), dpToPx(14), dpToPx(14), dpToPx(14))
             container.addView(
                 empty,
                 LinearLayout.LayoutParams(
@@ -864,13 +953,33 @@ class MainActivity : AppCompatActivity() {
         }
 
         tracks.forEachIndexed { index, track ->
-            val row = TextView(this)
+            val row = LinearLayout(this)
             val isCurrent = highlightCurrent && index == currentTrackIndex
-            row.text = if (isCurrent) "▶ ${track.title}" else track.title
-            row.setTextColor(resources.getColor(R.color.text_primary))
-            row.textSize = 14f
-            row.setBackgroundResource(if (isCurrent) R.drawable.button_primary else R.drawable.field_surface)
-            row.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            val title = TextView(this)
+            val artist = TextView(this)
+            row.orientation = LinearLayout.VERTICAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            row.minimumHeight = dpToPx(70)
+            row.setBackgroundResource(
+                if (isCurrent) R.drawable.row_recommend_active else R.drawable.row_recommend_idle
+            )
+            row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+
+            title.text = if (isCurrent) "\u25B6 ${track.title}" else track.title
+            title.setTextColor(resources.getColor(R.color.text_primary))
+            title.textSize = 16f
+            title.setTypeface(
+                null,
+                if (isCurrent) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+            )
+
+            val artistLabel = track.artist.ifBlank { getString(R.string.track_artist_server) }
+            artist.text = artistLabel
+            artist.setTextColor(resources.getColor(R.color.text_secondary))
+            artist.textSize = 13f
+
+            row.addView(title)
+            row.addView(artist)
             row.setOnClickListener {
                 val source = if (highlightCurrent) ListSource.QUEUE else ListSource.LIBRARY
                 playFromList(index, source)
@@ -886,6 +995,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun clearQueueAndResetPlayback() {
+        loadedTracks = emptyList()
+        currentTrackIndex = 0
+        previewArtistOverride = null
+        playbackRequestId += 1
+        stopDownloadController()
+        releasePlayer()
+        updateState {
+            it.copy(
+                currentTrack = getString(R.string.track_not_loaded),
+                playbackStatusRes = R.string.status_paused,
+                playPauseLabelRes = R.string.action_play,
+                isPlaying = false,
+                playPauseEnabled = false,
+                nextEnabled = false,
+                feedbackText = getString(R.string.feedback_queue_cleared)
+            )
+        }
+        rebuildTrackLists()
+    }
+
     private fun playFromList(index: Int, source: ListSource) {
         if (loadedTracks.isEmpty()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
@@ -894,6 +1024,7 @@ class MainActivity : AppCompatActivity() {
 
         val safeIndex = index.coerceIn(0, loadedTracks.lastIndex)
         currentTrackIndex = safeIndex
+        previewArtistOverride = loadedTracks[currentTrackIndex].artist.ifBlank { null }
         syncNativeQueueToCurrentIndex()
         val first = loadedTracks[currentTrackIndex].title
 
@@ -1020,9 +1151,11 @@ class MainActivity : AppCompatActivity() {
 
         loadedTracks = playedSegment + recommendedTracks
         currentTrackIndex = playedSegment.lastIndex
+        previewArtistOverride = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
         if (!syncNativeQueueToCurrentIndex()) {
             loadedTracks = previousTracks
             currentTrackIndex = previousCurrentIndex
+            previewArtistOverride = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
             return -1
         }
 
@@ -1326,6 +1459,7 @@ class MainActivity : AppCompatActivity() {
                         embySessionUserId = result.embyUserId
                         embyAccessToken = result.accessToken
                         currentTrackIndex = 0
+                        previewArtistOverride = loadedTracks.firstOrNull()?.artist?.takeIf { it.isNotBlank() }
                         playbackRequestId += 1
                         stopDownloadController()
                         releasePlayer()
@@ -1360,6 +1494,7 @@ class MainActivity : AppCompatActivity() {
                         embySessionUserId = null
                         embyAccessToken = null
                         currentTrackIndex = 0
+                        previewArtistOverride = null
                         playbackRequestId += 1
                         stopDownloadController()
                         releasePlayer()
@@ -2736,12 +2871,19 @@ class MainActivity : AppCompatActivity() {
             item.optString("Album").trim()
         )
         val title = candidates.firstOrNull { it.isNotEmpty() }.orEmpty()
+        val artists = item.optJSONArray("Artists")
+        val artist = if (artists != null && artists.length() > 0) {
+            artists.optString(0).trim()
+        } else {
+            item.optString("AlbumArtist").trim()
+        }
         if (trackId.isEmpty() || title.isEmpty()) {
             return null
         }
         return EmbyTrack(
             id = trackId,
             title = title,
+            artist = artist,
             runtimeTicks = item.optLong("RunTimeTicks", -1L)
         )
     }
@@ -2924,13 +3066,22 @@ class MainActivity : AppCompatActivity() {
         embyStatusValue.text = state.embyStatusText
         lrcApiStatusValue.text = state.lrcApiStatusText
         trackValue.text = state.currentTrack
+        val currentArtist = loadedTracks.getOrNull(currentTrackIndex)?.artist?.takeIf { it.isNotBlank() }
+            ?: previewArtistOverride
+            ?: getString(R.string.track_artist_placeholder)
+        trackArtistValue.text = currentArtist
         playbackValue.setText(state.playbackStatusRes)
         renderHomeLyricsPreview(state.currentTrack)
-        prevButton.text = ICON_PREV
-        nextButton.text = ICON_NEXT
-        playPauseButton.text = if (state.isPlaying) ICON_PAUSE else ICON_PLAY
+        prevButton.setImageResource(android.R.drawable.ic_media_previous)
+        nextButton.setImageResource(android.R.drawable.ic_media_next)
+        playPauseButton.setImageResource(
+            if (state.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        )
         playPauseButton.contentDescription = getString(state.playPauseLabelRes)
         playPauseButton.isEnabled = state.playPauseEnabled
+        prevButton.setColorFilter(resources.getColor(R.color.white))
+        nextButton.setColorFilter(resources.getColor(R.color.white))
+        playPauseButton.setColorFilter(resources.getColor(R.color.white))
         prevButton.isEnabled = loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
         recommendHomeButton.isEnabled = loadedTracks.isNotEmpty()
@@ -2939,14 +3090,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val ICON_NAV_HOME = "\u2302"
-        const val ICON_NAV_QUEUE = "\u2630"
-        const val ICON_NAV_LIBRARY = "\u25A6"
-        const val ICON_NAV_SETTINGS = "\u2699"
-        const val ICON_PREV = "\u23EE"
-        const val ICON_PLAY = "\u25B6"
-        const val ICON_PAUSE = "\u23F8"
-        const val ICON_NEXT = "\u23ED"
         const val LOG_TAG = "SkodaMusicEmby"
         const val PREFS_EMBY = "emby_credentials"
         const val KEY_BASE_URL = "base_url"

@@ -17,6 +17,8 @@
     <string name="emby_status_failed">Emby status: failed</string>
     <string name="label_track">Current Track</string>
     <string name="track_not_loaded">No track loaded</string>
+    <string name="track_artist_placeholder">Skoda Band</string>
+    <string name="track_artist_server">Server</string>
     <string name="label_playback">Playback Status</string>
     <string name="label_now_playing">Now Playing</string>
     <string name="label_controls">Controls</string>
@@ -72,6 +74,8 @@
     <string name="feedback_queue_recommend_failed_empty">Action feedback: queue recommend returned empty audio list</string>
     <string name="feedback_queue_recommend_failed_apply">Action feedback: queue recommend apply failed, keep existing queue</string>
     <string name="feedback_queue_recommend_success">Action feedback: queue updated, replaced %1$d pending tracks with %2$d recommendations</string>
+    <string name="feedback_queue_cleared">Action feedback: queue cleared</string>
+    <string name="feedback_queue_already_empty">Action feedback: queue already empty</string>
     <string name="feedback_seek_failed">Action feedback: seek failed</string>
     <string name="feedback_auto_skipped_failed_track">Action feedback: current track decode failed, auto skipped to next</string>
     <string name="feedback_no_next_after_failed_track">Action feedback: track decode failed and no next track available</string>
@@ -85,6 +89,8 @@
     <string name="toast_lrcapi_failed">LrcApi test failed, config not saved</string>
     <string name="toast_queue_recommend_success">Queue recommendations applied</string>
     <string name="toast_queue_recommend_failed">Queue recommendation failed</string>
+    <string name="toast_queue_cleared">Queue cleared</string>
+    <string name="toast_queue_already_empty">Queue is already empty</string>
     <string name="runtime_logs_empty">No runtime logs yet.</string>
     <string name="toast_runtime_logs_copied">Runtime logs copied</string>
     <string name="toast_runtime_logs_cleared">Runtime logs cleared</string>

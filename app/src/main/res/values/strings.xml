@@ -76,6 +76,7 @@
     <string name="feedback_queue_recommend_success">动作反馈：队列已更新，用 %2$d 首推荐替换了 %1$d 首待播</string>
     <string name="feedback_queue_cleared">动作反馈：队列已清空</string>
     <string name="feedback_queue_already_empty">动作反馈：队列已为空</string>
+    <string name="feedback_queue_tail_refill">动作反馈：队列尾部补充了 %1$d 首推荐，并移除了 %2$d 首已播放</string>
     <string name="feedback_seek_failed">动作反馈：拖动定位失败</string>
     <string name="feedback_auto_skipped_failed_track">动作反馈：当前曲目解码失败，已自动切到下一首</string>
     <string name="feedback_no_next_after_failed_track">动作反馈：曲目解码失败且没有下一首可切</string>
@@ -91,6 +92,8 @@
     <string name="toast_queue_recommend_failed">队列推荐失败</string>
     <string name="toast_queue_cleared">队列已清空</string>
     <string name="toast_queue_already_empty">队列已经是空的</string>
+    <string name="toast_download_cache_cleared">下载缓存已清理</string>
+    <string name="toast_download_cache_clear_failed">下载缓存清理失败</string>
     <string name="runtime_logs_empty">暂无运行日志</string>
     <string name="toast_runtime_logs_copied">运行日志已复制</string>
     <string name="toast_runtime_logs_cleared">运行日志已清空</string>
@@ -105,6 +108,9 @@
     <string name="label_queue">播放队列</string>
     <string name="action_recommend_queue">推荐 20 首</string>
     <string name="action_clear_queue">清空队列</string>
+    <string name="action_clear_download_cache">清理下载缓存</string>
+    <string name="download_cache_size_placeholder">下载缓存：--</string>
+    <string name="download_cache_size_format">下载缓存：%1$s</string>
     <string name="queue_placeholder">暂无队列数据</string>
     <string name="queue_empty">队列为空，请先从 Emby 加载曲目。</string>
     <string name="label_library">媒体库</string>

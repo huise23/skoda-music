@@ -1,123 +1,91 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-21 18:05
+Last Updated: 2026-04-23 09:25
 
-## T-S3-RB-008
-- Task ID: `T-S3-RB-008`
-- Title: 回滚错误实现并恢复基线
-- Goal: 撤销本轮错误理解下的本地代码改动，恢复稳定基线。
-- Why: 当前实现方向与用户确认口径冲突，继续叠加会扩大偏差。
+## Active Stage: S3 收尾（回归证据闭环）
+
+## T-S3-VAL-014
+- Task ID: `T-S3-VAL-014`
+- Title: API17 回归清单升级（覆盖 2026-04-22 提交簇）
+- Goal: 更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`，覆盖 S3 新行为（download-only、30s 窗口、SeekBar、解码失败自动切歌、歌词 loading）。
+- Why: 当前清单停留在 `T-S1-006` 口径，无法完整验证 S3 收尾改动。
 - Dependencies: 无
 - Inputs:
-  - 本地 Git 工作区差异
-  - 用户指令“本地已有代码改动直接回滚”
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `CURRENT_STATUS.md` 中 S3 已完成功能列表
+  - 最近提交簇 `476ac0e -> 1fa5137`
 - Expected Outputs:
-  - 代码改动回滚完成
-  - 仅保留 `.ai/context` 规划文档更新
+  - 一份可直接用于 API17 实机执行的升级清单
+  - 明确每个条目的 PASS/FAIL 观察点
 - Done Criteria:
-  - `git status --short` 不含业务代码残留变更
+  - 清单包含 S3 关键能力验证项
+  - 清单可被非开发同事按步骤执行
 - Risks:
-  - 误回滚用户自身改动
+  - 条目过细会降低现场执行效率
 - Size: S
 - Minimal Loop: Yes
 
-## T-S3-NET-009
-- Task ID: `T-S3-NET-009`
-- Title: CF 优选 IPv4 解析链路接线（Emby 域名保持不变）
-- Goal: 用参考域名得到优选 IPv4 节点，并用于 Emby 域名请求的解析优选。
-- Why: 用户目标是“加速自己 Emby URL”，不是更换业务域名。
-- Dependencies: `T-S3-RB-008`
+## T-S3-VAL-015
+- Task ID: `T-S3-VAL-015`
+- Title: 设备报告模板固化（证据字段标准化）
+- Goal: 形成统一 Device Report 模板，约束日志、截图、失败条目回传格式。
+- Why: 实机结果若不标准化，后续复盘与回写会反复返工。
+- Dependencies: `T-S3-VAL-014`
 - Inputs:
-  - `MainActivity.kt` 当前下载/播放请求链路
-  - 用户配置项（Emby Base URL + CF 优选参考域名）
+  - 升级后的 API17 回归清单
+  - 现有 `Result Template` 字段
 - Expected Outputs:
-  - IPv4-only 候选 IP 获取、排序与回退机制
-  - 请求日志可追踪命中 IP 与回退路径
+  - 标准化报告模板（可复制填写）
+  - 最小证据集合定义（日志片段、关键动作、失败复现步骤）
 - Done Criteria:
-  - 请求 Host 仍是 Emby 域名
-  - 优选失败可自动回退系统 DNS
+  - 模板能覆盖 PASS/FAIL 与 Blocker 判断
+  - 模板字段与 `.ai/context` 回写需求对齐
 - Risks:
-  - 参考域名不可用导致优选收益不稳定
-- Size: M
-- Minimal Loop: Yes
-
-## T-S3-DL-010
-- Task ID: `T-S3-DL-010`
-- Title: 30s 下载窗口调度状态机
-- Goal: 严格按用户定义控制当前曲目与下一曲预下载。
-- Why: 需要在“不卡顿”和“不浪费带宽”间按固定规则平衡。
-- Dependencies: `T-S3-NET-009`
-- Inputs:
-  - 当前曲目时长、已播放时长、已下载估算时长
-  - 下一曲曲目信息与下载任务管理
-- Expected Outputs:
-  - 当前曲目：`downloadedPlayableSec < 30` 继续下载，`> 30` 暂停下载
-  - 临近结束：`remainingPlaySec < 30` 时，先补完当前曲目，再预下载下一曲前 30s
-- Done Criteria:
-  - 状态切换符合规则，且无永久停下载/重复拉起抖动
-- Risks:
-  - 可播秒数估算偏差导致触发点不准
-- Size: L
-- Minimal Loop: No
-
-## T-S3-LOG-011
-- Task ID: `T-S3-LOG-011`
-- Title: 下载调度与优选 IP 诊断日志补齐
-- Goal: 让“为什么下载暂停/恢复、为什么切换节点”可追踪。
-- Why: 该阶段调度逻辑复杂，没有日志无法实机快速定位。
-- Dependencies: `T-S3-DL-010`
-- Inputs:
-  - 现有 runtime log 面板
-  - 调度状态机事件
-- Expected Outputs:
-  - 关键日志：优选命中 IP、回退原因、`downloadedPlayableSec`、`remainingPlaySec`、下一曲预下载阶段
-- Done Criteria:
-  - 复盘日志可还原一次完整播放周期的决策过程
-- Risks:
-  - 日志过量影响可读性
+  - 字段过多导致回传不完整
 - Size: S
 - Minimal Loop: Yes
 
 ## T-S3-VAL-012
 - Task ID: `T-S3-VAL-012`
-- Title: API17 实机专项回归（优选 IP + 30s 调度）
-- Goal: 验证新策略在目标车机上的稳定性与体感收益。
-- Why: 该优化高度依赖真实网络环境，必须实机闭环。
-- Dependencies: `T-S3-LOG-011`
+- Title: API17 实机专项回归执行（S3 收尾）
+- Goal: 在目标 API17 设备执行全量回归并收集结构化证据。
+- Why: 当前阶段完成标准是“真实设备可验证”，不是静态推断。
+- Dependencies: `T-S3-VAL-015`
 - Inputs:
-  - API17 车机设备
-  - Runtime 日志、关键操作录屏/截图
+  - 升级后的回归清单
+  - 设备报告模板
+  - 目标安装包（对应 `HEAD=1fa5137` 或后续指定构建）
 - Expected Outputs:
-  - 首播、弱网、切歌、临近结束预下载、下一曲衔接的 PASS/FAIL 结果
+  - 分组 PASS/FAIL 结果
+  - 失败条目复现步骤与证据
+  - 是否阻断发布的结论
 - Done Criteria:
-  - 至少覆盖 5 轮连续切歌场景且无严重阻断
+  - 至少 1 台 API17 设备完成完整回归
+  - 覆盖首播、连续切歌、弱网、临近结束预下载、前后台切换
 - Risks:
-  - 设备环境不可控导致结果波动
+  - 设备/网络条件不可控导致结果波动
 - Size: M
 - Minimal Loop: No
 
-## T-S3-UI-013
-- Task ID: `T-S3-UI-013`
-- Title: Home 播放模块重排 + 可拖动进度 + 解码失败自动切歌
-- Goal: 按用户截图参考重排 Home 播放模块（不改颜色/玻璃风格），并落地解码失败自动切下一首与可拖动进度条。
-- Why: 当前车机出现 `MediaCodecAudioRenderer/code=4003` 失败场景，需从“失败即停”改为“自动跳过”，同时使播放交互更贴近车机主流样式。
-- Dependencies: `T-S3-LOG-011`
+## T-S3-VAL-016
+- Task ID: `T-S3-VAL-016`
+- Title: 回归结果复盘与 Context 回写
+- Goal: 将 `T-S3-VAL-012` 证据回填到 `.ai/context` 并更新队列状态。
+- Why: 不回写就无法形成下一轮可持续执行输入。
+- Dependencies: `T-S3-VAL-012`
 - Inputs:
-  - 用户提供截图（模块框架参考）
-  - `MainActivity.kt` 播放引擎与回调链路
-  - `activity_main.xml` 现有 Home 页面布局
+  - Device Report
+  - 日志/截图/失败条目
 - Expected Outputs:
-  - `PlaybackEngine` 增加 `seekTo` 并接线 `SeekBar` 拖动定位
-  - 下载/缓存链路 `onError` 统一进入自动切歌处理
-  - Home 模块调整为“封面入口 + 信息区 + 进度条 + 三键控制”结构
-  - 保持现有玻璃态资源与配色不变
+  - 更新 `CURRENT_STATUS.md`（结果与阻塞）
+  - 更新 `HANDOFF.md`（下一轮入口）
+  - 更新 `NEXT_STEPS.md` 与 `TASK_QUEUE.md`
 - Done Criteria:
-  - `code=4003` 等解码失败场景触发自动切下一首
-  - 进度条可拖动并在松手后生效
-  - UI 结构符合用户参考方向，且无主题资源重构
+  - `.ai/context` 与实机结果一致
+  - 下一轮 Ready 明确且可执行
 - Risks:
-  - 无本地 `gradlew`，只能做静态核对，编译/实机验证需外部环境
-- Size: M
+  - 证据不完整导致结论不稳
+- Size: S
 - Minimal Loop: Yes
 
 ## Blocked Candidates (Carry Forward)
@@ -147,3 +115,10 @@ Last Updated: 2026-04-21 18:05
 - Risks: 口径长期未确认会阻塞歌词相关开发。
 - Size: S
 - Minimal Loop: No
+
+## Done (History Snapshot)
+- [x] `T-S3-RB-008` 回滚错误实现并恢复基线
+- [x] `T-S3-NET-009` CF 优选 IPv4 解析链路接线（Emby 域名保持不变）
+- [x] `T-S3-DL-010` 30s 下载窗口调度状态机
+- [x] `T-S3-LOG-011` 下载调度与优选 IP 诊断日志补齐
+- [x] `T-S3-UI-013` Home 播放模块重排 + 可拖动进度 + 解码失败自动切歌

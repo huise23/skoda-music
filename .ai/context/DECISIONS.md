@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-21 18:05
+Last Updated: 2026-04-23 10:20
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -142,3 +142,17 @@ Last Updated: 2026-04-21 18:05
 - 决策: 增加同 `requestId` 错误去重，防止一次错误触发重复跳歌。
 - 决策: 播放进度交互改为可拖动 `SeekBar`；拖动中暂停自动刷新写回，松手后执行 seek。
 - 决策: Home 模块按用户参考图做结构重排，但保持现有颜色与 glass 资源，不做视觉主题切换。
+
+## 2026-04-22 17:23 - 最近提交簇纳入基线（Scope Sync）
+- 决策: `476ac0e -> 1fa5137`（含 `ui优化/其他页面重构/歌词loading`）统一视为“已提交基线”，不再按本地未提交差异管理。
+- 决策: 当前阶段执行焦点保持在 `T-S3-VAL-012`，先完成 API17 回归证据闭环，再决定是否开启下一阶段 UI 增量优化。
+- 决策: 本轮 scope 回写后，`.ai/context/SCOPE.md` 作为后续 planning/execution 的显式范围输入文件。
+
+## 2026-04-23 09:25 - S3 收尾规划重排（ai-planning）
+- 决策: Ready 队列调整为 `T-S3-VAL-014 -> T-S3-VAL-015`，先完成回归入口标准化，再进入 `T-S3-VAL-012` 实机执行。
+- 决策: `T-S3-VAL-012` 在设备可用前保持 Blocked，不再标记为立即可执行。
+- 决策: 新增 `T-S3-VAL-016` 作为实机后回填闭环任务，依赖 `T-S3-VAL-012`。
+
+## 2026-04-23 10:20 - 启动性能优化与媒体键兼容（执行口径）
+- 决策: 先落地“方案2”（Token 缓存 + 当日推荐缓存 + 冷启动下载缓存清理 + MediaSessionCompat）。
+- 决策: “方案3”服务化媒体会话（`MediaBrowserServiceCompat + 前台通知`）作为后续补充，不在本轮实施。

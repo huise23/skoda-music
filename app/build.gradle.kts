@@ -71,6 +71,7 @@ dependencies {
 
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.multidex:multidex:2.0.1")
+    implementation("androidx.media:media:1.7.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
     implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")

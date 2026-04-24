@@ -1,14 +1,14 @@
 # HANDOFF
 
-Last Updated: 2026-04-21 18:05
+Last Updated: 2026-04-23 09:25
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@55dc676`（已落盘 minSdk17 红线与日志口径）
+- 当前主干: master@1fa5137（2026-04-22 最近一轮 UI/歌词提交已合入）
 - 当前阶段: S3 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）
 
 ## Current Goal
-- 目标 1: 推进 `T-S3-VAL-012` 实机验证并回填证据。
+- 目标 1: 先完成 `T-S3-VAL-014/015`（回归清单与报告模板标准化），再推进 `T-S3-VAL-012` 实机验证并回填证据。
 - 目标 2: 回归 `T-S3-UI-013`（自动切歌与可拖动进度）在 API17 设备上的稳定性。
 
 ## Plan Hand-off
@@ -63,17 +63,16 @@ Last Updated: 2026-04-21 18:05
   - Home 页重排为“封面入口 + 右侧信息 + 进度条 + Prev/Play/Next”，并新增“听推荐”入口复用现有推荐逻辑。
   - 视觉约束保持：沿用现有 glass 资源与颜色，不改主题体系。
 
-## Local Gemini Delta (Uncommitted)
-- 工作区检测到 Gemini 本地改动（未提交）：
-  - `MainActivity.kt`：新增“启动/进入 Queue 页自动刷新推荐”逻辑与并发/冷却保护。
-  - `activity_main.xml`：导航 Home 按钮默认样式调整为新导航激活态资源。
-  - `colors.xml` + 多个 drawable：切换到 glass 视觉参数（边框、透明面板、渐变）。
-  - 新增 `button_nav_active.xml`、`button_nav_inactive.xml`。
-  - `strings.xml`：新增 `app_name_version` 标识。
-- 当前状态：仅完成差异汇总与 `.ai` 回写，尚未对这批改动做提交或回归结论。
+## Recent Commit Delta (2026-04-22, Committed)
+- 原“Gemini 本地未提交改动”已转为主干提交历史，当前工作区 clean。
+- 最近提交主要覆盖前台 UI 壳与歌词 loading 行为，核心触达 `MainActivity.kt`、`activity_main.xml` 与多项 drawable/colors/strings。
+- 最近 12 次提交（`30e0186` -> `1fa5137`）主题集中在 `ui优化`、`其他页面重构`、`歌词loading`，已成为当前回归基线。
+- 结论: 下一轮先执行 `T-S3-VAL-014/015` 完成回归入口标准化，再在设备就绪后执行 `T-S3-VAL-012`，并确保验证范围覆盖 2026-04-22 提交簇。
 
 ## Recommended Next Action
-1. 执行 `T-S3-VAL-012`：按专项清单完成 API17 实机回归闭环并回填证据。
+1. 执行 `T-S3-VAL-014`：升级 API17 回归清单并纳入 S3 新行为验证。
+2. 执行 `T-S3-VAL-015`：固化 Device Report 模板，准备实机回填字段。
+3. 设备就绪后执行 `T-S3-VAL-012`：完成 API17 实机回归闭环并回填证据。
 
 ## Read First In New Session
 1. `.ai/context/PLAN.md`

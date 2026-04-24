@@ -1,9 +1,9 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-21 18:05
+Last Updated: 2026-04-23 09:25
 
 ## Stage
-- 阶段判断: S1/S2 基础交互已完成，当前处于 S3「API17 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）」执行阶段。
+- 阶段判断: S1/S2 已完成；S3 主链路改造已落地，当前进入“2026-04-22 UI/歌词提交簇后的 API17 回归收敛阶段”。
 
 ## Completed
 - 已有 C++ 业务骨架模块（配置/首页壳/歌词/播放队列/媒体键/音频焦点）。
@@ -48,9 +48,9 @@ Last Updated: 2026-04-21 18:05
 - 本地缺少 `gradle/gradlew.bat`，无法完成构建型验证（需 CI 或外部环境）。
 
 ## Notes
-- `.ai/context/SCOPE.md` 仍缺失。
+- `.ai/context/SCOPE.md` 已创建并同步当前阶段边界。
 - `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
-- 当前 Ready 主线: `T-S3-VAL-012`（需 API17 实机）。
+- 当前 Ready 主线: `T-S3-VAL-014/015`（先标准化回归入口，再进入 `T-S3-VAL-012` 实机执行）。
 - 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。
 - 新增硬约束: `minSdk=17` 为红线，不允许通过升级 SDK/依赖版本绕过兼容问题。
 - 新增口径: “移除登录/加载”在本项目中指“移除相关敏感/冗余日志”，非移除登录与加载功能本身。
@@ -65,17 +65,8 @@ Last Updated: 2026-04-21 18:05
 - 本地处置: 本轮错误实现已按用户要求回滚。
 - 本轮实现说明: 已完成代码与资源接线，但本地无 `gradlew`，尚未完成编译型验证。
 
-## Local Pending Changes (Gemini)
-- 当前工作区存在一批未提交的 Gemini 本地改动（UI 玻璃态视觉 + 推荐页自动刷新）。
-- 代码行为变更（`MainActivity.kt`）：
-  - 启动时自动尝试刷新推荐数据（当队列为空且 Emby 凭据完整）。
-  - 进入 Queue 页时自动尝试刷新推荐数据（同上）。
-  - 自动刷新增加并发保护与冷却窗口（`queueAutoRefreshInFlight` + `15s cooldown`）。
-  - `requestTracksFromEmby` 改为支持 `onFinished` 回调，用于释放自动刷新状态。
-- 资源/UI 变更：
-  - `colors.xml` 视觉基色重定义为玻璃态风格，新增 `glass_*` 与 `white`。
-  - 多个 drawable 改为玻璃态边框/圆角参数（`panel_card/field_surface/button_secondary/chip_pill` 等）。
-  - 新增导航按钮资源：`button_nav_active.xml`、`button_nav_inactive.xml`。
-  - `activity_main.xml` 导航 Home 按钮默认样式改为 `button_nav_active`，文字改白色。
-  - `bg_main_gradient.xml` 改为新的蓝色线性渐变参数。
-  - `strings.xml` 新增 `app_name_version = v1.0.0 Glass`。
+## Recent Commit Delta (2026-04-22, Committed)
+- 工作区当前为 clean，原“Gemini 未提交改动”已不再适用。
+- 最近提交集中在 Android 前台层，主要触达 `MainActivity.kt`、`activity_main.xml` 与多项 drawable/colors/strings 资源。
+- 变更主题以“UI 优化 + 页面重构 + 歌词 loading” 为主，含一笔较大行为改动：`437aabf`（`MainActivity.kt`，`+205/-2`）。
+- 结合现有阻塞项，当前执行重点不再是继续堆叠功能，而是完成 `T-S3-VAL-012` 并回填覆盖新提交范围的实机证据。

@@ -18,6 +18,7 @@ import android.text.style.StyleSpan
 import android.util.Log
 import android.net.Uri
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -30,6 +31,9 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.MediaItem
@@ -320,6 +324,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lrcApiBaseUrlInput: EditText
     private lateinit var embyStatusValue: TextView
     private lateinit var lrcApiStatusValue: TextView
+    private lateinit var downloadCacheSizeValue: TextView
+    private lateinit var clearDownloadCacheButton: Button
     private lateinit var buildIdBadge: TextView
     private lateinit var trackValue: TextView
     private lateinit var trackArtistValue: TextView
@@ -373,6 +379,8 @@ class MainActivity : AppCompatActivity() {
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
+    private var queueTailRefillInFlight: Boolean = false
+    private var mediaSession: MediaSessionCompat? = null
     private var showingHomeRecommendTab: Boolean = true
     private var previewArtistOverride: String? = null
     private var homeLyricsLines: List<LyricLine> = emptyList()
@@ -412,6 +420,8 @@ class MainActivity : AppCompatActivity() {
         lrcApiBaseUrlInput = findViewById(R.id.lrcapi_base_url_input)
         embyStatusValue = findViewById(R.id.emby_status_value)
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
+        downloadCacheSizeValue = findViewById(R.id.download_cache_size_value)
+        clearDownloadCacheButton = findViewById(R.id.btn_clear_download_cache)
         buildIdBadge = findViewById(R.id.build_id_badge)
         trackValue = findViewById(R.id.track_value)
         trackArtistValue = findViewById(R.id.track_artist_value)
@@ -451,6 +461,7 @@ class MainActivity : AppCompatActivity() {
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()
+        maybeClearDownloadCacheOnColdStart()
 
         uiState = UiState(
             currentTrack = getString(R.string.track_not_loaded),
@@ -467,7 +478,9 @@ class MainActivity : AppCompatActivity() {
         )
         render(uiState)
         bindActions()
+        initMediaSession()
         rebuildTrackLists()
+        refreshDownloadCacheInfoUi()
         startUiProgressTicker()
         appendRuntimeLog("app boot completed")
         maybeAutoRefreshQueueRecommendations("app-startup")
@@ -480,6 +493,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         playbackRequestId += 1
         stopDownloadController()
+        releaseMediaSession()
         releasePlayer()
     }
 
@@ -542,7 +556,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     homeRecommendRefresh.isRefreshing = false
                 }
-            }
+            }, forceRefreshRecommendations = true)
         }
         homeTabRecommendButton.setOnClickListener {
             switchHomeTab(showRecommend = true)
@@ -698,7 +712,7 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            requestTracksFromEmby(credentials)
+            requestTracksFromEmby(credentials, forceRefreshRecommendations = true)
         }
 
         testLrcApiButton.setOnClickListener {
@@ -717,6 +731,15 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             requestLrcApiConnectionTest(credentials)
+        }
+
+        clearDownloadCacheButton.setOnClickListener {
+            val cleared = clearDownloadCacheFiles("manual-clear")
+            refreshDownloadCacheInfoUi()
+            showToast(
+                if (cleared) R.string.toast_download_cache_cleared
+                else R.string.toast_download_cache_clear_failed
+            )
         }
     }
 
@@ -741,6 +764,8 @@ class MainActivity : AppCompatActivity() {
         updateNavigationVisualState()
         if (selectedPage == PAGE_LIBRARY) {
             ensureLibraryTracksLoaded("enter-library-page")
+        } else if (selectedPage == PAGE_SETTINGS) {
+            refreshDownloadCacheInfoUi()
         }
     }
 
@@ -1382,8 +1407,105 @@ class MainActivity : AppCompatActivity() {
             return null
         }
         currentTrackIndex = (currentTrackIndex + 1).coerceAtMost(loadedTracks.lastIndex)
+        val currentTitle = loadedTracks[currentTrackIndex].title
         syncNativeQueueToCurrentIndex()
-        return loadedTracks[currentTrackIndex].title
+        maybeRefillQueueAtTail("next-track")
+        return currentTitle
+    }
+
+    private fun maybeRefillQueueAtTail(trigger: String) {
+        if (queueTailRefillInFlight) {
+            return
+        }
+        if (loadedTracks.size < 4) {
+            return
+        }
+        val remaining = loadedTracks.lastIndex - currentTrackIndex
+        if (remaining > 2) {
+            return
+        }
+        val base = embySessionBaseUrl ?: return
+        var userId = embySessionUserId ?: return
+        var token = embyAccessToken ?: return
+        val credentials = EmbyCredentials(
+            baseUrl = embyBaseUrlInput.text.toString().trim(),
+            username = embyUsernameInput.text.toString().trim(),
+            password = embyPasswordInput.text.toString().trim(),
+            cfReferenceDomain = resolveCfReferenceDomain()
+        )
+        queueTailRefillInFlight = true
+
+        val removedPlayed = currentTrackIndex.coerceAtLeast(0)
+        if (removedPlayed > 0) {
+            loadedTracks = loadedTracks.drop(currentTrackIndex)
+            currentTrackIndex = 0
+            syncNativeQueueToCurrentIndex()
+            rebuildTrackLists()
+        }
+
+        appendRuntimeLog("queue tail refill start trigger=$trigger removed=$removedPlayed keep=${loadedTracks.size}")
+        val embyClient = buildEmbyHttpClient(base, credentials.cfReferenceDomain)
+        Thread {
+            var response = executeGet(
+                endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
+                token = token,
+                requestLabel = "GET /Users/{id}/Items (Tail Refill/${DEFAULT_HOME_QUEUE_SIZE})",
+                log = { message -> appendRuntimeLog("queue-refill $message") },
+                httpClient = embyClient
+            )
+            if (response.code == 401 && credentials.username.isNotEmpty() && credentials.password.isNotEmpty()) {
+                val refreshed = authenticateByName(
+                    embyBase = base,
+                    username = credentials.username,
+                    password = credentials.password,
+                    log = { message -> appendRuntimeLog("queue-refill $message") },
+                    httpClient = embyClient
+                )
+                if (refreshed != null) {
+                    userId = refreshed.userId
+                    token = refreshed.accessToken
+                    embySessionUserId = refreshed.userId
+                    embyAccessToken = refreshed.accessToken
+                    persistCachedSessionAuth(base, credentials.username, refreshed)
+                    response = executeGet(
+                        endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
+                        token = token,
+                        requestLabel = "GET /Users/{id}/Items (Tail Refill Retry/${DEFAULT_HOME_QUEUE_SIZE})",
+                        log = { message -> appendRuntimeLog("queue-refill $message") },
+                        httpClient = embyClient
+                    )
+                }
+            }
+            val fetched = if (response.code in 200..299) parseTrackItems(response.payload) else emptyList()
+            runOnUiThread {
+                queueTailRefillInFlight = false
+                if (response.code !in 200..299 || fetched.isEmpty()) {
+                    appendRuntimeLog("queue tail refill skip code=${response.code} fetched=${fetched.size}")
+                    return@runOnUiThread
+                }
+                val existingIds = HashSet<String>(loadedTracks.size * 2 + fetched.size)
+                loadedTracks.forEach { existingIds.add(it.id) }
+                val append = fetched.filter { existingIds.add(it.id) }.take(DEFAULT_HOME_QUEUE_SIZE)
+                if (append.isEmpty()) {
+                    appendRuntimeLog("queue tail refill no-append reason=dedupe")
+                    return@runOnUiThread
+                }
+                loadedTracks = loadedTracks + append
+                syncNativeQueueToCurrentIndex()
+                rebuildTrackLists()
+                updateState {
+                    it.copy(
+                        nextEnabled = hasNextTrack(),
+                        feedbackText = getString(
+                            R.string.feedback_queue_tail_refill,
+                            append.size,
+                            removedPlayed
+                        )
+                    )
+                }
+                appendRuntimeLog("queue tail refill done appended=${append.size} total=${loadedTracks.size}")
+            }
+        }.start()
     }
 
     private fun syncNativeQueueToCurrentIndex(): Boolean {
@@ -1644,7 +1766,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestTracksFromEmby(
         credentials: EmbyCredentials,
-        onFinished: (() -> Unit)? = null
+        onFinished: (() -> Unit)? = null,
+        forceRefreshRecommendations: Boolean = false
     ) {
         appendRuntimeLog("emby load start base=${credentials.baseUrl}")
         updateState {
@@ -1656,7 +1779,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         Thread {
-            val result = fetchTracksFromEmby(credentials)
+            val result = fetchTracksFromEmby(
+                credentials = credentials,
+                forceRefreshRecommendations = forceRefreshRecommendations
+            )
             runOnUiThread {
                 try {
                     if (result.success) {
@@ -2682,7 +2808,10 @@ class MainActivity : AppCompatActivity() {
         playbackEngine = null
     }
 
-    private fun fetchTracksFromEmby(credentials: EmbyCredentials): EmbyLoadResult {
+    private fun fetchTracksFromEmby(
+        credentials: EmbyCredentials,
+        forceRefreshRecommendations: Boolean
+    ): EmbyLoadResult {
         val logs = mutableListOf<String>()
         val logger: (String) -> Unit = { message ->
             logs.add(message)
@@ -2692,64 +2821,130 @@ class MainActivity : AppCompatActivity() {
         return try {
             val embyBase = normalizeEmbyBase(credentials.baseUrl)
             val embyClient = buildEmbyHttpClient(embyBase, credentials.cfReferenceDomain)
+            val ownerKey = buildRecommendCacheOwnerKey(embyBase, credentials.username)
             logger("base=$embyBase")
-            logger("auth-mode=username-password")
+            logger("force-refresh=$forceRefreshRecommendations")
 
-            val auth = authenticateByName(
+            var auth = loadCachedSessionAuth(
                 embyBase = embyBase,
-                username = credentials.username,
-                password = credentials.password,
-                log = logger,
-                httpClient = embyClient
-            ) ?: return failedResult(
-                headline = "动作反馈：Emby 鉴权失败",
-                logs = logs
+                username = credentials.username
             )
+            if (auth != null) {
+                logger("auth-mode=cached-token user=${shortId(auth.userId)}")
+            } else {
+                logger("auth-mode=username-password")
+            }
 
-            logger("auth success user=${shortId(auth.userId)}")
+            if (!forceRefreshRecommendations && auth != null) {
+                val cachedTracks = loadTodayRecommendCache(ownerKey)
+                if (cachedTracks.isNotEmpty()) {
+                    logger("tracks=${cachedTracks.size}")
+                    logger("tracks-source=缓存-当日")
+                    logger("tracks-sample=${cachedTracks.take(3).joinToString(" | ") { it.title }}")
+                    return EmbyLoadResult(
+                        success = true,
+                        statusText = getString(R.string.emby_status_connected) + " (${cachedTracks.size}, 缓存-当日)",
+                        feedbackText = formatFeedback(
+                            headline = getString(R.string.feedback_emby_connected),
+                            logs = logs
+                        ),
+                        tracks = cachedTracks,
+                        embyBase = embyBase,
+                        embyUserId = auth.userId,
+                        accessToken = auth.accessToken
+                    )
+                }
+            }
 
-            val recommendedEndpoint =
-                buildEmbyRecommendedItemsUrl(embyBase, auth.userId, auth.accessToken, DEFAULT_HOME_QUEUE_SIZE)
-            val recommendedResponse = executeGet(
-                endpoint = recommendedEndpoint,
-                token = auth.accessToken,
-                requestLabel = "GET /Users/{id}/Items (Random/${DEFAULT_HOME_QUEUE_SIZE})",
-                log = logger,
-                httpClient = embyClient
-            )
-            if (recommendedResponse.code !in 200..299) {
-                return failedResult(
-                    headline = "动作反馈：Emby 随机拉取失败（HTTP ${recommendedResponse.code}）",
+            if (auth == null) {
+                auth = authenticateByName(
+                    embyBase = embyBase,
+                    username = credentials.username,
+                    password = credentials.password,
+                    log = logger,
+                    httpClient = embyClient
+                ) ?: return failedResult(
+                    headline = "动作反馈：Emby 鉴权失败",
                     logs = logs
                 )
+                logger("auth success user=${shortId(auth.userId)}")
             }
-            val source = "随机-${DEFAULT_HOME_QUEUE_SIZE}"
-            val tracks = parseTrackItems(recommendedResponse.payload)
 
-            logger("tracks=${tracks.size}")
-            if (tracks.isNotEmpty()) {
-                logger("tracks-source=$source")
-                logger("tracks-sample=${tracks.take(3).joinToString(" | ") { it.title }}")
-            }
-            if (tracks.isEmpty()) {
-                return failedResult(
-                    headline = "动作反馈：未返回可播放音频",
-                    logs = logs
+            var retriedAfterUnauthorized = false
+            while (true) {
+                val recommendedEndpoint = buildEmbyRecommendedItemsUrl(
+                    embyBase = embyBase,
+                    userId = auth.userId,
+                    token = auth.accessToken,
+                    limit = DEFAULT_HOME_QUEUE_SIZE
+                )
+                val recommendedResponse = executeGet(
+                    endpoint = recommendedEndpoint,
+                    token = auth.accessToken,
+                    requestLabel = "GET /Users/{id}/Items (Random/${DEFAULT_HOME_QUEUE_SIZE})",
+                    log = logger,
+                    httpClient = embyClient
+                )
+
+                if (recommendedResponse.code == 401 && !retriedAfterUnauthorized) {
+                    logger("recommend unauthorized -> re-auth")
+                    clearCachedSessionAuth(embyBase, credentials.username)
+                    auth = authenticateByName(
+                        embyBase = embyBase,
+                        username = credentials.username,
+                        password = credentials.password,
+                        log = logger,
+                        httpClient = embyClient
+                    ) ?: return failedResult(
+                        headline = "动作反馈：Emby 鉴权失败",
+                        logs = logs
+                    )
+                    retriedAfterUnauthorized = true
+                    continue
+                }
+
+                if (recommendedResponse.code !in 200..299) {
+                    return failedResult(
+                        headline = "动作反馈：Emby 随机拉取失败（HTTP ${recommendedResponse.code}）",
+                        logs = logs
+                    )
+                }
+
+                val source = "随机-${DEFAULT_HOME_QUEUE_SIZE}"
+                val tracks = parseTrackItems(recommendedResponse.payload)
+
+                logger("tracks=${tracks.size}")
+                if (tracks.isNotEmpty()) {
+                    logger("tracks-source=$source")
+                    logger("tracks-sample=${tracks.take(3).joinToString(" | ") { it.title }}")
+                }
+                if (tracks.isEmpty()) {
+                    return failedResult(
+                        headline = "动作反馈：未返回可播放音频",
+                        logs = logs
+                    )
+                }
+
+                persistCachedSessionAuth(
+                    embyBase = embyBase,
+                    username = credentials.username,
+                    auth = auth
+                )
+                persistTodayRecommendCache(ownerKey, tracks)
+
+                return EmbyLoadResult(
+                    success = true,
+                    statusText = getString(R.string.emby_status_connected) + " (${tracks.size}, $source)",
+                    feedbackText = formatFeedback(
+                        headline = getString(R.string.feedback_emby_connected),
+                        logs = logs
+                    ),
+                    tracks = tracks,
+                    embyBase = embyBase,
+                    embyUserId = auth.userId,
+                    accessToken = auth.accessToken
                 )
             }
-
-            EmbyLoadResult(
-                success = true,
-                statusText = getString(R.string.emby_status_connected) + " (${tracks.size}, $source)",
-                feedbackText = formatFeedback(
-                    headline = getString(R.string.feedback_emby_connected),
-                    logs = logs
-                ),
-                tracks = tracks,
-                embyBase = embyBase,
-                embyUserId = auth.userId,
-                accessToken = auth.accessToken
-            )
         } catch (e: Exception) {
             logger("exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
             failedResult(
@@ -3213,6 +3408,254 @@ class MainActivity : AppCompatActivity() {
         return lower.startsWith("http://") || lower.startsWith("https://")
     }
 
+    private fun buildRecommendCacheOwnerKey(embyBase: String, username: String): String {
+        return "${embyBase.lowercase(Locale.US)}|${username.trim().lowercase(Locale.US)}"
+    }
+
+    private fun currentDayKey(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun loadCachedSessionAuth(
+        embyBase: String,
+        username: String
+    ): AuthByNameResult? {
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val savedBase = prefs.getString(KEY_AUTH_BASE_URL, "").orEmpty().trim()
+        val savedUser = prefs.getString(KEY_AUTH_USERNAME, "").orEmpty().trim()
+        if (!savedBase.equals(embyBase, ignoreCase = true) || !savedUser.equals(username, ignoreCase = true)) {
+            return null
+        }
+        val token = prefs.getString(KEY_AUTH_ACCESS_TOKEN, "").orEmpty().trim()
+        val userId = prefs.getString(KEY_AUTH_USER_ID, "").orEmpty().trim()
+        if (token.isEmpty() || userId.isEmpty()) {
+            return null
+        }
+        return AuthByNameResult(accessToken = token, userId = userId)
+    }
+
+    private fun persistCachedSessionAuth(
+        embyBase: String,
+        username: String,
+        auth: AuthByNameResult
+    ) {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_AUTH_BASE_URL, embyBase)
+            .putString(KEY_AUTH_USERNAME, username)
+            .putString(KEY_AUTH_ACCESS_TOKEN, auth.accessToken)
+            .putString(KEY_AUTH_USER_ID, auth.userId)
+            .putLong(KEY_AUTH_SAVED_AT_MS, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun clearCachedSessionAuth(embyBase: String, username: String) {
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val savedBase = prefs.getString(KEY_AUTH_BASE_URL, "").orEmpty().trim()
+        val savedUser = prefs.getString(KEY_AUTH_USERNAME, "").orEmpty().trim()
+        if (!savedBase.equals(embyBase, ignoreCase = true) || !savedUser.equals(username, ignoreCase = true)) {
+            return
+        }
+        prefs.edit()
+            .remove(KEY_AUTH_BASE_URL)
+            .remove(KEY_AUTH_USERNAME)
+            .remove(KEY_AUTH_ACCESS_TOKEN)
+            .remove(KEY_AUTH_USER_ID)
+            .remove(KEY_AUTH_SAVED_AT_MS)
+            .apply()
+    }
+
+    private fun loadTodayRecommendCache(ownerKey: String): List<EmbyTrack> {
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val day = prefs.getString(KEY_RECOMMEND_CACHE_DAY, "").orEmpty()
+        val owner = prefs.getString(KEY_RECOMMEND_CACHE_OWNER, "").orEmpty()
+        if (day != currentDayKey() || owner != ownerKey) {
+            return emptyList()
+        }
+        val payload = prefs.getString(KEY_RECOMMEND_CACHE_JSON, "").orEmpty()
+        if (payload.isBlank()) {
+            return emptyList()
+        }
+        return parseCachedTrackArray(payload)
+    }
+
+    private fun persistTodayRecommendCache(ownerKey: String, tracks: List<EmbyTrack>) {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_RECOMMEND_CACHE_DAY, currentDayKey())
+            .putString(KEY_RECOMMEND_CACHE_OWNER, ownerKey)
+            .putString(KEY_RECOMMEND_CACHE_JSON, buildCachedTrackArray(tracks))
+            .apply()
+    }
+
+    private fun buildCachedTrackArray(tracks: List<EmbyTrack>): String {
+        val arr = JSONArray()
+        tracks.forEach { track ->
+            arr.put(
+                JSONObject()
+                    .put("id", track.id)
+                    .put("title", track.title)
+                    .put("artist", track.artist)
+                    .put("runtimeTicks", track.runtimeTicks)
+            )
+        }
+        return arr.toString()
+    }
+
+    private fun parseCachedTrackArray(payload: String): List<EmbyTrack> {
+        return try {
+            val arr = JSONArray(payload)
+            val out = mutableListOf<EmbyTrack>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                val id = item.optString("id").trim()
+                val title = item.optString("title").trim()
+                if (id.isEmpty() || title.isEmpty()) {
+                    continue
+                }
+                out.add(
+                    EmbyTrack(
+                        id = id,
+                        title = title,
+                        artist = item.optString("artist").trim(),
+                        runtimeTicks = item.optLong("runtimeTicks", -1L)
+                    )
+                )
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun maybeClearDownloadCacheOnColdStart() {
+        if (downloadCacheClearedAtColdStart) {
+            return
+        }
+        clearDownloadCacheFiles("cold-start")
+        downloadCacheClearedAtColdStart = true
+    }
+
+    private fun clearDownloadCacheFiles(reason: String): Boolean {
+        val files = cacheDir?.listFiles()?.filter {
+            it.isFile && it.name.startsWith("emby_") && it.name.endsWith(".cache")
+        }.orEmpty()
+        var allDeleted = true
+        files.forEach { file ->
+            val deleted = runCatching { file.delete() }.getOrDefault(false)
+            if (!deleted) {
+                allDeleted = false
+            }
+        }
+        synchronized(downloadStateLock) {
+            trackDownloadStates.clear()
+        }
+        appendRuntimeLog("download-cache clear reason=$reason files=${files.size} success=$allDeleted")
+        return allDeleted
+    }
+
+    private fun calculateDownloadCacheBytes(): Long {
+        val files = cacheDir?.listFiles()?.filter {
+            it.isFile && it.name.startsWith("emby_") && it.name.endsWith(".cache")
+        }.orEmpty()
+        var total = 0L
+        files.forEach { file ->
+            total += file.length().coerceAtLeast(0L)
+        }
+        return total
+    }
+
+    private fun refreshDownloadCacheInfoUi() {
+        if (!this::downloadCacheSizeValue.isInitialized) {
+            return
+        }
+        val bytes = calculateDownloadCacheBytes()
+        val text = Formatter.formatShortFileSize(this, bytes)
+        downloadCacheSizeValue.text = getString(R.string.download_cache_size_format, text)
+    }
+
+    private fun initMediaSession() {
+        if (mediaSession != null) {
+            return
+        }
+        val session = MediaSessionCompat(this, LOG_TAG)
+        session.setFlags(
+            MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+        )
+        session.setCallback(object : MediaSessionCompat.Callback() {
+            override fun onPlay() {
+                runOnUiThread {
+                    if (!uiState.isPlaying) {
+                        playPauseButton.performClick()
+                    }
+                }
+            }
+
+            override fun onPause() {
+                runOnUiThread {
+                    if (uiState.isPlaying) {
+                        playPauseButton.performClick()
+                    }
+                }
+            }
+
+            override fun onSkipToNext() {
+                runOnUiThread {
+                    nextButton.performClick()
+                }
+            }
+
+            override fun onSkipToPrevious() {
+                runOnUiThread {
+                    prevButton.performClick()
+                }
+            }
+        })
+        session.isActive = true
+        mediaSession = session
+        updateMediaSessionState()
+    }
+
+    private fun releaseMediaSession() {
+        val session = mediaSession ?: return
+        try {
+            session.isActive = false
+            session.release()
+        } catch (_: Exception) {
+        }
+        mediaSession = null
+    }
+
+    private fun updateMediaSessionState() {
+        val session = mediaSession ?: return
+        val actions = PlaybackStateCompat.ACTION_PLAY or
+            PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        val state = when {
+            loadedTracks.isEmpty() -> PlaybackStateCompat.STATE_NONE
+            uiState.isPlaying -> PlaybackStateCompat.STATE_PLAYING
+            else -> PlaybackStateCompat.STATE_PAUSED
+        }
+        val position = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
+        val playbackState = PlaybackStateCompat.Builder()
+            .setActions(actions)
+            .setState(state, position, if (uiState.isPlaying) 1.0f else 0.0f)
+            .build()
+        session.setPlaybackState(playbackState)
+
+        val track = loadedTracks.getOrNull(currentTrackIndex)
+        if (track != null) {
+            val metadata = MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track.title)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track.artist)
+                .build()
+            session.setMetadata(metadata)
+        }
+    }
+
     private fun loadSavedCredentials() {
         val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
         embyBaseUrlInput.setText(prefs.getString(KEY_BASE_URL, "").orEmpty())
@@ -3356,6 +3799,39 @@ class MainActivity : AppCompatActivity() {
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled
         testLrcApiButton.isEnabled = state.testLrcApiEnabled
+        updateMediaSessionState()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    prevButton.performClick()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                    nextButton.performClick()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    playPauseButton.performClick()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                    if (!uiState.isPlaying) {
+                        playPauseButton.performClick()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    if (uiState.isPlaying) {
+                        playPauseButton.performClick()
+                    }
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private companion object {
@@ -3366,6 +3842,14 @@ class MainActivity : AppCompatActivity() {
         const val KEY_USERNAME = "username"
         const val KEY_PASSWORD = "password"
         const val KEY_LRCAPI_BASE_URL = "lrcapi_base_url"
+        const val KEY_AUTH_BASE_URL = "auth_base_url"
+        const val KEY_AUTH_USERNAME = "auth_username"
+        const val KEY_AUTH_ACCESS_TOKEN = "auth_access_token"
+        const val KEY_AUTH_USER_ID = "auth_user_id"
+        const val KEY_AUTH_SAVED_AT_MS = "auth_saved_at_ms"
+        const val KEY_RECOMMEND_CACHE_DAY = "recommend_cache_day"
+        const val KEY_RECOMMEND_CACHE_OWNER = "recommend_cache_owner"
+        const val KEY_RECOMMEND_CACHE_JSON = "recommend_cache_json"
         const val EMBY_QUERY_CLIENT = "Emby Web"
         const val EMBY_QUERY_DEVICE_NAME = "Google Chrome Windows"
         const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
@@ -3398,5 +3882,6 @@ class MainActivity : AppCompatActivity() {
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
+        @Volatile var downloadCacheClearedAtColdStart = false
     }
 }

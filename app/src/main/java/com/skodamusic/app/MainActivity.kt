@@ -4,7 +4,6 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.media.AudioAttributes
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -138,7 +137,6 @@ class MainActivity : AppCompatActivity() {
             player.setAudioAttributes(
                 ExoAudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build(),
                 true
             )

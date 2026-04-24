@@ -552,11 +552,15 @@ class MainActivity : AppCompatActivity() {
                 showToast(R.string.toast_emby_failed)
                 return@setOnRefreshListener
             }
-            requestTracksFromEmby(credentials) {
-                runOnUiThread {
-                    homeRecommendRefresh.isRefreshing = false
-                }
-            }, forceRefreshRecommendations = true)
+            requestTracksFromEmby(
+                credentials = credentials,
+                onFinished = {
+                    runOnUiThread {
+                        homeRecommendRefresh.isRefreshing = false
+                    }
+                },
+                forceRefreshRecommendations = true
+            )
         }
         homeTabRecommendButton.setOnClickListener {
             switchHomeTab(showRecommend = true)
@@ -890,13 +894,16 @@ class MainActivity : AppCompatActivity() {
             if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
                 return
             }
-            requestTracksFromEmby(credentials) {
-                runOnUiThread {
-                    if (!embySessionBaseUrl.isNullOrBlank() && !embySessionUserId.isNullOrBlank() && !embyAccessToken.isNullOrBlank()) {
-                        loadMoreLibraryTracks("$trigger-auth-ready")
+            requestTracksFromEmby(
+                credentials = credentials,
+                onFinished = {
+                    runOnUiThread {
+                        if (!embySessionBaseUrl.isNullOrBlank() && !embySessionUserId.isNullOrBlank() && !embyAccessToken.isNullOrBlank()) {
+                            loadMoreLibraryTracks("$trigger-auth-ready")
+                        }
                     }
                 }
-            }
+            )
             return
         }
         val start = libraryNextStartIndex
@@ -1758,10 +1765,13 @@ class MainActivity : AppCompatActivity() {
         lastQueueAutoRefreshMs = now
         queueAutoRefreshInFlight = true
         appendRuntimeLog("queue auto refresh start trigger=$trigger")
-        requestTracksFromEmby(credentials) {
-            queueAutoRefreshInFlight = false
-            appendRuntimeLog("queue auto refresh finish trigger=$trigger tracks=${loadedTracks.size}")
-        }
+        requestTracksFromEmby(
+            credentials = credentials,
+            onFinished = {
+                queueAutoRefreshInFlight = false
+                appendRuntimeLog("queue auto refresh finish trigger=$trigger tracks=${loadedTracks.size}")
+            }
+        )
     }
 
     private fun requestTracksFromEmby(
@@ -2818,14 +2828,14 @@ class MainActivity : AppCompatActivity() {
             appendRuntimeLog("emby $message")
         }
 
-        return try {
+        try {
             val embyBase = normalizeEmbyBase(credentials.baseUrl)
             val embyClient = buildEmbyHttpClient(embyBase, credentials.cfReferenceDomain)
             val ownerKey = buildRecommendCacheOwnerKey(embyBase, credentials.username)
             logger("base=$embyBase")
             logger("force-refresh=$forceRefreshRecommendations")
 
-            var auth = loadCachedSessionAuth(
+            var auth: AuthByNameResult? = loadCachedSessionAuth(
                 embyBase = embyBase,
                 username = credentials.username
             )
@@ -2841,18 +2851,21 @@ class MainActivity : AppCompatActivity() {
                     logger("tracks=${cachedTracks.size}")
                     logger("tracks-source=缓存-当日")
                     logger("tracks-sample=${cachedTracks.take(3).joinToString(" | ") { it.title }}")
-                    return EmbyLoadResult(
-                        success = true,
-                        statusText = getString(R.string.emby_status_connected) + " (${cachedTracks.size}, 缓存-当日)",
-                        feedbackText = formatFeedback(
-                            headline = getString(R.string.feedback_emby_connected),
-                            logs = logs
-                        ),
-                        tracks = cachedTracks,
-                        embyBase = embyBase,
-                        embyUserId = auth.userId,
-                        accessToken = auth.accessToken
-                    )
+                    val cachedAuth = auth
+                    if (cachedAuth != null) {
+                        return EmbyLoadResult(
+                            success = true,
+                            statusText = getString(R.string.emby_status_connected) + " (${cachedTracks.size}, 缓存-当日)",
+                            feedbackText = formatFeedback(
+                                headline = getString(R.string.feedback_emby_connected),
+                                logs = logs
+                            ),
+                            tracks = cachedTracks,
+                            embyBase = embyBase,
+                            embyUserId = cachedAuth.userId,
+                            accessToken = cachedAuth.accessToken
+                        )
+                    }
                 }
             }
 
@@ -2872,15 +2885,19 @@ class MainActivity : AppCompatActivity() {
 
             var retriedAfterUnauthorized = false
             while (true) {
+                val activeAuth = auth ?: return failedResult(
+                    headline = "动作反馈：Emby 鉴权失败",
+                    logs = logs
+                )
                 val recommendedEndpoint = buildEmbyRecommendedItemsUrl(
                     embyBase = embyBase,
-                    userId = auth.userId,
-                    token = auth.accessToken,
+                    userId = activeAuth.userId,
+                    token = activeAuth.accessToken,
                     limit = DEFAULT_HOME_QUEUE_SIZE
                 )
                 val recommendedResponse = executeGet(
                     endpoint = recommendedEndpoint,
-                    token = auth.accessToken,
+                    token = activeAuth.accessToken,
                     requestLabel = "GET /Users/{id}/Items (Random/${DEFAULT_HOME_QUEUE_SIZE})",
                     log = logger,
                     httpClient = embyClient
@@ -2928,7 +2945,7 @@ class MainActivity : AppCompatActivity() {
                 persistCachedSessionAuth(
                     embyBase = embyBase,
                     username = credentials.username,
-                    auth = auth
+                    auth = activeAuth
                 )
                 persistTodayRecommendCache(ownerKey, tracks)
 
@@ -2941,13 +2958,13 @@ class MainActivity : AppCompatActivity() {
                     ),
                     tracks = tracks,
                     embyBase = embyBase,
-                    embyUserId = auth.userId,
-                    accessToken = auth.accessToken
+                    embyUserId = activeAuth.userId,
+                    accessToken = activeAuth.accessToken
                 )
             }
         } catch (e: Exception) {
             logger("exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
-            failedResult(
+            return failedResult(
                 headline = getString(R.string.feedback_emby_failed),
                 logs = logs
             )

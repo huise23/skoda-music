@@ -28,6 +28,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
+      - name: Enforce API17 guardrails
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check_api17_guardrails.sh
+
       - name: Setup JDK 17
         uses: actions/setup-java@v5.2.0
         with:

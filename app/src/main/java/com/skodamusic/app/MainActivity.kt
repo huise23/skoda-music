@@ -476,7 +476,10 @@ class MainActivity : AppCompatActivity() {
         refreshDownloadCacheInfoUi()
         startUiProgressTicker()
         appendRuntimeLog("app boot completed")
-        maybeAutoRefreshQueueRecommendations("app-startup")
+        uiProgressHandler.postDelayed(
+            { maybeAutoRefreshQueueRecommendations("app-startup") },
+            APP_STARTUP_QUEUE_REFRESH_DELAY_MS
+        )
     }
 
     override fun onDestroy() {
@@ -3541,8 +3544,13 @@ class MainActivity : AppCompatActivity() {
         if (downloadCacheClearedAtColdStart) {
             return
         }
-        clearDownloadCacheFiles("cold-start")
         downloadCacheClearedAtColdStart = true
+        Thread {
+            clearDownloadCacheFiles("cold-start")
+            runOnUiThread {
+                refreshDownloadCacheInfoUi()
+            }
+        }.start()
     }
 
     private fun clearDownloadCacheFiles(reason: String): Boolean {
@@ -3578,9 +3586,16 @@ class MainActivity : AppCompatActivity() {
         if (!this::downloadCacheSizeValue.isInitialized) {
             return
         }
-        val bytes = calculateDownloadCacheBytes()
-        val text = Formatter.formatShortFileSize(this, bytes)
-        downloadCacheSizeValue.text = getString(R.string.download_cache_size_format, text)
+        Thread {
+            val bytes = calculateDownloadCacheBytes()
+            runOnUiThread {
+                if (!this::downloadCacheSizeValue.isInitialized) {
+                    return@runOnUiThread
+                }
+                val text = Formatter.formatShortFileSize(this, bytes)
+                downloadCacheSizeValue.text = getString(R.string.download_cache_size_format, text)
+            }
+        }.start()
     }
 
     private fun loadSavedCredentials() {
@@ -3802,6 +3817,7 @@ class MainActivity : AppCompatActivity() {
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
+        const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2

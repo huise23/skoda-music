@@ -30,9 +30,6 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.MediaItem
@@ -378,7 +375,6 @@ class MainActivity : AppCompatActivity() {
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
     private var queueTailRefillInFlight: Boolean = false
-    private var mediaSession: MediaSessionCompat? = null
     private var showingHomeRecommendTab: Boolean = true
     private var previewArtistOverride: String? = null
     private var homeLyricsLines: List<LyricLine> = emptyList()
@@ -476,7 +472,6 @@ class MainActivity : AppCompatActivity() {
         )
         render(uiState)
         bindActions()
-        initMediaSession()
         rebuildTrackLists()
         refreshDownloadCacheInfoUi()
         startUiProgressTicker()
@@ -491,7 +486,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         playbackRequestId += 1
         stopDownloadController()
-        releaseMediaSession()
         releasePlayer()
     }
 
@@ -3589,101 +3583,6 @@ class MainActivity : AppCompatActivity() {
         downloadCacheSizeValue.text = getString(R.string.download_cache_size_format, text)
     }
 
-    private fun initMediaSession() {
-        if (mediaSession != null) {
-            return
-        }
-        if (android.os.Build.VERSION.SDK_INT < MIN_MEDIA_SESSION_SDK) {
-            appendRuntimeLog("media-session skip sdk=${android.os.Build.VERSION.SDK_INT}")
-            return
-        }
-        try {
-            val session = MediaSessionCompat(this, LOG_TAG)
-            session.setFlags(
-                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
-            )
-            session.setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    runOnUiThread {
-                        if (!uiState.isPlaying) {
-                            playPauseButton.performClick()
-                        }
-                    }
-                }
-
-                override fun onPause() {
-                    runOnUiThread {
-                        if (uiState.isPlaying) {
-                            playPauseButton.performClick()
-                        }
-                    }
-                }
-
-                override fun onSkipToNext() {
-                    runOnUiThread {
-                        nextButton.performClick()
-                    }
-                }
-
-                override fun onSkipToPrevious() {
-                    runOnUiThread {
-                        prevButton.performClick()
-                    }
-                }
-            })
-            session.isActive = true
-            mediaSession = session
-            updateMediaSessionState()
-        } catch (t: Throwable) {
-            appendRuntimeLog("media-session init failed ${t.javaClass.simpleName}: ${t.message ?: "unknown"}")
-            mediaSession = null
-        }
-    }
-
-    private fun releaseMediaSession() {
-        val session = mediaSession ?: return
-        try {
-            session.isActive = false
-            session.release()
-        } catch (_: Exception) {
-        }
-        mediaSession = null
-    }
-
-    private fun updateMediaSessionState() {
-        val session = mediaSession ?: return
-        try {
-            val actions = PlaybackStateCompat.ACTION_PLAY or
-                PlaybackStateCompat.ACTION_PAUSE or
-                PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-            val state = when {
-                loadedTracks.isEmpty() -> PlaybackStateCompat.STATE_NONE
-                uiState.isPlaying -> PlaybackStateCompat.STATE_PLAYING
-                else -> PlaybackStateCompat.STATE_PAUSED
-            }
-            val position = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-            val playbackState = PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(state, position, if (uiState.isPlaying) 1.0f else 0.0f)
-                .build()
-            session.setPlaybackState(playbackState)
-
-            val track = loadedTracks.getOrNull(currentTrackIndex)
-            if (track != null) {
-                val metadata = MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track.title)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track.artist)
-                    .build()
-                session.setMetadata(metadata)
-            }
-        } catch (t: Throwable) {
-            appendRuntimeLog("media-session update failed ${t.javaClass.simpleName}: ${t.message ?: "unknown"}")
-        }
-    }
-
     private fun loadSavedCredentials() {
         val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
         embyBaseUrlInput.setText(prefs.getString(KEY_BASE_URL, "").orEmpty())
@@ -3827,7 +3726,6 @@ class MainActivity : AppCompatActivity() {
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled
         testLrcApiButton.isEnabled = state.testLrcApiEnabled
-        updateMediaSessionState()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -3904,7 +3802,6 @@ class MainActivity : AppCompatActivity() {
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
-        const val MIN_MEDIA_SESSION_SDK = 21
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2

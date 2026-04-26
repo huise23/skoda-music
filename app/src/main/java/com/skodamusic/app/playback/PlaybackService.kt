@@ -8,6 +8,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.skodamusic.app.MainActivity
 import com.skodamusic.app.R
@@ -143,6 +144,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         val handled = PlaybackControlBus.dispatch(action, queueWhenUnavailable = false)
         if (!handled) {
             stateStore.enqueuePendingCommand(action)
+            Log.d(LOG_TAG, "queue pending command action=$action")
         }
     }
 
@@ -151,14 +153,17 @@ class PlaybackService : Service(), OverlayController.Listener {
         if (pending.isEmpty()) {
             return
         }
+        Log.d(LOG_TAG, "replay pending commands count=${pending.size}")
         for (i in pending.indices) {
             val action = pending[i]
             val handled = PlaybackControlBus.dispatch(action, queueWhenUnavailable = false)
             if (!handled) {
                 stateStore.enqueuePendingCommands(pending.subList(i, pending.size))
+                Log.d(LOG_TAG, "replay interrupted action=$action remaining=${pending.size - i}")
                 return
             }
         }
+        Log.d(LOG_TAG, "replay pending commands done")
     }
 
     private fun buildNotification(): Notification {
@@ -280,6 +285,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private companion object {
+        const val LOG_TAG = "PlaybackService"
         const val NOTIFICATION_CHANNEL_ID = "playback_service_channel"
         const val NOTIFICATION_ID = 8201
         const val REQ_CONTENT = 1

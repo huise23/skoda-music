@@ -49,6 +49,12 @@ class PlaybackStateStore(context: Context) {
             if (action.isBlank()) {
                 continue
             }
+            if (PLAYBACK_TOGGLE_ACTIONS.contains(action)) {
+                merged.removeAll(PLAYBACK_TOGGLE_ACTIONS)
+            }
+            if (merged.lastOrNull() == action) {
+                continue
+            }
             merged.add(action)
             if (merged.size > MAX_PENDING_COMMANDS) {
                 merged.removeAt(0)
@@ -94,5 +100,10 @@ class PlaybackStateStore(context: Context) {
         const val KEY_OVERLAY_DISMISSED_BY_USER = "overlay_dismissed_by_user"
         const val KEY_PENDING_COMMANDS = "pending_commands"
         const val MAX_PENDING_COMMANDS = 16
+        val PLAYBACK_TOGGLE_ACTIONS = setOf(
+            PlaybackActions.ACTION_CMD_PLAY_PAUSE,
+            PlaybackActions.ACTION_CMD_PLAY,
+            PlaybackActions.ACTION_CMD_PAUSE
+        )
     }
 }

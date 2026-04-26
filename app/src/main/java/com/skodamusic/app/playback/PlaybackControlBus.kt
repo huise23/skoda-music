@@ -4,7 +4,7 @@ import java.lang.ref.WeakReference
 
 object PlaybackControlBus {
     interface Controller {
-        fun onPlaybackCommand(action: String): Boolean
+        fun onPlaybackCommand(action: String, source: String, allowToast: Boolean): Boolean
     }
 
     private val lock = Any()
@@ -25,16 +25,21 @@ object PlaybackControlBus {
         }
     }
 
-    fun dispatch(action: String): Boolean {
+    fun dispatch(action: String, source: String = "service cmd", allowToast: Boolean = false): Boolean {
         val controller = synchronized(lock) {
             controllerRef?.get()
         } ?: return false
-        return dispatchTo(controller, action)
+        return dispatchTo(controller, action, source, allowToast)
     }
 
-    private fun dispatchTo(controller: Controller, action: String): Boolean {
+    private fun dispatchTo(
+        controller: Controller,
+        action: String,
+        source: String,
+        allowToast: Boolean
+    ): Boolean {
         return try {
-            controller.onPlaybackCommand(action)
+            controller.onPlaybackCommand(action, source, allowToast)
         } catch (_: Exception) {
             false
         }

@@ -86,7 +86,7 @@ class PlaybackService : Service(), OverlayController.Listener {
             PlaybackActions.ACTION_CMD_PAUSE,
             PlaybackActions.ACTION_CMD_NEXT,
             PlaybackActions.ACTION_CMD_PREV -> {
-                dispatchCommand(intent.action ?: "")
+                dispatchCommand(intent)
                 updatePresentation()
             }
             else -> {
@@ -134,11 +134,17 @@ class PlaybackService : Service(), OverlayController.Listener {
         }
     }
 
-    private fun dispatchCommand(action: String) {
+    private fun dispatchCommand(intent: Intent) {
+        val action = intent.action.orEmpty()
         if (action.isBlank()) {
             return
         }
-        PlaybackControlBus.dispatch(action)
+        val source = intent.getStringExtra(PlaybackActions.EXTRA_CMD_SOURCE)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: "service cmd"
+        val allowToast = intent.getBooleanExtra(PlaybackActions.EXTRA_CMD_ALLOW_TOAST, false)
+        PlaybackControlBus.dispatch(action, source = source, allowToast = allowToast)
     }
 
     private fun buildNotification(): Notification {

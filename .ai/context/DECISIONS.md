@@ -199,6 +199,8 @@ Last Updated: 2026-04-26
 - 决策: 前台 `UI` 按钮与 `KEYCODE_MEDIA_*` 硬件键统一改为“优先发送到 PlaybackService”，由 Service 统一分发到控制总线。
 - 决策: 当发送 Service 失败时，`MainActivity` 立即走本地 fallback 执行，避免前台控制失效。
 - 决策: Service 移除 `hasActiveTrack` 前置命令过滤，避免状态同步滞后时把有效命令误判为无效并直接丢弃。
+- 决策: 命令上下文增加透传字段：`source` 与 `allowToast` 从 Activity 发送到 Service，并透传到 ControlBus 执行层。
+- 决策: `ACTION_STATE_UPDATE` 上报新增位置心跳规则：位置增量 `>=2s` 或播放中 `>=10s` 心跳时强制上报，避免 Service 快照位置长期滞后。
 
 ## 2026-04-26 - 执行颗粒度调整（用户确认）
 - 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。

@@ -53,7 +53,9 @@ Last Updated: 2026-04-26
   - `onPlaybackCommand` 返回真实执行结果（主线程同步等待），Service 侧按结果判断是否执行成功。
   - `PlaybackService` 命令链路改为“失败即失败”：不记录待执行命令、不重放、不做延迟重试。
   - 前台 `UI` 按钮与硬件媒体键改为“优先经 Service 分发”，发送失败时才本地兜底，前后台命令入口进一步统一。
+  - 命令上下文（`source/allowToast`）已从 `MainActivity -> PlaybackService -> PlaybackControlBus` 透传，统一命令入口同时保持前台交互语义。
   - Service 侧移除“无活动曲目前置拦截”过滤，避免状态滞后导致命令被误丢弃。
+  - 播放状态上报增加“位置增量 + 播放中心跳”策略，提升 Service 侧 `positionMs` 快照时效性。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
   - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。

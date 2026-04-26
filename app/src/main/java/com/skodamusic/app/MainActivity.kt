@@ -421,6 +421,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastReportedServiceTrackTitle: String = ""
     private var lastReportedServiceIsPlaying: Boolean = false
     private var lastReportedServiceHasTrack: Boolean = false
+    private var lastReportedServicePositionMs: Long = -1L
+    private var lastReportedServiceAtMs: Long = 0L
     private var resumeRestoreAttempted: Boolean = false
     private var pendingAutoResumePlayback: Boolean = false
     private var pendingResumeSeekMs: Long = -1L
@@ -655,7 +657,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             requestPlaybackCommandViaService(
                 action = PlaybackActions.ACTION_CMD_PREV,
                 source = "ui click",
-                allowToastOnFallback = false
+                allowToast = false
             )
         }
 
@@ -663,7 +665,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             requestPlaybackCommandViaService(
                 action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
                 source = "ui click",
-                allowToastOnFallback = true
+                allowToast = true
             )
         }
 
@@ -671,7 +673,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             requestPlaybackCommandViaService(
                 action = PlaybackActions.ACTION_CMD_NEXT,
                 source = "ui click",
-                allowToastOnFallback = true
+                allowToast = true
             )
         }
 
@@ -4333,22 +4335,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         maybePersistPlaybackResumeState()
     }
 
-    override fun onPlaybackCommand(action: String): Boolean {
+    override fun onPlaybackCommand(action: String, source: String, allowToast: Boolean): Boolean {
         if (!this::uiState.isInitialized) {
             return false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return performPlaybackCommand(action, source = "service cmd", allowToast = false)
+            return performPlaybackCommand(action, source = source, allowToast = allowToast)
         }
         val latch = CountDownLatch(1)
         val handledRef = booleanArrayOf(false)
         runOnUiThread {
-            handledRef[0] = performPlaybackCommand(action, source = "service cmd", allowToast = false)
+            handledRef[0] = performPlaybackCommand(action, source = source, allowToast = allowToast)
             latch.countDown()
         }
         return try {
             if (!latch.await(EXTERNAL_COMMAND_WAIT_MS, TimeUnit.MILLISECONDS)) {
-                appendRuntimeLog("service cmd timeout action=$action")
+                appendRuntimeLog("service cmd timeout action=$action source=$source")
                 false
             } else {
                 handledRef[0]
@@ -4365,18 +4367,26 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
         val isPlaying = uiState.isPlaying && hasTrack
         val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-        if (!force &&
-            trackId == lastReportedServiceTrackId &&
+        val nowMs = SystemClock.elapsedRealtime()
+        val baseUnchanged = trackId == lastReportedServiceTrackId &&
             trackTitle == lastReportedServiceTrackTitle &&
             hasTrack == lastReportedServiceHasTrack &&
             isPlaying == lastReportedServiceIsPlaying
-        ) {
+        val positionDeltaMs = abs(positionMs - lastReportedServicePositionMs)
+        val elapsedMs = nowMs - lastReportedServiceAtMs
+        val shouldSend = force ||
+            !baseUnchanged ||
+            positionDeltaMs >= SERVICE_REPORT_POSITION_DELTA_MS ||
+            (isPlaying && elapsedMs >= SERVICE_REPORT_HEARTBEAT_MS)
+        if (!shouldSend) {
             return
         }
         lastReportedServiceTrackId = trackId
         lastReportedServiceTrackTitle = trackTitle
         lastReportedServiceHasTrack = hasTrack
         lastReportedServiceIsPlaying = isPlaying
+        lastReportedServicePositionMs = positionMs
+        lastReportedServiceAtMs = nowMs
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
             putExtra(PlaybackActions.EXTRA_TRACK_ID, trackId)
@@ -4405,16 +4415,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun requestPlaybackCommandViaService(
         action: String,
         source: String,
-        allowToastOnFallback: Boolean
+        allowToast: Boolean
     ): Boolean {
-        if (sendPlaybackServiceIntent(action)) {
+        if (sendPlaybackServiceIntent(action) {
+                putExtra(PlaybackActions.EXTRA_CMD_SOURCE, source)
+                putExtra(PlaybackActions.EXTRA_CMD_ALLOW_TOAST, allowToast)
+            }) {
             return true
         }
         appendRuntimeLog("$source cmd fallback-local action=$action")
         return performPlaybackCommand(
             action = action,
             source = "$source fallback",
-            allowToast = allowToastOnFallback
+            allowToast = allowToast
         )
     }
 
@@ -4453,7 +4466,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     requestPlaybackCommandViaService(
                         action = PlaybackActions.ACTION_CMD_PREV,
                         source = "hardware key",
-                        allowToastOnFallback = false
+                        allowToast = false
                     )
                     return true
                 }
@@ -4461,7 +4474,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     requestPlaybackCommandViaService(
                         action = PlaybackActions.ACTION_CMD_NEXT,
                         source = "hardware key",
-                        allowToastOnFallback = false
+                        allowToast = false
                     )
                     return true
                 }
@@ -4469,7 +4482,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     requestPlaybackCommandViaService(
                         action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
                         source = "hardware key",
-                        allowToastOnFallback = false
+                        allowToast = false
                     )
                     return true
                 }
@@ -4477,7 +4490,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     requestPlaybackCommandViaService(
                         action = PlaybackActions.ACTION_CMD_PLAY,
                         source = "hardware key",
-                        allowToastOnFallback = false
+                        allowToast = false
                     )
                     return true
                 }
@@ -4485,7 +4498,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     requestPlaybackCommandViaService(
                         action = PlaybackActions.ACTION_CMD_PAUSE,
                         source = "hardware key",
-                        allowToastOnFallback = false
+                        allowToast = false
                     )
                     return true
                 }
@@ -4560,6 +4573,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val EXTERNAL_COMMAND_WAIT_MS = 800L
+        const val SERVICE_REPORT_POSITION_DELTA_MS = 2_000L
+        const val SERVICE_REPORT_HEARTBEAT_MS = 10_000L
         const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
         const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
         const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L

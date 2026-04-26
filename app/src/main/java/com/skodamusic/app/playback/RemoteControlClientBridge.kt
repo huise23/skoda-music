@@ -44,11 +44,11 @@ class RemoteControlClientBridge(private val context: Context) {
     fun updatePlaybackState(isPlaying: Boolean) {
         val client = remoteControlClient ?: return
         try {
-            client.playbackState = if (isPlaying) {
+            client.setPlaybackState(if (isPlaying) {
                 RemoteControlClient.PLAYSTATE_PLAYING
             } else {
                 RemoteControlClient.PLAYSTATE_PAUSED
-            }
+            })
         } catch (_: Exception) {
         }
     }

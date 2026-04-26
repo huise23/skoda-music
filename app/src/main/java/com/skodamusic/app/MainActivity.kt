@@ -25,6 +25,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -1449,7 +1450,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 deleteButton.setBackgroundResource(R.drawable.button_nav_icon_inactive)
                 deleteButton.setColorFilter(resources.getColor(R.color.text_secondary))
                 deleteButton.contentDescription = getString(R.string.action_delete_source)
-                deleteButton.scaleType = ImageButton.ScaleType.CENTER_INSIDE
+                deleteButton.scaleType = ImageView.ScaleType.CENTER_INSIDE
                 deleteButton.adjustViewBounds = true
                 deleteButton.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
                 deleteButton.isFocusable = false

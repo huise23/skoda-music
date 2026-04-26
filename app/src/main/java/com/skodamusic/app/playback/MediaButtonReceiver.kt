@@ -24,7 +24,9 @@ class MediaButtonReceiver : BroadcastReceiver() {
             else -> null
         } ?: return
 
-        val commandIntent = Intent(context, PlaybackService::class.java).setAction(action)
+        val commandIntent = Intent(context, PlaybackService::class.java)
+            .setAction(action)
+            .putExtra(PlaybackActions.EXTRA_CMD_SOURCE, PlaybackActions.CMD_SOURCE_MEDIA_BUTTON)
         if (Build.VERSION.SDK_INT >= 26) {
             context.startForegroundService(commandIntent)
         } else {

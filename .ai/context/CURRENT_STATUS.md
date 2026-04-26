@@ -54,6 +54,7 @@ Last Updated: 2026-04-26
   - `PlaybackService` 命令链路改为“失败即失败”：不记录待执行命令、不重放、不做延迟重试。
   - 前台 `UI` 按钮与硬件媒体键已回滚为本地直执（稳定优先），Service 路径保留给通知/浮窗/后台外部命令。
   - 执行层保留命令上下文参数（`source/allowToast`），由 Service 调度时统一传入。
+  - 后台命令来源已细化并透传（`notification/overlay/media_button/audio_focus`），便于实机日志定位触发链路。
   - Service 侧移除“无活动曲目前置拦截”过滤，避免状态滞后导致命令被误丢弃。
   - 播放状态上报增加“位置增量 + 播放中心跳”策略，提升 Service 侧 `positionMs` 快照时效性。
   - 右上角构建标识改为显示 `#versionCode`（如 `#79`），用于实机快速确认版本。

@@ -11,6 +11,12 @@ object PlaybackActions {
     const val ACTION_CMD_PAUSE = "com.skodamusic.app.action.CMD_PAUSE"
     const val ACTION_CMD_NEXT = "com.skodamusic.app.action.CMD_NEXT"
     const val ACTION_CMD_PREV = "com.skodamusic.app.action.CMD_PREV"
+    const val EXTRA_CMD_SOURCE = "extra_cmd_source"
+    const val CMD_SOURCE_SERVICE = "service"
+    const val CMD_SOURCE_NOTIFICATION = "notification"
+    const val CMD_SOURCE_OVERLAY = "overlay"
+    const val CMD_SOURCE_MEDIA_BUTTON = "media_button"
+    const val CMD_SOURCE_AUDIO_FOCUS = "audio_focus"
 
     const val EXTRA_TRACK_TITLE = "extra_track_title"
     const val EXTRA_TRACK_ID = "extra_track_id"

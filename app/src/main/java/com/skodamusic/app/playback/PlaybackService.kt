@@ -35,6 +35,10 @@ class PlaybackService : Service(), OverlayController.Listener {
                 if (snapshot.isPlaying) {
                     val pauseIntent = Intent(this, PlaybackService::class.java)
                         .setAction(PlaybackActions.ACTION_CMD_PAUSE)
+                        .putExtra(
+                            PlaybackActions.EXTRA_CMD_SOURCE,
+                            PlaybackActions.CMD_SOURCE_AUDIO_FOCUS
+                        )
                     startService(pauseIntent)
                 }
             }
@@ -108,7 +112,9 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     override fun onCommand(action: String) {
-        val cmdIntent = Intent(this, PlaybackService::class.java).setAction(action)
+        val cmdIntent = Intent(this, PlaybackService::class.java)
+            .setAction(action)
+            .putExtra(PlaybackActions.EXTRA_CMD_SOURCE, PlaybackActions.CMD_SOURCE_OVERLAY)
         startService(cmdIntent)
     }
 
@@ -139,7 +145,11 @@ class PlaybackService : Service(), OverlayController.Listener {
         if (action.isBlank()) {
             return
         }
-        PlaybackControlBus.dispatch(action, source = "service cmd", allowToast = false)
+        val source = intent.getStringExtra(PlaybackActions.EXTRA_CMD_SOURCE)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: PlaybackActions.CMD_SOURCE_SERVICE
+        PlaybackControlBus.dispatch(action, source = source, allowToast = false)
     }
 
     private fun buildNotification(): Notification {
@@ -178,7 +188,9 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private fun commandPendingIntent(requestCode: Int, action: String): PendingIntent {
-        val intent = Intent(this, PlaybackService::class.java).setAction(action)
+        val intent = Intent(this, PlaybackService::class.java)
+            .setAction(action)
+            .putExtra(PlaybackActions.EXTRA_CMD_SOURCE, PlaybackActions.CMD_SOURCE_NOTIFICATION)
         return PendingIntent.getService(this, requestCode, intent, pendingIntentFlags())
     }
 

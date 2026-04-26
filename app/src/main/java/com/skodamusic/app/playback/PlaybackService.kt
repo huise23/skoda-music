@@ -8,7 +8,6 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.skodamusic.app.MainActivity
 import com.skodamusic.app.R
@@ -59,14 +58,12 @@ class PlaybackService : Service(), OverlayController.Listener {
             null,
             PlaybackActions.ACTION_SERVICE_INIT -> {
                 updatePresentation()
-                dispatchPersistedPendingCommands()
             }
             PlaybackActions.ACTION_APP_FOREGROUND -> {
                 appInForeground = true
                 stateStore.setOverlayDismissedByUser(false)
                 overlayController.hide()
                 updatePresentation()
-                dispatchPersistedPendingCommands()
             }
             PlaybackActions.ACTION_APP_BACKGROUND -> {
                 appInForeground = false
@@ -83,14 +80,13 @@ class PlaybackService : Service(), OverlayController.Listener {
                 )
                 stateStore.saveSnapshot(snapshot)
                 updatePresentation()
-                dispatchPersistedPendingCommands()
             }
             PlaybackActions.ACTION_CMD_PLAY_PAUSE,
             PlaybackActions.ACTION_CMD_PLAY,
             PlaybackActions.ACTION_CMD_PAUSE,
             PlaybackActions.ACTION_CMD_NEXT,
             PlaybackActions.ACTION_CMD_PREV -> {
-                dispatchOrPersistCommand(intent.action ?: "")
+                dispatchCommand(intent.action ?: "")
                 updatePresentation()
             }
             else -> {
@@ -138,36 +134,14 @@ class PlaybackService : Service(), OverlayController.Listener {
         }
     }
 
-    private fun dispatchOrPersistCommand(action: String) {
+    private fun dispatchCommand(action: String) {
         if (action.isBlank()) {
             return
         }
         if (!snapshot.hasActiveTrack && action != PlaybackActions.ACTION_CMD_PLAY) {
             return
         }
-        val handled = PlaybackControlBus.dispatch(action, queueWhenUnavailable = false)
-        if (!handled) {
-            stateStore.enqueuePendingCommand(action)
-            Log.d(LOG_TAG, "queue pending command action=$action")
-        }
-    }
-
-    private fun dispatchPersistedPendingCommands() {
-        val pending = stateStore.consumePendingCommands()
-        if (pending.isEmpty()) {
-            return
-        }
-        Log.d(LOG_TAG, "replay pending commands count=${pending.size}")
-        for (i in pending.indices) {
-            val action = pending[i]
-            val handled = PlaybackControlBus.dispatch(action, queueWhenUnavailable = false)
-            if (!handled) {
-                stateStore.enqueuePendingCommands(pending.subList(i, pending.size))
-                Log.d(LOG_TAG, "replay interrupted action=$action remaining=${pending.size - i}")
-                return
-            }
-        }
-        Log.d(LOG_TAG, "replay pending commands done")
+        PlaybackControlBus.dispatch(action)
     }
 
     private fun buildNotification(): Notification {
@@ -289,7 +263,6 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private companion object {
-        const val LOG_TAG = "PlaybackService"
         const val NOTIFICATION_CHANNEL_ID = "playback_service_channel"
         const val NOTIFICATION_ID = 8201
         const val REQ_CONTENT = 1

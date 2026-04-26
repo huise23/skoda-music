@@ -23,9 +23,8 @@ Last Updated: 2026-04-26
   - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
 
 ## Current Focus
-- 稳定化 `T-S4-MEDIA-018`（后台方向盘按键）并进行车机实测闭环。
-- 继续推进 `T-S4-ARCH-017`（播放真源迁移到 Service）。
-- 继续推进 `T-S4-RESUME-020`（熄火/休眠自动续播恢复）。
+- 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
+- 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
 
 ## Implementation Progress (2026-04-26)
 - 已新增后台控制基础模块：
@@ -38,7 +37,7 @@ Last Updated: 2026-04-26
 - 已完成 `MainActivity` 最小接线：前后台通知 Service、播放状态上报、接收外部控制命令（方向盘/通知/浮窗统一入口）。
 - 已完成 `AndroidManifest` 基础声明：前台服务、媒体键接收器、悬浮窗/前台服务权限。
 - 已完成 `T-S4-MEDIA-018` 第一轮稳定化补丁（待车机验证）：
-  - `PlaybackControlBus` 增加命令缓存队列，Activity 生命周期切换期间不直接丢指令。
+  - `PlaybackControlBus` 采用无缓存即时分发策略，controller 不可用时单次失败即返回失败。
   - `PlaybackService` 增加音频焦点请求/释放，提升后台媒体键路由命中概率。
   - 移除 Service 与 RCC 的重复媒体键注册路径，收敛到 `RemoteControlClientBridge`。
   - `MediaButtonReceiver` 对有序广播执行 `abortBroadcast()`，减少被其他接收器抢占/重复分发风险。
@@ -51,13 +50,11 @@ Last Updated: 2026-04-26
   - 引入恢复状态写入节流，避免高频 `SharedPreferences` 写入。
 - 已完成 `T-S4-ARCH-017` 局部增强（待车机验证）：
   - 外部命令不再依赖 `performClick()`，改为统一播放控制函数（UI/外部命令/硬件键共用同一执行路径）。
-  - `PlaybackService` 增加“待执行命令持久化队列”（controller 不可用时落盘，应用回前台后重放）。
-  - `onPlaybackCommand` 改为“可返回真实执行结果”（主线程同步等待），Service 仅在失败时持久化重试。
-  - 当无活动曲目时，Service 不再把 `NEXT/PREV/PAUSE/TOGGLE` 这类无效命令写入重试队列。
-  - 命令队列新增合并/去抖（`PLAY/PAUSE/TOGGLE` 仅保留最新意图、相邻重复去重）并补充重放日志，降低异常重放跳变。
+  - `onPlaybackCommand` 返回真实执行结果（主线程同步等待），Service 侧按结果判断是否执行成功。
+  - `PlaybackService` 命令链路改为“失败即失败”：不记录待执行命令、不重放、不做延迟重试。
+  - 当无活动曲目时，Service 直接过滤 `NEXT/PREV/PAUSE/TOGGLE` 等无效外部命令，避免误触发。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
   - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
-  - 持久化命令新增“30 分钟过期”控制，避免旧命令在恢复时误重放。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
 ## Known Constraints

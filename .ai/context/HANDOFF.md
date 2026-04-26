@@ -14,6 +14,7 @@ Last Updated: 2026-04-26
 - 车机熄火/休眠恢复后自动续播。
 - 第一版必须同时满足：后台服务 + 后台方向盘按键 + 浮窗控制。
 - 接受前台服务常驻通知（稳定性优先）。
+- 命令执行策略固定为“失败即失败”：不记录待执行命令，不做延迟重放/重试。
 - 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
 
 ## Technical Strategy (Confirmed)
@@ -22,11 +23,9 @@ Last Updated: 2026-04-26
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-ARCH-017` 播放服务化迁移。
-2. `T-S4-MEDIA-018` 方向盘后台按键接线。
-3. `T-S4-OVL-019` 全局浮窗与显示策略。
-4. `T-S4-RESUME-020` 熄火/休眠恢复自动续播。
-5. `T-S4-REG-022` 车机实机回归与证据回填。
+1. `T-S4-CORE-026`：S4 大闭环执行（播放服务化 + 方向盘后台控制 + 浮窗 + 通知 + 恢复链路）。
+2. `T-S4-REG-022`：车机实机回归与证据回填。
+3. `T-S4-UI-023/024 + T-S4-AUDIO-025`：主屏删除入口、长标题滚动与音效优化。
 
 ## WIP Code Delta (2026-04-26)
 - 已创建后台控制模块文件（service/receiver/overlay/state store/command bus）。
@@ -36,7 +35,7 @@ Last Updated: 2026-04-26
   - 实现 `PlaybackControlBus.Controller`，可响应外部命令触发 `Prev/PlayPause/Next`。
 - `Manifest` 已新增服务与媒体键接收器声明，权限已补齐。
 - 本轮新增稳定化补丁（`T-S4-MEDIA-018`）：
-  - `PlaybackControlBus` 支持命令缓存队列，Activity 未附着时命令不直接丢弃。
+  - `PlaybackControlBus` 使用无缓存即时分发，controller 不可用时直接返回失败。
   - `PlaybackService` 增加音频焦点请求/释放逻辑，降低后台媒体键失效概率。
   - 收敛媒体键注册路径（由 `RemoteControlClientBridge` 统一管理）。
   - `MediaButtonReceiver` 增加 `abortBroadcast()`（ordered broadcast）减少抢占。
@@ -49,11 +48,9 @@ Last Updated: 2026-04-26
   - 恢复写入加入节流（时间与进度阈值）避免高频写偏慢。
 - 本轮新增命令链路增强（`T-S4-ARCH-017` 局部）：
   - `MainActivity` 将 `Prev/PlayPause/Next` 抽为统一动作函数，UI点击/外部命令/硬件键复用同一逻辑。
-  - `PlaybackService + PlaybackStateStore` 增加“命令持久化重放”机制：controller 不可用时入队，`ACTION_SERVICE_INIT/APP_FOREGROUND` 时重放。
-  - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 可据此做失败重试而不是盲目认为成功。
-  - 无活动曲目时跳过无效命令入队，降低重试队列污染。
-  - 持久化命令队列新增意图合并与去重（播放态命令只保留最后意图，连续重复命令去重），并增加重放过程日志。
-  - 持久化命令队列新增过期控制（30 分钟），避免陈旧命令恢复后误执行。
+  - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 基于真实结果判断执行状态。
+  - Service 命令策略改为“失败即失败”：不落盘、不重放、不维护重试队列。
+  - 无活动曲目时直接过滤无效命令，避免后台误操作。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：

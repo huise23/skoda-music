@@ -31,7 +31,7 @@ Last Updated: 2026-04-26
   - 均衡器/音效优化。
 
 ## 2026-04-26 - T-S4-MEDIA-018 稳定化补丁决策
-- 决策: `PlaybackControlBus` 增加最多 12 条命令缓存，避免 Activity 生命周期切换时命令直接丢失。
+- 决策: `PlaybackControlBus` 使用无缓存即时分发策略，不保留待执行命令；单次派发失败即失败。
 - 决策: `PlaybackService` 增加音频焦点管理（播放时请求，暂停/无曲目时释放），提高车机后台媒体键命中率。
 - 决策: 媒体键注册路径收敛为 `RemoteControlClientBridge`，避免 Service 与 Bridge 双重注册带来的不确定行为。
 - 决策: `MediaButtonReceiver` 对 ordered broadcast 执行 `abortBroadcast()`，减少被其他接收器抢占。
@@ -190,12 +190,12 @@ Last Updated: 2026-04-26
 
 ## 2026-04-26 - T-S4-ARCH-017 局部增强决策（命令链路）
 - 决策: 外部播放命令不再通过按钮 `performClick()` 间接触发，改为调用统一播放动作函数，减少生命周期依赖。
-- 决策: Service 在 controller 不可用时将命令落盘（最多 16 条），并在 `ACTION_SERVICE_INIT/APP_FOREGROUND` 尝试顺序重放。
-- 决策: `PlaybackControlBus.dispatch` 增加 `queueWhenUnavailable` 参数，Service 路径关闭内存队列，改由持久化队列统一兜底。
 - 决策: `onPlaybackCommand` 需返回真实执行结果（主线程同步等待），避免 Service 误判“已执行”。
-- 决策: 当 `hasActiveTrack=false` 时，Service 跳过 `NEXT/PREV/PAUSE/PLAY_PAUSE` 的落盘重试，仅保留 `PLAY` 作为可重试命令。
-- 决策: 持久化命令入队采用合并/去抖策略：`PLAY/PAUSE/PLAY_PAUSE` 同组只保留最后意图，连续同命令不重复写入。
-- 决策: Service 重放过程补充日志（入队/开始重放/中断/完成），用于车机现场定位后台命令链路。
+- 决策: Service 命令策略固定为“失败即失败”，不做落盘、不做延迟重放、不做重试队列。
+- 决策: 当 `hasActiveTrack=false` 时，Service 直接过滤 `NEXT/PREV/PAUSE/PLAY_PAUSE` 等无效命令，减少后台误操作。
 - 决策: 恢复状态读写从 `MainActivity` 抽离到 `PlaybackResumeStore`，并兼容迁移 legacy `emby_credentials` 中的旧恢复键。
 - 决策: `ACTION_STATE_UPDATE` 增加 `trackId/positionMs` 字段，作为后续 Service 真源迁移的状态基线，不改变当前播放行为。
-- 决策: 持久化待执行命令设置 30 分钟有效期，过期命令在读取时自动丢弃，避免历史命令误执行。
+
+## 2026-04-26 - 执行颗粒度调整（用户确认）
+- 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。
+- 决策: 每轮执行完成后仅记录“已完成 + 下一阶段”，不维护“待执行命令列表”式运行策略。

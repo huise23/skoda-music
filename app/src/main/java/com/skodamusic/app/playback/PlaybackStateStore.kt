@@ -11,11 +11,6 @@ class PlaybackStateStore(context: Context) {
         val positionMs: Long
     )
 
-    private data class PendingCommand(
-        val action: String,
-        val timestampMs: Long
-    )
-
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun saveSnapshot(snapshot: Snapshot) {
@@ -47,85 +42,6 @@ class PlaybackStateStore(context: Context) {
         return prefs.getBoolean(KEY_OVERLAY_DISMISSED_BY_USER, false)
     }
 
-    fun enqueuePendingCommand(action: String) {
-        enqueuePendingCommands(listOf(action))
-    }
-
-    fun enqueuePendingCommands(actions: List<String>) {
-        if (actions.isEmpty()) {
-            return
-        }
-        val merged = readPendingCommandsInternal()
-        val now = System.currentTimeMillis()
-        for (action in actions) {
-            if (action.isBlank()) {
-                continue
-            }
-            if (PLAYBACK_TOGGLE_ACTIONS.contains(action)) {
-                merged.removeAll { PLAYBACK_TOGGLE_ACTIONS.contains(it.action) }
-            }
-            if (merged.lastOrNull()?.action == action) {
-                continue
-            }
-            merged.add(PendingCommand(action = action, timestampMs = now))
-            if (merged.size > MAX_PENDING_COMMANDS) {
-                merged.removeAt(0)
-            }
-        }
-        savePendingCommandsInternal(merged)
-    }
-
-    fun consumePendingCommands(): List<String> {
-        val pending = readPendingCommandsInternal()
-        if (pending.isEmpty()) {
-            return emptyList()
-        }
-        prefs.edit().remove(KEY_PENDING_COMMANDS).apply()
-        return pending.map { it.action }
-    }
-
-    private fun readPendingCommandsInternal(): MutableList<PendingCommand> {
-        val raw = prefs.getString(KEY_PENDING_COMMANDS, "").orEmpty()
-        if (raw.isBlank()) {
-            return mutableListOf()
-        }
-        val now = System.currentTimeMillis()
-        return raw.split('\n')
-            .mapNotNull { line -> parsePendingCommand(line.trim(), now) }
-            .toMutableList()
-    }
-
-    private fun savePendingCommandsInternal(actions: List<PendingCommand>) {
-        if (actions.isEmpty()) {
-            prefs.edit().remove(KEY_PENDING_COMMANDS).apply()
-            return
-        }
-        val payload = actions.joinToString("\n") { "${it.timestampMs}|${it.action}" }
-        prefs.edit().putString(KEY_PENDING_COMMANDS, payload).apply()
-    }
-
-    private fun parsePendingCommand(line: String, now: Long): PendingCommand? {
-        if (line.isBlank()) {
-            return null
-        }
-        val separator = line.indexOf('|')
-        val (ts, action) = if (separator > 0 && separator < line.lastIndex) {
-            val tsPart = line.substring(0, separator)
-            val actionPart = line.substring(separator + 1).trim()
-            val parsedTs = tsPart.toLongOrNull() ?: now
-            parsedTs to actionPart
-        } else {
-            now to line
-        }
-        if (action.isBlank()) {
-            return null
-        }
-        if (now - ts > MAX_PENDING_COMMAND_AGE_MS) {
-            return null
-        }
-        return PendingCommand(action = action, timestampMs = ts)
-    }
-
     private companion object {
         const val PREFS_NAME = "playback_runtime_state"
         const val KEY_TRACK_TITLE = "track_title"
@@ -135,13 +51,5 @@ class PlaybackStateStore(context: Context) {
         const val KEY_POSITION_MS = "position_ms"
         const val KEY_UPDATED_AT_MS = "updated_at_ms"
         const val KEY_OVERLAY_DISMISSED_BY_USER = "overlay_dismissed_by_user"
-        const val KEY_PENDING_COMMANDS = "pending_commands"
-        const val MAX_PENDING_COMMANDS = 16
-        const val MAX_PENDING_COMMAND_AGE_MS = 30L * 60L * 1000L
-        val PLAYBACK_TOGGLE_ACTIONS = setOf(
-            PlaybackActions.ACTION_CMD_PLAY_PAUSE,
-            PlaybackActions.ACTION_CMD_PLAY,
-            PlaybackActions.ACTION_CMD_PAUSE
-        )
     }
 }

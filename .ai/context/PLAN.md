@@ -6,6 +6,10 @@ Last Updated: 2026-04-26
 - Stage Name: S4 车机场景后台控制落地（服务化播放 + 方向盘后台按键 + 全局浮窗）
 - Scope Source: 用户 2026-04-26 当轮确认（方案1）
 
+## Execution Rules (User Confirmed)
+- 命令链路执行策略: 失败即失败，不记录待执行命令，不做延迟重放/重试。
+- 任务执行颗粒度: 采用阶段化大任务，每轮产出可联调结果，避免过细拆分。
+
 ## Scope Validation
 
 ### In Scope
@@ -56,8 +60,6 @@ Last Updated: 2026-04-26
 - 假设: 车机系统允许或可授予悬浮窗权限。
 
 ## Recommended Order
-1. `T-S4-ARCH-017`：PlaybackService 架构迁移。
-2. `T-S4-MEDIA-018`：后台媒体键链路接线。
-3. `T-S4-OVL-019`：全局浮窗与显示策略。
-4. `T-S4-RESUME-020`：休眠/熄火自动续播恢复。
-5. `T-S4-REG-022`：车机实机回归与证据回填。
+1. `T-S4-CORE-026`：S4 后台控制稳定化大闭环（ARCH + MEDIA + OVL + NOTIFY + RESUME）。
+2. `T-S4-REG-022`：车机实机回归与证据回填。
+3. `T-S4-UI-023/024 + T-S4-AUDIO-025`：主屏删除入口、长标题滚动、均衡器优化。

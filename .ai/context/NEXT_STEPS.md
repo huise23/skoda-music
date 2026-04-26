@@ -3,13 +3,12 @@
 Last Updated: 2026-04-26
 
 ## Highest Priority
-- [ ] 车机联合验证 `T-S4-MEDIA-018 + T-S4-RESUME-020`：确认后台方向盘按键与熄火/休眠续播恢复。
+- [ ] 执行 `T-S4-CORE-026` 大闭环：后台服务/方向盘按键/通知控制/浮窗/恢复链路一体化稳定。
 
 ## Immediate Actions
-- [ ] 继续 `T-S4-ARCH-017`：将播放真源从 `MainActivity` 迁移到 `PlaybackService`。
-- [ ] 补齐 `T-S4-RESUME-020` 二阶段：服务进程重建场景的自动恢复闭环（当前为 Activity 侧恢复）。
-- [ ] 继续 `T-S4-OVL-019`：完成浮窗权限与显示策略的车机联调。
-- [ ] 继续 `T-S4-NOTIFY-021`：通知三键在后台长稳验证（含重复点击/高频切歌）。
+- [ ] Stage 1：完成播放真源迁移到 `PlaybackService`，统一前台/后台命令和状态源。
+- [ ] Stage 2：完成熄火/休眠恢复的服务侧闭环，并在车机上验证稳定性。
+- [ ] Stage 3：回填车机验证证据并收敛下一轮修复点。
 
 ## Validation Focus (Car Head Unit)
 - [ ] 后台播放稳定性（连续切应用、长时间播放）。

@@ -57,6 +57,7 @@ Last Updated: 2026-04-26
   - 命令队列新增合并/去抖（`PLAY/PAUSE/TOGGLE` 仅保留最新意图、相邻重复去重）并补充重放日志，降低异常重放跳变。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
   - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
+  - 持久化命令新增“30 分钟过期”控制，避免旧命令在恢复时误重放。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
 ## Known Constraints

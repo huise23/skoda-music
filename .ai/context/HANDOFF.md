@@ -53,6 +53,7 @@ Last Updated: 2026-04-26
   - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 可据此做失败重试而不是盲目认为成功。
   - 无活动曲目时跳过无效命令入队，降低重试队列污染。
   - 持久化命令队列新增意图合并与去重（播放态命令只保留最后意图，连续重复命令去重），并增加重放过程日志。
+  - 持久化命令队列新增过期控制（30 分钟），避免陈旧命令恢复后误执行。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：

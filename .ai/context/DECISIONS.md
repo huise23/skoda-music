@@ -198,3 +198,4 @@ Last Updated: 2026-04-26
 - 决策: Service 重放过程补充日志（入队/开始重放/中断/完成），用于车机现场定位后台命令链路。
 - 决策: 恢复状态读写从 `MainActivity` 抽离到 `PlaybackResumeStore`，并兼容迁移 legacy `emby_credentials` 中的旧恢复键。
 - 决策: `ACTION_STATE_UPDATE` 增加 `trackId/positionMs` 字段，作为后续 Service 真源迁移的状态基线，不改变当前播放行为。
+- 决策: 持久化待执行命令设置 30 分钟有效期，过期命令在读取时自动丢弃，避免历史命令误执行。

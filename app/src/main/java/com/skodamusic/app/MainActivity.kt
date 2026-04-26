@@ -416,6 +416,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     @Volatile private var lastKnownBitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
     @Volatile private var downloadControllerRequestId: Int = -1
     @Volatile private var downloadControllerStop = false
+    private var lastReportedServiceTrackId: String = ""
     private var lastReportedServiceTrackTitle: String = ""
     private var lastReportedServiceIsPlaying: Boolean = false
     private var lastReportedServiceHasTrack: Boolean = false
@@ -532,6 +533,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     override fun onStop() {
         maybePersistPlaybackResumeState(force = true)
+        reportPlaybackStateToService(force = true)
         sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_BACKGROUND)
         super.onStop()
     }
@@ -4347,21 +4349,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun reportPlaybackStateToService(force: Boolean = false) {
         val trackTitle = uiState.currentTrack
         val hasTrack = loadedTracks.isNotEmpty()
+        val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
         val isPlaying = uiState.isPlaying && hasTrack
+        val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
         if (!force &&
+            trackId == lastReportedServiceTrackId &&
             trackTitle == lastReportedServiceTrackTitle &&
             hasTrack == lastReportedServiceHasTrack &&
             isPlaying == lastReportedServiceIsPlaying
         ) {
             return
         }
+        lastReportedServiceTrackId = trackId
         lastReportedServiceTrackTitle = trackTitle
         lastReportedServiceHasTrack = hasTrack
         lastReportedServiceIsPlaying = isPlaying
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
+            putExtra(PlaybackActions.EXTRA_TRACK_ID, trackId)
             putExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, hasTrack)
             putExtra(PlaybackActions.EXTRA_IS_PLAYING, isPlaying)
+            putExtra(PlaybackActions.EXTRA_POSITION_MS, positionMs)
         }
     }
 

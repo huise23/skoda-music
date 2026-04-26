@@ -54,6 +54,7 @@ Last Updated: 2026-04-26
   - 无活动曲目时跳过无效命令入队，降低重试队列污染。
   - 持久化命令队列新增意图合并与去重（播放态命令只保留最后意图，连续重复命令去重），并增加重放过程日志。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
+  - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；

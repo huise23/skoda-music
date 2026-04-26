@@ -56,6 +56,7 @@ Last Updated: 2026-04-26
   - 当无活动曲目时，Service 不再把 `NEXT/PREV/PAUSE/TOGGLE` 这类无效命令写入重试队列。
   - 命令队列新增合并/去抖（`PLAY/PAUSE/TOGGLE` 仅保留最新意图、相邻重复去重）并补充重放日志，降低异常重放跳变。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
+  - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
 ## Known Constraints

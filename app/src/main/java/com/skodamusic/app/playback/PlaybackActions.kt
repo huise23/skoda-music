@@ -13,6 +13,8 @@ object PlaybackActions {
     const val ACTION_CMD_PREV = "com.skodamusic.app.action.CMD_PREV"
 
     const val EXTRA_TRACK_TITLE = "extra_track_title"
+    const val EXTRA_TRACK_ID = "extra_track_id"
     const val EXTRA_IS_PLAYING = "extra_is_playing"
     const val EXTRA_HAS_ACTIVE_TRACK = "extra_has_active_track"
+    const val EXTRA_POSITION_MS = "extra_position_ms"
 }

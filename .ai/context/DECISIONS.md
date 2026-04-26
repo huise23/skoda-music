@@ -192,3 +192,5 @@ Last Updated: 2026-04-26
 - 决策: 外部播放命令不再通过按钮 `performClick()` 间接触发，改为调用统一播放动作函数，减少生命周期依赖。
 - 决策: Service 在 controller 不可用时将命令落盘（最多 16 条），并在 `ACTION_SERVICE_INIT/APP_FOREGROUND` 尝试顺序重放。
 - 决策: `PlaybackControlBus.dispatch` 增加 `queueWhenUnavailable` 参数，Service 路径关闭内存队列，改由持久化队列统一兜底。
+- 决策: `onPlaybackCommand` 需返回真实执行结果（主线程同步等待），避免 Service 误判“已执行”。
+- 决策: 当 `hasActiveTrack=false` 时，Service 跳过 `NEXT/PREV/PAUSE/PLAY_PAUSE` 的落盘重试，仅保留 `PLAY` 作为可重试命令。

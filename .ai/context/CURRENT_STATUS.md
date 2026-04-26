@@ -52,6 +52,8 @@ Last Updated: 2026-04-26
 - 已完成 `T-S4-ARCH-017` 局部增强（待车机验证）：
   - 外部命令不再依赖 `performClick()`，改为统一播放控制函数（UI/外部命令/硬件键共用同一执行路径）。
   - `PlaybackService` 增加“待执行命令持久化队列”（controller 不可用时落盘，应用回前台后重放）。
+  - `onPlaybackCommand` 改为“可返回真实执行结果”（主线程同步等待），Service 仅在失败时持久化重试。
+  - 当无活动曲目时，Service 不再把 `NEXT/PREV/PAUSE/TOGGLE` 这类无效命令写入重试队列。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
 ## Known Constraints

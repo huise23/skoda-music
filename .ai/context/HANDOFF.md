@@ -50,6 +50,8 @@ Last Updated: 2026-04-26
 - 本轮新增命令链路增强（`T-S4-ARCH-017` 局部）：
   - `MainActivity` 将 `Prev/PlayPause/Next` 抽为统一动作函数，UI点击/外部命令/硬件键复用同一逻辑。
   - `PlaybackService + PlaybackStateStore` 增加“命令持久化重放”机制：controller 不可用时入队，`ACTION_SERVICE_INIT/APP_FOREGROUND` 时重放。
+  - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 可据此做失败重试而不是盲目认为成功。
+  - 无活动曲目时跳过无效命令入队，降低重试队列污染。
 - 待完成：
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；

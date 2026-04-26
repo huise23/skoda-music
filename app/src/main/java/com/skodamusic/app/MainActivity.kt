@@ -71,6 +71,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -4326,28 +4327,25 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::uiState.isInitialized) {
             return false
         }
-        return when (action) {
-            PlaybackActions.ACTION_CMD_PLAY_PAUSE -> {
-                runOnUiThread { performPlayPauseAction(forcePlay = null, source = "external cmd", allowToast = false) }
-                true
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return performPlaybackCommand(action, source = "external cmd", allowToast = false)
+        }
+        val latch = CountDownLatch(1)
+        val handledRef = booleanArrayOf(false)
+        runOnUiThread {
+            handledRef[0] = performPlaybackCommand(action, source = "external cmd", allowToast = false)
+            latch.countDown()
+        }
+        return try {
+            if (!latch.await(EXTERNAL_COMMAND_WAIT_MS, TimeUnit.MILLISECONDS)) {
+                appendRuntimeLog("external cmd timeout action=$action")
+                false
+            } else {
+                handledRef[0]
             }
-            PlaybackActions.ACTION_CMD_PLAY -> {
-                runOnUiThread { performPlayPauseAction(forcePlay = true, source = "external cmd", allowToast = false) }
-                true
-            }
-            PlaybackActions.ACTION_CMD_PAUSE -> {
-                runOnUiThread { performPlayPauseAction(forcePlay = false, source = "external cmd", allowToast = false) }
-                true
-            }
-            PlaybackActions.ACTION_CMD_NEXT -> {
-                runOnUiThread { performNextAction(source = "external cmd", allowToast = false) }
-                true
-            }
-            PlaybackActions.ACTION_CMD_PREV -> {
-                runOnUiThread { performPrevAction(source = "external cmd", allowToast = false) }
-                true
-            }
-            else -> false
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
         }
     }
 
@@ -4418,28 +4416,51 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    performPrevAction(source = "hardware key", allowToast = false)
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PREV, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    performNextAction(source = "hardware key", allowToast = false)
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_NEXT, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    performPlayPauseAction(forcePlay = null, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    performPlayPauseAction(forcePlay = true, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    performPlayPauseAction(forcePlay = false, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PAUSE, source = "hardware key", allowToast = false)
                     return true
                 }
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun performPlaybackCommand(action: String, source: String, allowToast: Boolean): Boolean {
+        return when (action) {
+            PlaybackActions.ACTION_CMD_PLAY_PAUSE -> performPlayPauseAction(
+                forcePlay = null,
+                source = source,
+                allowToast = allowToast
+            )
+            PlaybackActions.ACTION_CMD_PLAY -> performPlayPauseAction(
+                forcePlay = true,
+                source = source,
+                allowToast = allowToast
+            )
+            PlaybackActions.ACTION_CMD_PAUSE -> performPlayPauseAction(
+                forcePlay = false,
+                source = source,
+                allowToast = allowToast
+            )
+            PlaybackActions.ACTION_CMD_NEXT -> performNextAction(source = source, allowToast = allowToast)
+            PlaybackActions.ACTION_CMD_PREV -> performPrevAction(source = source, allowToast = allowToast)
+            else -> false
+        }
     }
 
     private companion object {
@@ -4491,6 +4512,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
+        const val EXTERNAL_COMMAND_WAIT_MS = 800L
         const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
         const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
         const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L

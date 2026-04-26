@@ -137,6 +137,9 @@ class PlaybackService : Service(), OverlayController.Listener {
         if (action.isBlank()) {
             return
         }
+        if (!snapshot.hasActiveTrack && action != PlaybackActions.ACTION_CMD_PLAY) {
+            return
+        }
         val handled = PlaybackControlBus.dispatch(action, queueWhenUnavailable = false)
         if (!handled) {
             stateStore.enqueuePendingCommand(action)

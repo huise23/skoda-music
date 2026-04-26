@@ -78,6 +78,7 @@ class PlaybackService : Service(), OverlayController.Listener {
                 )
                 stateStore.saveSnapshot(snapshot)
                 updatePresentation()
+                dispatchPersistedPendingCommands()
             }
             PlaybackActions.ACTION_CMD_PLAY_PAUSE,
             PlaybackActions.ACTION_CMD_PLAY,

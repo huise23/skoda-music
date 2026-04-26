@@ -50,7 +50,8 @@ Last Updated: 2026-04-26
   - `MainActivity` 将 `Prev/PlayPause/Next` 抽为统一动作函数，UI点击/外部命令/硬件键复用同一逻辑。
   - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 基于真实结果判断执行状态。
   - Service 命令策略改为“失败即失败”：不落盘、不重放、不维护重试队列。
-  - 无活动曲目时直接过滤无效命令，避免后台误操作。
+  - 前台 `UI` 按钮和硬件媒体键改为“优先经 Service 分发”，发送失败再本地 fallback，减少前后台分叉路径。
+  - Service 移除“无活动曲目前置过滤”，避免状态滞后导致命令被误丢弃。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：

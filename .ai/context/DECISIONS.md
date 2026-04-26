@@ -192,9 +192,13 @@ Last Updated: 2026-04-26
 - 决策: 外部播放命令不再通过按钮 `performClick()` 间接触发，改为调用统一播放动作函数，减少生命周期依赖。
 - 决策: `onPlaybackCommand` 需返回真实执行结果（主线程同步等待），避免 Service 误判“已执行”。
 - 决策: Service 命令策略固定为“失败即失败”，不做落盘、不做延迟重放、不做重试队列。
-- 决策: 当 `hasActiveTrack=false` 时，Service 直接过滤 `NEXT/PREV/PAUSE/PLAY_PAUSE` 等无效命令，减少后台误操作。
 - 决策: 恢复状态读写从 `MainActivity` 抽离到 `PlaybackResumeStore`，并兼容迁移 legacy `emby_credentials` 中的旧恢复键。
 - 决策: `ACTION_STATE_UPDATE` 增加 `trackId/positionMs` 字段，作为后续 Service 真源迁移的状态基线，不改变当前播放行为。
+
+## 2026-04-26 - T-S4-ARCH-017 Stage-1 增量决策（命令入口统一）
+- 决策: 前台 `UI` 按钮与 `KEYCODE_MEDIA_*` 硬件键统一改为“优先发送到 PlaybackService”，由 Service 统一分发到控制总线。
+- 决策: 当发送 Service 失败时，`MainActivity` 立即走本地 fallback 执行，避免前台控制失效。
+- 决策: Service 移除 `hasActiveTrack` 前置命令过滤，避免状态同步滞后时把有效命令误判为无效并直接丢弃。
 
 ## 2026-04-26 - 执行颗粒度调整（用户确认）
 - 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。

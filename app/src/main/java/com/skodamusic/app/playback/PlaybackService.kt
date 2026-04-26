@@ -138,9 +138,6 @@ class PlaybackService : Service(), OverlayController.Listener {
         if (action.isBlank()) {
             return
         }
-        if (!snapshot.hasActiveTrack && action != PlaybackActions.ACTION_CMD_PLAY) {
-            return
-        }
         PlaybackControlBus.dispatch(action)
     }
 

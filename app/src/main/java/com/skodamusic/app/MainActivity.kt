@@ -652,15 +652,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         })
 
         prevButton.setOnClickListener {
-            performPrevAction(source = "ui click", allowToast = false)
+            requestPlaybackCommandViaService(
+                action = PlaybackActions.ACTION_CMD_PREV,
+                source = "ui click",
+                allowToastOnFallback = false
+            )
         }
 
         playPauseButton.setOnClickListener {
-            performPlayPauseAction(forcePlay = null, source = "ui click", allowToast = true)
+            requestPlaybackCommandViaService(
+                action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
+                source = "ui click",
+                allowToastOnFallback = true
+            )
         }
 
         nextButton.setOnClickListener {
-            performNextAction(source = "ui click", allowToast = true)
+            requestPlaybackCommandViaService(
+                action = PlaybackActions.ACTION_CMD_NEXT,
+                source = "ui click",
+                allowToastOnFallback = true
+            )
         }
 
         testEmbyButton.setOnClickListener {
@@ -4326,17 +4338,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return performPlaybackCommand(action, source = "external cmd", allowToast = false)
+            return performPlaybackCommand(action, source = "service cmd", allowToast = false)
         }
         val latch = CountDownLatch(1)
         val handledRef = booleanArrayOf(false)
         runOnUiThread {
-            handledRef[0] = performPlaybackCommand(action, source = "external cmd", allowToast = false)
+            handledRef[0] = performPlaybackCommand(action, source = "service cmd", allowToast = false)
             latch.countDown()
         }
         return try {
             if (!latch.await(EXTERNAL_COMMAND_WAIT_MS, TimeUnit.MILLISECONDS)) {
-                appendRuntimeLog("external cmd timeout action=$action")
+                appendRuntimeLog("service cmd timeout action=$action")
                 false
             } else {
                 handledRef[0]
@@ -4374,7 +4386,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun sendPlaybackServiceIntent(action: String, extras: (Intent.() -> Unit)? = null) {
+    private fun sendPlaybackServiceIntent(action: String, extras: (Intent.() -> Unit)? = null): Boolean {
         val intent = Intent(this, PlaybackService::class.java).setAction(action)
         extras?.invoke(intent)
         try {
@@ -4383,9 +4395,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             } else {
                 startService(intent)
             }
+            return true
         } catch (e: Exception) {
             appendRuntimeLog("playback-service send failed action=$action type=${e.javaClass.simpleName}")
+            return false
         }
+    }
+
+    private fun requestPlaybackCommandViaService(
+        action: String,
+        source: String,
+        allowToastOnFallback: Boolean
+    ): Boolean {
+        if (sendPlaybackServiceIntent(action)) {
+            return true
+        }
+        appendRuntimeLog("$source cmd fallback-local action=$action")
+        return performPlaybackCommand(
+            action = action,
+            source = "$source fallback",
+            allowToast = allowToastOnFallback
+        )
     }
 
     private fun maybeRequestOverlayPermission() {
@@ -4420,23 +4450,43 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PREV, source = "hardware key", allowToast = false)
+                    requestPlaybackCommandViaService(
+                        action = PlaybackActions.ACTION_CMD_PREV,
+                        source = "hardware key",
+                        allowToastOnFallback = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_NEXT, source = "hardware key", allowToast = false)
+                    requestPlaybackCommandViaService(
+                        action = PlaybackActions.ACTION_CMD_NEXT,
+                        source = "hardware key",
+                        allowToastOnFallback = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE, source = "hardware key", allowToast = false)
+                    requestPlaybackCommandViaService(
+                        action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
+                        source = "hardware key",
+                        allowToastOnFallback = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY, source = "hardware key", allowToast = false)
+                    requestPlaybackCommandViaService(
+                        action = PlaybackActions.ACTION_CMD_PLAY,
+                        source = "hardware key",
+                        allowToastOnFallback = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PAUSE, source = "hardware key", allowToast = false)
+                    requestPlaybackCommandViaService(
+                        action = PlaybackActions.ACTION_CMD_PAUSE,
+                        source = "hardware key",
+                        allowToastOnFallback = false
+                    )
                     return true
                 }
             }

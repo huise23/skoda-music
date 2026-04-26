@@ -6,7 +6,7 @@ Last Updated: 2026-04-26
 - [ ] 执行 `T-S4-CORE-026` 大闭环：后台服务/方向盘按键/通知控制/浮窗/恢复链路一体化稳定。
 
 ## Immediate Actions
-- [ ] Stage 1：完成播放真源迁移到 `PlaybackService`，统一前台/后台命令和状态源。
+- [ ] Stage 1（进行中）：播放真源迁移到 `PlaybackService`。已完成前台 `UI/硬件键 -> Service` 命令入口统一，下一步迁移播放执行真源。
 - [ ] Stage 2：完成熄火/休眠恢复的服务侧闭环，并在车机上验证稳定性。
 - [ ] Stage 3：回填车机验证证据并收敛下一轮修复点。
 

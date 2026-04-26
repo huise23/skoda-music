@@ -196,3 +196,4 @@ Last Updated: 2026-04-26
 - 决策: 当 `hasActiveTrack=false` 时，Service 跳过 `NEXT/PREV/PAUSE/PLAY_PAUSE` 的落盘重试，仅保留 `PLAY` 作为可重试命令。
 - 决策: 持久化命令入队采用合并/去抖策略：`PLAY/PAUSE/PLAY_PAUSE` 同组只保留最后意图，连续同命令不重复写入。
 - 决策: Service 重放过程补充日志（入队/开始重放/中断/完成），用于车机现场定位后台命令链路。
+- 决策: 恢复状态读写从 `MainActivity` 抽离到 `PlaybackResumeStore`，并兼容迁移 legacy `emby_credentials` 中的旧恢复键。

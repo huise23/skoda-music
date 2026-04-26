@@ -36,6 +36,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackControlBus
+import com.skodamusic.app.playback.PlaybackResumeStore
 import com.skodamusic.app.playback.PlaybackService
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
@@ -429,6 +430,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastResumePersistPositionMs: Long = -1L
     private var lastResumePersistAtMs: Long = 0L
     private var downloadControllerThread: Thread? = null
+    private lateinit var playbackResumeStore: PlaybackResumeStore
     private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
         ?: throw IllegalStateException("json media type parse failed")
 
@@ -437,6 +439,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         PlaybackControlBus.attach(this)
+        playbackResumeStore = PlaybackResumeStore(applicationContext)
 
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
         cfRefDomainInput = findViewById(R.id.cf_ref_domain_input)
@@ -3863,8 +3866,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         resumeRestoreAttempted = true
-        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-        val payload = prefs.getString(KEY_RESUME_QUEUE_JSON, "").orEmpty()
+        val snapshot = playbackResumeStore.read() ?: return
+        val payload = snapshot.queueJson
         if (payload.isBlank()) {
             return
         }
@@ -3874,18 +3877,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         loadedTracks = restoredTracks
-        currentTrackIndex = prefs.getInt(KEY_RESUME_INDEX, 0).coerceIn(0, loadedTracks.lastIndex)
+        currentTrackIndex = snapshot.index.coerceIn(0, loadedTracks.lastIndex)
         previewArtistOverride = loadedTracks[currentTrackIndex].artist.ifBlank { null }
         syncNativeQueueToCurrentIndex()
         rebuildTrackLists()
 
-        val restoredPosition = prefs.getLong(KEY_RESUME_POSITION_MS, 0L).coerceAtLeast(0L)
+        val restoredPosition = snapshot.positionMs.coerceAtLeast(0L)
         pendingResumeSeekMs = restoredPosition
         pendingResumeSeekTrackId = loadedTracks[currentTrackIndex].id
-        restorePlaybackSessionForResume(prefs)
+        restorePlaybackSessionForResume(snapshot)
 
-        val savedAtMs = prefs.getLong(KEY_RESUME_SAVED_AT_MS, 0L)
-        val wasPlaying = prefs.getBoolean(KEY_RESUME_WAS_PLAYING, false)
+        val savedAtMs = snapshot.savedAtMs
+        val wasPlaying = snapshot.wasPlaying
         pendingAutoResumePlayback = wasPlaying && isResumeAutoplayFresh(savedAtMs)
         if (pendingAutoResumePlayback && !hasPlaybackSession()) {
             appendRuntimeLog("resume restore pending reason=missing-session")
@@ -3911,9 +3914,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         maybeStartPendingAutoResume("resume-restore")
     }
 
-    private fun restorePlaybackSessionForResume(prefs: android.content.SharedPreferences) {
-        val persistedBase = prefs.getString(KEY_RESUME_BASE_URL, "").orEmpty().trim()
-        val persistedUser = prefs.getString(KEY_RESUME_USERNAME, "").orEmpty().trim()
+    private fun restorePlaybackSessionForResume(snapshot: PlaybackResumeStore.Snapshot) {
+        val persistedBase = snapshot.baseUrl.trim()
+        val persistedUser = snapshot.username.trim()
         val inputBase = embyBaseUrlInput.text?.toString()?.trim().orEmpty()
         val inputUser = embyUsernameInput.text?.toString()?.trim().orEmpty()
         val embyBase = when {
@@ -4027,16 +4030,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         val baseForPersist = resolveResumeBaseForPersist().orEmpty()
         val usernameForPersist = embyUsernameInput.text?.toString()?.trim().orEmpty()
-        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .edit()
-            .putString(KEY_RESUME_QUEUE_JSON, buildCachedTrackArray(loadedTracks))
-            .putInt(KEY_RESUME_INDEX, safeIndex)
-            .putLong(KEY_RESUME_POSITION_MS, resolvedPosition.coerceAtLeast(0L))
-            .putBoolean(KEY_RESUME_WAS_PLAYING, isPlaying)
-            .putLong(KEY_RESUME_SAVED_AT_MS, now)
-            .putString(KEY_RESUME_BASE_URL, baseForPersist)
-            .putString(KEY_RESUME_USERNAME, usernameForPersist)
-            .apply()
+        playbackResumeStore.save(
+            PlaybackResumeStore.Snapshot(
+                queueJson = buildCachedTrackArray(loadedTracks),
+                index = safeIndex,
+                positionMs = resolvedPosition.coerceAtLeast(0L),
+                wasPlaying = isPlaying,
+                savedAtMs = now,
+                baseUrl = baseForPersist,
+                username = usernameForPersist
+            )
+        )
         lastResumePersistTrackId = activeTrack.id
         lastResumePersistIndex = safeIndex
         lastResumePersistQueueSize = queueSize
@@ -4046,16 +4050,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun clearPersistedPlaybackResumeState() {
-        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .edit()
-            .remove(KEY_RESUME_QUEUE_JSON)
-            .remove(KEY_RESUME_INDEX)
-            .remove(KEY_RESUME_POSITION_MS)
-            .remove(KEY_RESUME_WAS_PLAYING)
-            .remove(KEY_RESUME_SAVED_AT_MS)
-            .remove(KEY_RESUME_BASE_URL)
-            .remove(KEY_RESUME_USERNAME)
-            .apply()
+        playbackResumeStore.clear()
         lastResumePersistTrackId = ""
         lastResumePersistIndex = -1
         lastResumePersistQueueSize = -1
@@ -4476,13 +4471,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_AUTH_ACCESS_TOKEN = "auth_access_token"
         const val KEY_AUTH_USER_ID = "auth_user_id"
         const val KEY_AUTH_SAVED_AT_MS = "auth_saved_at_ms"
-        const val KEY_RESUME_QUEUE_JSON = "resume_queue_json"
-        const val KEY_RESUME_INDEX = "resume_index"
-        const val KEY_RESUME_POSITION_MS = "resume_position_ms"
-        const val KEY_RESUME_WAS_PLAYING = "resume_was_playing"
-        const val KEY_RESUME_SAVED_AT_MS = "resume_saved_at_ms"
-        const val KEY_RESUME_BASE_URL = "resume_base_url"
-        const val KEY_RESUME_USERNAME = "resume_username"
         const val KEY_OVERLAY_PERMISSION_PROMPTED = "overlay_permission_prompted"
         const val KEY_RECOMMEND_CACHE_DAY = "recommend_cache_day"
         const val KEY_RECOMMEND_CACHE_OWNER = "recommend_cache_owner"

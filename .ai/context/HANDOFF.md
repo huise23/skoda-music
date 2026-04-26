@@ -50,10 +50,11 @@ Last Updated: 2026-04-26
   - `MainActivity` 将 `Prev/PlayPause/Next` 抽为统一动作函数，UI点击/外部命令/硬件键复用同一逻辑。
   - `onPlaybackCommand` 返回真实执行结果（含主线程等待），Service 基于真实结果判断执行状态。
   - Service 命令策略改为“失败即失败”：不落盘、不重放、不维护重试队列。
-  - 前台 `UI` 按钮和硬件媒体键改为“优先经 Service 分发”，发送失败再本地 fallback，减少前后台分叉路径。
-  - 命令上下文（`source/allowToast`）可经 Service 透传至执行层，统一链路并保持前台交互语义。
+  - 前台 `UI` 按钮和前台硬件媒体键已回滚为本地直执路径（实机稳定优先）。
+  - Service 统一分发路径保留给通知/浮窗/后台外部命令，命令执行层保留 `source/allowToast` 参数。
   - Service 移除“无活动曲目前置过滤”，避免状态滞后导致命令被误丢弃。
   - 播放状态上报补充位置心跳（`>=2s` 位置增量或 `>=10s` 播放中心跳），提高 Service 快照位置准确度。
+  - 顶部版本标识显示 `#versionCode`（如 `#79`）以便现场验包。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：

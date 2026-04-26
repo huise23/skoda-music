@@ -139,12 +139,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         if (action.isBlank()) {
             return
         }
-        val source = intent.getStringExtra(PlaybackActions.EXTRA_CMD_SOURCE)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: "service cmd"
-        val allowToast = intent.getBooleanExtra(PlaybackActions.EXTRA_CMD_ALLOW_TOAST, false)
-        PlaybackControlBus.dispatch(action, source = source, allowToast = allowToast)
+        PlaybackControlBus.dispatch(action, source = "service cmd", allowToast = false)
     }
 
     private fun buildNotification(): Notification {

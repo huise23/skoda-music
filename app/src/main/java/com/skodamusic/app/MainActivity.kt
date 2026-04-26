@@ -486,7 +486,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         pageQueue = findViewById(R.id.page_queue)
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
-        buildIdBadge.text = "构建: ${BuildConfig.GIT_SHORT_SHA}"
+        buildIdBadge.text = resolveBuildVersionTag()
+        buildIdBadge.visibility = View.VISIBLE
         configureModernHomeShell()
         switchHomeTab(showRecommend = false)
         bindLibraryPaging()
@@ -654,27 +655,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         })
 
         prevButton.setOnClickListener {
-            requestPlaybackCommandViaService(
-                action = PlaybackActions.ACTION_CMD_PREV,
-                source = "ui click",
-                allowToast = false
-            )
+            performPrevAction(source = "ui click", allowToast = false)
         }
 
         playPauseButton.setOnClickListener {
-            requestPlaybackCommandViaService(
-                action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
-                source = "ui click",
-                allowToast = true
-            )
+            performPlayPauseAction(forcePlay = null, source = "ui click", allowToast = true)
         }
 
         nextButton.setOnClickListener {
-            requestPlaybackCommandViaService(
-                action = PlaybackActions.ACTION_CMD_NEXT,
-                source = "ui click",
-                allowToast = true
-            )
+            performNextAction(source = "ui click", allowToast = true)
         }
 
         testEmbyButton.setOnClickListener {
@@ -4412,25 +4401,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun requestPlaybackCommandViaService(
-        action: String,
-        source: String,
-        allowToast: Boolean
-    ): Boolean {
-        if (sendPlaybackServiceIntent(action) {
-                putExtra(PlaybackActions.EXTRA_CMD_SOURCE, source)
-                putExtra(PlaybackActions.EXTRA_CMD_ALLOW_TOAST, allowToast)
-            }) {
-            return true
-        }
-        appendRuntimeLog("$source cmd fallback-local action=$action")
-        return performPlaybackCommand(
-            action = action,
-            source = "$source fallback",
-            allowToast = allowToast
-        )
-    }
-
     private fun maybeRequestOverlayPermission() {
         if (Build.VERSION.SDK_INT < 23) {
             return
@@ -4463,48 +4433,44 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    requestPlaybackCommandViaService(
-                        action = PlaybackActions.ACTION_CMD_PREV,
-                        source = "hardware key",
-                        allowToast = false
-                    )
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PREV, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    requestPlaybackCommandViaService(
-                        action = PlaybackActions.ACTION_CMD_NEXT,
-                        source = "hardware key",
-                        allowToast = false
-                    )
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_NEXT, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    requestPlaybackCommandViaService(
-                        action = PlaybackActions.ACTION_CMD_PLAY_PAUSE,
-                        source = "hardware key",
-                        allowToast = false
-                    )
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    requestPlaybackCommandViaService(
-                        action = PlaybackActions.ACTION_CMD_PLAY,
-                        source = "hardware key",
-                        allowToast = false
-                    )
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    requestPlaybackCommandViaService(
-                        action = PlaybackActions.ACTION_CMD_PAUSE,
-                        source = "hardware key",
-                        allowToast = false
-                    )
+                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PAUSE, source = "hardware key", allowToast = false)
                     return true
                 }
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun resolveBuildVersionTag(): String {
+        return try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            val versionCode = if (Build.VERSION.SDK_INT >= 28) {
+                val field = info.javaClass.getField("longVersionCode")
+                field.getLong(info)
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+            "#$versionCode"
+        } catch (_: Exception) {
+            "#?"
+        }
     }
 
     private fun performPlaybackCommand(action: String, source: String, allowToast: Boolean): Boolean {

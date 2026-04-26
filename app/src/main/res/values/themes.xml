@@ -4,7 +4,8 @@
         <item name="colorPrimary">@color/brand_primary</item>
         <item name="colorPrimaryDark">@color/bg_primary</item>
         <item name="colorAccent">@color/brand_primary</item>
-        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="android:windowBackground">@drawable/bg_main_gradient</item>
+        <item name="android:windowDisablePreview">true</item>
         <item name="android:statusBarColor" tools:targetApi="l">@color/bg_primary</item>
     </style>
 </resources>

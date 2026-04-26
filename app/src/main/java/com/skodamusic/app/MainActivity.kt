@@ -4,6 +4,8 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -16,6 +18,7 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.util.Log
 import android.net.Uri
+import android.provider.Settings
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -29,7 +32,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.skodamusic.app.playback.PlaybackActions
+import com.skodamusic.app.playback.PlaybackControlBus
+import com.skodamusic.app.playback.PlaybackService
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.MediaItem
@@ -66,8 +73,9 @@ import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private data class LyricLine(
         val timeMs: Long,
         val text: String
@@ -312,6 +320,13 @@ class MainActivity : AppCompatActivity() {
         var bitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
     )
 
+    private data class DeleteTrackOutcome(
+        val removedFromQueue: Boolean,
+        val removedCurrentTrack: Boolean,
+        val queueEmptyAfterDelete: Boolean,
+        val removedAnything: Boolean
+    )
+
     private lateinit var embyBaseUrlInput: EditText
     private lateinit var cfRefDomainInput: EditText
     private lateinit var embyUsernameInput: EditText
@@ -399,13 +414,28 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var lastKnownBitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
     @Volatile private var downloadControllerRequestId: Int = -1
     @Volatile private var downloadControllerStop = false
+    private var lastReportedServiceTrackTitle: String = ""
+    private var lastReportedServiceIsPlaying: Boolean = false
+    private var lastReportedServiceHasTrack: Boolean = false
+    private var resumeRestoreAttempted: Boolean = false
+    private var pendingAutoResumePlayback: Boolean = false
+    private var pendingResumeSeekMs: Long = -1L
+    private var pendingResumeSeekTrackId: String = ""
+    private var lastResumePersistTrackId: String = ""
+    private var lastResumePersistIndex: Int = -1
+    private var lastResumePersistQueueSize: Int = -1
+    private var lastResumePersistIsPlaying: Boolean = false
+    private var lastResumePersistPositionMs: Long = -1L
+    private var lastResumePersistAtMs: Long = 0L
     private var downloadControllerThread: Thread? = null
     private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
         ?: throw IllegalStateException("json media type parse failed")
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val bootStartMs = SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        PlaybackControlBus.attach(this)
 
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
         cfRefDomainInput = findViewById(R.id.cf_ref_domain_input)
@@ -455,7 +485,6 @@ class MainActivity : AppCompatActivity() {
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()
-        maybeClearDownloadCacheOnColdStart()
 
         uiState = UiState(
             currentTrack = getString(R.string.track_not_loaded),
@@ -472,20 +501,43 @@ class MainActivity : AppCompatActivity() {
         )
         render(uiState)
         bindActions()
-        rebuildTrackLists()
-        refreshDownloadCacheInfoUi()
-        startUiProgressTicker()
-        appendRuntimeLog("app boot completed")
-        uiProgressHandler.postDelayed(
-            { maybeAutoRefreshQueueRecommendations("app-startup") },
-            APP_STARTUP_QUEUE_REFRESH_DELAY_MS
-        )
+        restorePlaybackResumeStateIfNeeded()
+        window.decorView.post {
+            appendRuntimeLog("boot first-frame +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+            maybeClearDownloadCacheOnColdStart()
+            rebuildTrackLists()
+            refreshDownloadCacheInfoUi()
+            startUiProgressTicker()
+            reportPlaybackStateToService(force = true)
+            appendRuntimeLog("app boot completed +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+            uiProgressHandler.postDelayed(
+                { maybeAutoRefreshQueueRecommendations("app-startup") },
+                APP_STARTUP_QUEUE_REFRESH_DELAY_MS
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_SERVICE_INIT)
+        maybeRequestOverlayPermission()
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
+        reportPlaybackStateToService(force = true)
+        maybeStartPendingAutoResume("activity-onStart")
+    }
+
+    override fun onStop() {
+        maybePersistPlaybackResumeState(force = true)
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_BACKGROUND)
+        super.onStop()
     }
 
     override fun onDestroy() {
         appendRuntimeLog("activity destroyed")
         stopUiProgressTicker()
         runtimeLogDialog?.dismiss()
+        PlaybackControlBus.detach(this)
+        maybePersistPlaybackResumeState(force = true)
         super.onDestroy()
         playbackRequestId += 1
         stopDownloadController()
@@ -593,91 +645,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         prevButton.setOnClickListener {
-            appendRuntimeLog("ui click prev")
-            if (loadedTracks.isEmpty()) {
-                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
-                return@setOnClickListener
-            }
-            if (currentTrackIndex <= 0) {
-                currentTrackIndex = 0
-                syncNativeQueueToCurrentIndex()
-                updateState {
-                    it.copy(
-                        currentTrack = loadedTracks.first().title,
-                        feedbackText = getString(R.string.feedback_prev_to_start),
-                        nextEnabled = hasNextTrack()
-                    )
-                }
-                rebuildTrackLists()
-                playTrackAtCurrentIndex()
-                return@setOnClickListener
-            }
-            currentTrackIndex = (currentTrackIndex - 1).coerceAtLeast(0)
-            syncNativeQueueToCurrentIndex()
-            updateState {
-                it.copy(
-                    currentTrack = loadedTracks[currentTrackIndex].title,
-                    feedbackText = getString(R.string.feedback_prev_pressed),
-                    nextEnabled = hasNextTrack(),
-                    isPlaying = true,
-                    playbackStatusRes = R.string.status_playing,
-                    playPauseLabelRes = R.string.action_pause
-                )
-            }
-            rebuildTrackLists()
-            playTrackAtCurrentIndex()
+            performPrevAction(source = "ui click", allowToast = false)
         }
 
         playPauseButton.setOnClickListener {
-            if (loadedTracks.isEmpty()) {
-                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
-                return@setOnClickListener
-            }
-
-            if (uiState.isPlaying) {
-                appendRuntimeLog("ui click play/pause -> pause")
-                pausePlayback()
-                showToast(R.string.toast_paused)
-            } else {
-                appendRuntimeLog("ui click play/pause -> play")
-                startOrResumePlayback()
-                showToast(R.string.toast_playing)
-            }
+            performPlayPauseAction(forcePlay = null, source = "ui click", allowToast = true)
         }
 
         nextButton.setOnClickListener {
-            appendRuntimeLog("ui click next")
-            if (loadedTracks.isEmpty()) {
-                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
-                return@setOnClickListener
-            }
-            val nextTitle = moveToNextTrack()
-            if (nextTitle == null) {
-                updateState {
-                    it.copy(
-                        feedbackText = getString(R.string.feedback_end_of_queue),
-                        nextEnabled = false
-                    )
-                }
-                showToast(R.string.toast_end_of_queue)
-                rebuildTrackLists()
-                return@setOnClickListener
-            }
-
-            updateState {
-                it.copy(
-                    currentTrack = nextTitle,
-                    feedbackText = getString(R.string.feedback_next_pressed),
-                    nextEnabled = hasNextTrack(),
-                    isPlaying = true,
-                    playbackStatusRes = R.string.status_playing,
-                    playPauseLabelRes = R.string.action_pause
-                )
-            }
-            showToast(R.string.toast_next)
-            rebuildTrackLists()
-            appendRuntimeLog("ui click next -> play immediately index=$currentTrackIndex")
-            playTrackAtCurrentIndex()
+            performNextAction(source = "ui click", allowToast = true)
         }
 
         testEmbyButton.setOnClickListener {
@@ -740,6 +716,111 @@ class MainActivity : AppCompatActivity() {
                 else R.string.toast_download_cache_clear_failed
             )
         }
+    }
+
+    private fun performPrevAction(source: String, allowToast: Boolean): Boolean {
+        appendRuntimeLog("$source prev")
+        if (loadedTracks.isEmpty()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+            return false
+        }
+        if (currentTrackIndex <= 0) {
+            currentTrackIndex = 0
+            syncNativeQueueToCurrentIndex()
+            updateState {
+                it.copy(
+                    currentTrack = loadedTracks.first().title,
+                    feedbackText = getString(R.string.feedback_prev_to_start),
+                    nextEnabled = hasNextTrack()
+                )
+            }
+            rebuildTrackLists()
+            playTrackAtCurrentIndex()
+            return true
+        }
+        currentTrackIndex = (currentTrackIndex - 1).coerceAtLeast(0)
+        syncNativeQueueToCurrentIndex()
+        updateState {
+            it.copy(
+                currentTrack = loadedTracks[currentTrackIndex].title,
+                feedbackText = getString(R.string.feedback_prev_pressed),
+                nextEnabled = hasNextTrack(),
+                isPlaying = true,
+                playbackStatusRes = R.string.status_playing,
+                playPauseLabelRes = R.string.action_pause
+            )
+        }
+        rebuildTrackLists()
+        playTrackAtCurrentIndex()
+        if (allowToast) {
+            showToast(R.string.toast_playing)
+        }
+        return true
+    }
+
+    private fun performPlayPauseAction(forcePlay: Boolean?, source: String, allowToast: Boolean): Boolean {
+        if (loadedTracks.isEmpty()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+            return false
+        }
+        val shouldPlay = forcePlay ?: !uiState.isPlaying
+        if (shouldPlay == uiState.isPlaying) {
+            return true
+        }
+        if (shouldPlay) {
+            appendRuntimeLog("$source play/pause -> play")
+            startOrResumePlayback()
+            if (allowToast) {
+                showToast(R.string.toast_playing)
+            }
+        } else {
+            appendRuntimeLog("$source play/pause -> pause")
+            pausePlayback()
+            if (allowToast) {
+                showToast(R.string.toast_paused)
+            }
+        }
+        return true
+    }
+
+    private fun performNextAction(source: String, allowToast: Boolean): Boolean {
+        appendRuntimeLog("$source next")
+        if (loadedTracks.isEmpty()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+            return false
+        }
+        val nextTitle = moveToNextTrack()
+        if (nextTitle == null) {
+            updateState {
+                it.copy(
+                    feedbackText = getString(R.string.feedback_end_of_queue),
+                    nextEnabled = false
+                )
+            }
+            if (allowToast) {
+                showToast(R.string.toast_end_of_queue)
+            }
+            rebuildTrackLists()
+            return true
+        }
+
+        updateState {
+            it.copy(
+                currentTrack = nextTitle,
+                feedbackText = getString(R.string.feedback_next_pressed),
+                nextEnabled = hasNextTrack(),
+                isPlaying = true,
+                playbackStatusRes = R.string.status_playing,
+                playPauseLabelRes = R.string.action_pause
+            )
+        }
+        if (allowToast) {
+            showToast(R.string.toast_next)
+        }
+        rebuildTrackLists()
+        appendRuntimeLog("$source next -> play immediately index=$currentTrackIndex")
+        playTrackAtCurrentIndex()
+        return true
     }
 
     private fun bindNavigation() {
@@ -1322,16 +1403,23 @@ class MainActivity : AppCompatActivity() {
 
         tracks.forEachIndexed { index, track ->
             val row = LinearLayout(this)
+            val textBlock = LinearLayout(this)
             val isCurrent = highlightCurrent && index == currentTrackIndex
             val title = TextView(this)
             val artist = TextView(this)
-            row.orientation = LinearLayout.VERTICAL
+            row.orientation = LinearLayout.HORIZONTAL
             row.gravity = Gravity.CENTER_VERTICAL
             row.minimumHeight = dpToPx(70)
             row.setBackgroundResource(
                 if (isCurrent) R.drawable.row_recommend_active else R.drawable.row_recommend_idle
             )
             row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            textBlock.orientation = LinearLayout.VERTICAL
+            textBlock.layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
 
             title.text = if (isCurrent) "\u25B6 ${track.title}" else track.title
             title.setTextColor(resources.getColor(R.color.text_primary))
@@ -1346,8 +1434,27 @@ class MainActivity : AppCompatActivity() {
             artist.setTextColor(resources.getColor(R.color.text_secondary))
             artist.textSize = if (source == ListSource.LIBRARY) 14f else 13f
 
-            row.addView(title)
-            row.addView(artist)
+            textBlock.addView(title)
+            textBlock.addView(artist)
+            row.addView(textBlock)
+            if (source == ListSource.LIBRARY) {
+                val deleteButton = ImageButton(this)
+                deleteButton.setImageResource(android.R.drawable.ic_menu_delete)
+                deleteButton.setBackgroundResource(R.drawable.button_nav_icon_inactive)
+                deleteButton.setColorFilter(resources.getColor(R.color.text_secondary))
+                deleteButton.contentDescription = getString(R.string.action_delete_source)
+                deleteButton.scaleType = ImageButton.ScaleType.CENTER_INSIDE
+                deleteButton.adjustViewBounds = true
+                deleteButton.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+                deleteButton.isFocusable = false
+                deleteButton.isFocusableInTouchMode = false
+                deleteButton.setOnClickListener {
+                    promptDeleteSourceTrack(track)
+                }
+                val deleteParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
+                deleteParams.leftMargin = dpToPx(10)
+                row.addView(deleteButton, deleteParams)
+            }
             row.setOnClickListener {
                 playFromList(index, source)
             }
@@ -1395,6 +1502,214 @@ class MainActivity : AppCompatActivity() {
         }
         rebuildTrackLists()
         playTrackAtCurrentIndex()
+    }
+
+    private fun promptDeleteSourceTrack(track: EmbyTrack) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_delete_source_title)
+            .setMessage(getString(R.string.dialog_delete_source_message_first, track.title))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_continue) { _, _ ->
+                confirmDeleteSourceTrack(track)
+            }
+            .show()
+    }
+
+    private fun confirmDeleteSourceTrack(track: EmbyTrack) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_delete_source_title_final)
+            .setMessage(getString(R.string.dialog_delete_source_message_final, track.title))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { _, _ ->
+                deleteSourceTrack(track)
+            }
+            .show()
+    }
+
+    private fun deleteSourceTrack(track: EmbyTrack) {
+        val base = embySessionBaseUrl
+        val token = embyAccessToken
+        if (base.isNullOrBlank() || token.isNullOrBlank()) {
+            updateState {
+                it.copy(feedbackText = getString(R.string.feedback_delete_source_missing_session))
+            }
+            showToast(R.string.toast_delete_source_failed)
+            return
+        }
+        val wasPlaying = uiState.isPlaying
+        appendRuntimeLog("delete source start track=${track.title} id=${shortId(track.id)}")
+        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
+        Thread {
+            val code = requestDeleteTrackFromEmby(base, token, track.id, embyClient)
+            runOnUiThread {
+                if (code !in 200..299 && code != 404) {
+                    appendRuntimeLog("delete source failed code=$code track=${track.title} id=${shortId(track.id)}")
+                    updateState {
+                        it.copy(feedbackText = getString(R.string.feedback_delete_source_failed, code))
+                    }
+                    showToast(R.string.toast_delete_source_failed)
+                    return@runOnUiThread
+                }
+                val outcome = applyDeletedTrackLocally(track.id)
+                if (!outcome.removedAnything) {
+                    appendRuntimeLog("delete source local-miss track=${track.title} id=${shortId(track.id)}")
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(
+                                R.string.feedback_delete_source_success,
+                                track.title
+                            ),
+                            nextEnabled = hasNextTrack()
+                        )
+                    }
+                    showToast(R.string.toast_delete_source_success)
+                    return@runOnUiThread
+                }
+                if (outcome.removedCurrentTrack && !outcome.queueEmptyAfterDelete && wasPlaying) {
+                    appendRuntimeLog("delete source removed-current autoplay-next index=$currentTrackIndex")
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(
+                                R.string.feedback_delete_source_skip_next,
+                                loadedTracks[currentTrackIndex].title
+                            ),
+                            nextEnabled = hasNextTrack()
+                        )
+                    }
+                    playTrackAtCurrentIndex()
+                } else if (outcome.queueEmptyAfterDelete) {
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(R.string.feedback_delete_source_queue_empty),
+                            nextEnabled = false
+                        )
+                    }
+                } else if (outcome.removedCurrentTrack) {
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(
+                                R.string.feedback_delete_source_current_selected,
+                                loadedTracks[currentTrackIndex].title
+                            ),
+                            nextEnabled = hasNextTrack()
+                        )
+                    }
+                } else {
+                    updateState {
+                        it.copy(
+                            feedbackText = getString(
+                                R.string.feedback_delete_source_success,
+                                track.title
+                            ),
+                            nextEnabled = hasNextTrack()
+                        )
+                    }
+                }
+                appendRuntimeLog("delete source success code=$code track=${track.title} id=${shortId(track.id)}")
+                showToast(R.string.toast_delete_source_success)
+            }
+        }.start()
+    }
+
+    private fun requestDeleteTrackFromEmby(
+        embyBase: String,
+        token: String,
+        trackId: String,
+        httpClient: OkHttpClient
+    ): Int {
+        val endpoint = "$embyBase/Items/${urlEncode(trackId)}?api_key=${urlEncode(token)}"
+        return try {
+            val request = Request.Builder()
+                .url(endpoint)
+                .delete()
+                .header("Accept", "application/json")
+                .header("X-Emby-Token", token)
+                .build()
+            val callClient = httpClient.newBuilder()
+                .connectTimeout(6000L, TimeUnit.MILLISECONDS)
+                .readTimeout(10000L, TimeUnit.MILLISECONDS)
+                .build()
+            callClient.newCall(request).execute().use { response ->
+                response.code()
+            }
+        } catch (e: Exception) {
+            appendRuntimeLog("delete source exception type=${e.javaClass.simpleName} msg=${e.message}")
+            -1
+        }
+    }
+
+    private fun applyDeletedTrackLocally(trackId: String): DeleteTrackOutcome {
+        val queueBefore = loadedTracks
+        val removedIndices = mutableListOf<Int>()
+        queueBefore.forEachIndexed { index, item ->
+            if (item.id == trackId) {
+                removedIndices.add(index)
+            }
+        }
+        val removedFromQueue = removedIndices.isNotEmpty()
+        val removedCurrentTrack = removedIndices.contains(currentTrackIndex)
+        if (removedFromQueue) {
+            val removedBeforeCurrent = removedIndices.count { it < currentTrackIndex }
+            loadedTracks = queueBefore.filterNot { it.id == trackId }
+            currentTrackIndex = when {
+                loadedTracks.isEmpty() -> 0
+                removedCurrentTrack -> currentTrackIndex.coerceAtMost(loadedTracks.lastIndex)
+                else -> (currentTrackIndex - removedBeforeCurrent).coerceIn(0, loadedTracks.lastIndex)
+            }
+        }
+        val removedFromLibrary = libraryTracks.removeAll { it.id == trackId }
+        removeTrackFromTodayRecommendCache(trackId)
+        removeTrackDownloadArtifacts(trackId)
+
+        val removedAnything = removedFromQueue || removedFromLibrary
+        if (!removedAnything) {
+            return DeleteTrackOutcome(
+                removedFromQueue = false,
+                removedCurrentTrack = false,
+                queueEmptyAfterDelete = loadedTracks.isEmpty(),
+                removedAnything = false
+            )
+        }
+        if (loadedTracks.isEmpty()) {
+            playbackRequestId += 1
+            stopDownloadController()
+            releasePlayer()
+            previewArtistOverride = null
+            updateState {
+                it.copy(
+                    currentTrack = getString(R.string.track_not_loaded),
+                    isPlaying = false,
+                    playbackStatusRes = R.string.status_paused,
+                    playPauseLabelRes = R.string.action_play,
+                    playPauseEnabled = false,
+                    nextEnabled = false
+                )
+            }
+            rebuildTrackLists()
+            return DeleteTrackOutcome(
+                removedFromQueue = removedFromQueue,
+                removedCurrentTrack = removedCurrentTrack,
+                queueEmptyAfterDelete = true,
+                removedAnything = true
+            )
+        }
+        currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
+        previewArtistOverride = loadedTracks[currentTrackIndex].artist.ifBlank { null }
+        syncNativeQueueToCurrentIndex()
+        updateState {
+            it.copy(
+                currentTrack = loadedTracks[currentTrackIndex].title,
+                playPauseEnabled = true,
+                nextEnabled = hasNextTrack()
+            )
+        }
+        rebuildTrackLists()
+        return DeleteTrackOutcome(
+            removedFromQueue = removedFromQueue,
+            removedCurrentTrack = removedCurrentTrack,
+            queueEmptyAfterDelete = false,
+            removedAnything = true
+        )
     }
 
     private fun hasNextTrack(): Boolean {
@@ -1611,6 +1926,8 @@ class MainActivity : AppCompatActivity() {
             playableText,
             durationText
         )
+        maybeApplyPendingResumeSeek(durationMs)
+        maybePersistPlaybackResumeState(positionMs = positionMs)
 
     }
 
@@ -3540,6 +3857,266 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun restorePlaybackResumeStateIfNeeded() {
+        if (resumeRestoreAttempted) {
+            return
+        }
+        resumeRestoreAttempted = true
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val payload = prefs.getString(KEY_RESUME_QUEUE_JSON, "").orEmpty()
+        if (payload.isBlank()) {
+            return
+        }
+        val restoredTracks = parseCachedTrackArray(payload)
+        if (restoredTracks.isEmpty()) {
+            clearPersistedPlaybackResumeState()
+            return
+        }
+        loadedTracks = restoredTracks
+        currentTrackIndex = prefs.getInt(KEY_RESUME_INDEX, 0).coerceIn(0, loadedTracks.lastIndex)
+        previewArtistOverride = loadedTracks[currentTrackIndex].artist.ifBlank { null }
+        syncNativeQueueToCurrentIndex()
+        rebuildTrackLists()
+
+        val restoredPosition = prefs.getLong(KEY_RESUME_POSITION_MS, 0L).coerceAtLeast(0L)
+        pendingResumeSeekMs = restoredPosition
+        pendingResumeSeekTrackId = loadedTracks[currentTrackIndex].id
+        restorePlaybackSessionForResume(prefs)
+
+        val savedAtMs = prefs.getLong(KEY_RESUME_SAVED_AT_MS, 0L)
+        val wasPlaying = prefs.getBoolean(KEY_RESUME_WAS_PLAYING, false)
+        pendingAutoResumePlayback = wasPlaying && isResumeAutoplayFresh(savedAtMs)
+        if (pendingAutoResumePlayback && !hasPlaybackSession()) {
+            appendRuntimeLog("resume restore pending reason=missing-session")
+        }
+
+        val feedback = if (pendingAutoResumePlayback) {
+            "动作反馈：已恢复上次播放，准备续播"
+        } else {
+            "动作反馈：已恢复上次播放列表"
+        }
+        updateState {
+            it.copy(
+                currentTrack = loadedTracks[currentTrackIndex].title,
+                isPlaying = false,
+                playbackStatusRes = R.string.status_paused,
+                playPauseLabelRes = R.string.action_play,
+                playPauseEnabled = true,
+                nextEnabled = hasNextTrack(),
+                feedbackText = feedback
+            )
+        }
+        maybePersistPlaybackResumeState(force = true)
+        maybeStartPendingAutoResume("resume-restore")
+    }
+
+    private fun restorePlaybackSessionForResume(prefs: android.content.SharedPreferences) {
+        val persistedBase = prefs.getString(KEY_RESUME_BASE_URL, "").orEmpty().trim()
+        val persistedUser = prefs.getString(KEY_RESUME_USERNAME, "").orEmpty().trim()
+        val inputBase = embyBaseUrlInput.text?.toString()?.trim().orEmpty()
+        val inputUser = embyUsernameInput.text?.toString()?.trim().orEmpty()
+        val embyBase = when {
+            persistedBase.isNotEmpty() -> persistedBase
+            isHttpUrl(inputBase) -> normalizeEmbyBase(inputBase)
+            else -> ""
+        }
+        val username = if (persistedUser.isNotEmpty()) persistedUser else inputUser
+        if (embyBase.isEmpty() || username.isEmpty()) {
+            return
+        }
+        val auth = loadCachedSessionAuth(embyBase = embyBase, username = username)
+        if (auth != null) {
+            embySessionBaseUrl = embyBase
+            embySessionUserId = auth.userId
+            embyAccessToken = auth.accessToken
+            appendRuntimeLog("resume restore session-hit user=${shortId(auth.userId)}")
+        } else {
+            appendRuntimeLog("resume restore session-miss base=$embyBase")
+        }
+    }
+
+    private fun maybeStartPendingAutoResume(trigger: String) {
+        if (!pendingAutoResumePlayback) {
+            return
+        }
+        if (loadedTracks.isEmpty()) {
+            pendingAutoResumePlayback = false
+            return
+        }
+        if (uiState.isPlaying) {
+            pendingAutoResumePlayback = false
+            return
+        }
+        if (!hasPlaybackSession()) {
+            appendRuntimeLog("resume autoplay wait trigger=$trigger reason=session-unavailable")
+            return
+        }
+        pendingAutoResumePlayback = false
+        appendRuntimeLog("resume autoplay start trigger=$trigger track=${loadedTracks[currentTrackIndex].title}")
+        updateState {
+            it.copy(
+                isPlaying = true,
+                playbackStatusRes = R.string.status_playing,
+                playPauseLabelRes = R.string.action_pause,
+                feedbackText = "动作反馈：恢复上次播放中"
+            )
+        }
+        playTrackAtCurrentIndex()
+    }
+
+    private fun maybeApplyPendingResumeSeek(durationMs: Long) {
+        if (pendingResumeSeekMs < 0L) {
+            return
+        }
+        val track = loadedTracks.getOrNull(currentTrackIndex) ?: run {
+            pendingResumeSeekMs = -1L
+            pendingResumeSeekTrackId = ""
+            return
+        }
+        if (pendingResumeSeekTrackId.isNotEmpty() && pendingResumeSeekTrackId != track.id) {
+            pendingResumeSeekMs = -1L
+            pendingResumeSeekTrackId = ""
+            return
+        }
+        if (!uiState.isPlaying) {
+            return
+        }
+        if (durationMs <= 0L) {
+            return
+        }
+        val target = pendingResumeSeekMs.coerceIn(0L, durationMs)
+        pendingResumeSeekMs = -1L
+        pendingResumeSeekTrackId = ""
+        if (target <= 0L) {
+            return
+        }
+        appendRuntimeLog("resume seek restore targetMs=$target")
+        uiProgressHandler.post { applySeekTarget(target) }
+    }
+
+    private fun maybePersistPlaybackResumeState(positionMs: Long = -1L, force: Boolean = false) {
+        if (!resumeRestoreAttempted) {
+            return
+        }
+        if (loadedTracks.isEmpty()) {
+            clearPersistedPlaybackResumeState()
+            return
+        }
+        val safeIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
+        val activeTrack = loadedTracks[safeIndex]
+        val queueSize = loadedTracks.size
+        val isPlaying = uiState.isPlaying
+        val resolvedPosition = when {
+            positionMs >= 0L -> positionMs
+            else -> playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: lastResumePersistPositionMs.coerceAtLeast(0L)
+        }
+        val now = System.currentTimeMillis()
+        val stateChanged = force ||
+            activeTrack.id != lastResumePersistTrackId ||
+            safeIndex != lastResumePersistIndex ||
+            queueSize != lastResumePersistQueueSize ||
+            isPlaying != lastResumePersistIsPlaying
+        if (!stateChanged) {
+            if (now - lastResumePersistAtMs < RESUME_PROGRESS_PERSIST_INTERVAL_MS) {
+                return
+            }
+            if (abs(resolvedPosition - lastResumePersistPositionMs) < RESUME_PROGRESS_PERSIST_DELTA_MS) {
+                return
+            }
+        }
+        val baseForPersist = resolveResumeBaseForPersist().orEmpty()
+        val usernameForPersist = embyUsernameInput.text?.toString()?.trim().orEmpty()
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_RESUME_QUEUE_JSON, buildCachedTrackArray(loadedTracks))
+            .putInt(KEY_RESUME_INDEX, safeIndex)
+            .putLong(KEY_RESUME_POSITION_MS, resolvedPosition.coerceAtLeast(0L))
+            .putBoolean(KEY_RESUME_WAS_PLAYING, isPlaying)
+            .putLong(KEY_RESUME_SAVED_AT_MS, now)
+            .putString(KEY_RESUME_BASE_URL, baseForPersist)
+            .putString(KEY_RESUME_USERNAME, usernameForPersist)
+            .apply()
+        lastResumePersistTrackId = activeTrack.id
+        lastResumePersistIndex = safeIndex
+        lastResumePersistQueueSize = queueSize
+        lastResumePersistIsPlaying = isPlaying
+        lastResumePersistPositionMs = resolvedPosition.coerceAtLeast(0L)
+        lastResumePersistAtMs = now
+    }
+
+    private fun clearPersistedPlaybackResumeState() {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .remove(KEY_RESUME_QUEUE_JSON)
+            .remove(KEY_RESUME_INDEX)
+            .remove(KEY_RESUME_POSITION_MS)
+            .remove(KEY_RESUME_WAS_PLAYING)
+            .remove(KEY_RESUME_SAVED_AT_MS)
+            .remove(KEY_RESUME_BASE_URL)
+            .remove(KEY_RESUME_USERNAME)
+            .apply()
+        lastResumePersistTrackId = ""
+        lastResumePersistIndex = -1
+        lastResumePersistQueueSize = -1
+        lastResumePersistIsPlaying = false
+        lastResumePersistPositionMs = -1L
+        lastResumePersistAtMs = 0L
+    }
+
+    private fun resolveResumeBaseForPersist(): String? {
+        val sessionBase = embySessionBaseUrl?.trim().orEmpty()
+        if (sessionBase.isNotEmpty()) {
+            return sessionBase
+        }
+        val inputBase = embyBaseUrlInput.text?.toString()?.trim().orEmpty()
+        if (!isHttpUrl(inputBase)) {
+            return null
+        }
+        return runCatching { normalizeEmbyBase(inputBase) }.getOrNull()
+    }
+
+    private fun isResumeAutoplayFresh(savedAtMs: Long): Boolean {
+        if (savedAtMs <= 0L) {
+            return false
+        }
+        val age = System.currentTimeMillis() - savedAtMs
+        return age in 0..RESUME_AUTOPLAY_MAX_AGE_MS
+    }
+
+    private fun hasPlaybackSession(): Boolean {
+        return !embySessionBaseUrl.isNullOrBlank() &&
+            !embySessionUserId.isNullOrBlank() &&
+            !embyAccessToken.isNullOrBlank()
+    }
+
+    private fun removeTrackFromTodayRecommendCache(trackId: String) {
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val payload = prefs.getString(KEY_RECOMMEND_CACHE_JSON, "").orEmpty()
+        if (payload.isBlank()) {
+            return
+        }
+        val tracks = parseCachedTrackArray(payload)
+        val filtered = tracks.filterNot { it.id == trackId }
+        if (filtered.size == tracks.size) {
+            return
+        }
+        prefs.edit()
+            .putString(KEY_RECOMMEND_CACHE_JSON, buildCachedTrackArray(filtered))
+            .apply()
+    }
+
+    private fun removeTrackDownloadArtifacts(trackId: String) {
+        val cacheFile = File(cacheDir, "emby_${trackId}.cache")
+        runCatching {
+            if (cacheFile.exists()) {
+                cacheFile.delete()
+            }
+        }
+        synchronized(downloadStateLock) {
+            trackDownloadStates.remove(trackId)
+        }
+    }
+
     private fun maybeClearDownloadCacheOnColdStart() {
         if (downloadCacheClearedAtColdStart) {
             return
@@ -3741,33 +4318,123 @@ class MainActivity : AppCompatActivity() {
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled
         testLrcApiButton.isEnabled = state.testLrcApiEnabled
+        reportPlaybackStateToService()
+        maybePersistPlaybackResumeState()
+    }
+
+    override fun onPlaybackCommand(action: String): Boolean {
+        if (!this::uiState.isInitialized) {
+            return false
+        }
+        return when (action) {
+            PlaybackActions.ACTION_CMD_PLAY_PAUSE -> {
+                runOnUiThread { performPlayPauseAction(forcePlay = null, source = "external cmd", allowToast = false) }
+                true
+            }
+            PlaybackActions.ACTION_CMD_PLAY -> {
+                runOnUiThread { performPlayPauseAction(forcePlay = true, source = "external cmd", allowToast = false) }
+                true
+            }
+            PlaybackActions.ACTION_CMD_PAUSE -> {
+                runOnUiThread { performPlayPauseAction(forcePlay = false, source = "external cmd", allowToast = false) }
+                true
+            }
+            PlaybackActions.ACTION_CMD_NEXT -> {
+                runOnUiThread { performNextAction(source = "external cmd", allowToast = false) }
+                true
+            }
+            PlaybackActions.ACTION_CMD_PREV -> {
+                runOnUiThread { performPrevAction(source = "external cmd", allowToast = false) }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun reportPlaybackStateToService(force: Boolean = false) {
+        val trackTitle = uiState.currentTrack
+        val hasTrack = loadedTracks.isNotEmpty()
+        val isPlaying = uiState.isPlaying && hasTrack
+        if (!force &&
+            trackTitle == lastReportedServiceTrackTitle &&
+            hasTrack == lastReportedServiceHasTrack &&
+            isPlaying == lastReportedServiceIsPlaying
+        ) {
+            return
+        }
+        lastReportedServiceTrackTitle = trackTitle
+        lastReportedServiceHasTrack = hasTrack
+        lastReportedServiceIsPlaying = isPlaying
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
+            putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
+            putExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, hasTrack)
+            putExtra(PlaybackActions.EXTRA_IS_PLAYING, isPlaying)
+        }
+    }
+
+    private fun sendPlaybackServiceIntent(action: String, extras: (Intent.() -> Unit)? = null) {
+        val intent = Intent(this, PlaybackService::class.java).setAction(action)
+        extras?.invoke(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Exception) {
+            appendRuntimeLog("playback-service send failed action=$action type=${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun maybeRequestOverlayPermission() {
+        if (Build.VERSION.SDK_INT < 23) {
+            return
+        }
+        if (Settings.canDrawOverlays(this)) {
+            return
+        }
+        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+        val prompted = prefs.getBoolean(KEY_OVERLAY_PERMISSION_PROMPTED, false)
+        if (prompted) {
+            return
+        }
+        prefs.edit().putBoolean(KEY_OVERLAY_PERMISSION_PROMPTED, true).apply()
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        val canOpenSettings = intent.resolveActivity(packageManager) != null
+        if (canOpenSettings) {
+            runCatching {
+                startActivity(intent)
+            }
+        } else {
+            appendRuntimeLog("overlay permission settings activity unavailable")
+        }
+        showToast(R.string.toast_overlay_permission_needed)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    prevButton.performClick()
+                    performPrevAction(source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    nextButton.performClick()
+                    performNextAction(source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    playPauseButton.performClick()
+                    performPlayPauseAction(forcePlay = null, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    if (!uiState.isPlaying) {
-                        playPauseButton.performClick()
-                    }
+                    performPlayPauseAction(forcePlay = true, source = "hardware key", allowToast = false)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    if (uiState.isPlaying) {
-                        playPauseButton.performClick()
-                    }
+                    performPlayPauseAction(forcePlay = false, source = "hardware key", allowToast = false)
                     return true
                 }
             }
@@ -3788,6 +4455,14 @@ class MainActivity : AppCompatActivity() {
         const val KEY_AUTH_ACCESS_TOKEN = "auth_access_token"
         const val KEY_AUTH_USER_ID = "auth_user_id"
         const val KEY_AUTH_SAVED_AT_MS = "auth_saved_at_ms"
+        const val KEY_RESUME_QUEUE_JSON = "resume_queue_json"
+        const val KEY_RESUME_INDEX = "resume_index"
+        const val KEY_RESUME_POSITION_MS = "resume_position_ms"
+        const val KEY_RESUME_WAS_PLAYING = "resume_was_playing"
+        const val KEY_RESUME_SAVED_AT_MS = "resume_saved_at_ms"
+        const val KEY_RESUME_BASE_URL = "resume_base_url"
+        const val KEY_RESUME_USERNAME = "resume_username"
+        const val KEY_OVERLAY_PERMISSION_PROMPTED = "overlay_permission_prompted"
         const val KEY_RECOMMEND_CACHE_DAY = "recommend_cache_day"
         const val KEY_RECOMMEND_CACHE_OWNER = "recommend_cache_owner"
         const val KEY_RECOMMEND_CACHE_JSON = "recommend_cache_json"
@@ -3816,6 +4491,9 @@ class MainActivity : AppCompatActivity() {
         const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
         const val MAX_RUNTIME_LOG_LINES = 800
         const val RUNTIME_LOG_PREVIEW_LINES = 2
+        const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
+        const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
+        const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val PAGE_HOME = 0

@@ -1,72 +1,65 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-23 09:25
+Last Updated: 2026-04-26
 
 ## Stage
-- 阶段判断: S1/S2 已完成；S3 主链路改造已落地，当前进入“2026-04-22 UI/歌词提交簇后的 API17 回归收敛阶段”。
+- 当前阶段: S4（车机后台控制落地）
+- 当前主干: `master@2d5d315`
 
-## Completed
-- 已有 C++ 业务骨架模块（配置/首页壳/歌词/播放队列/媒体键/音频焦点）。
-- Android 壳工程可产出真实 APK/AAB，`minSdk=17`。
-- CI 打包链路稳定，最近三次关键构建均成功：`24490460185`、`24491061385`、`24492874887`。
-- 已完成 `T-S1-001~006`（交互壳、状态模型、最小动作、JNI桥接、Emby接入、API17回归清单）。
-- 已完成 `T-HF-EMBY-001/002`（凭据持久化、UTF-8 解码与诊断日志）。
-- 已完成 `T-HF-PLY-001/002/003`（MediaPlayer 真实播放、推荐策略、stream/download 双路径）。
-- 已完成 `T-HF-LOG-001`：底部运行日志面板 + 全屏日志。
-- 已完成 `T-UI-001`：Android 前台 UI 首版重设计（单页壳）。
-- 已完成 planning 清洗：IA v2 单一口径已写入文档与任务队列。
-- 已完成 `T-S2-UI-006`：前台升级为 4 导航壳（Home/Queue/Library/Settings）并接入最小切页逻辑。
-- 已完成 `T-S2-SET-008`：Settings 同区加入 Emby + LrcApi 配置；两者均改为“测试通过自动保存、失败阻断对应保存”。
-- 已完成 `T-S2-UI-007`：Queue/Library 占位区改为可点击曲目列表，单击即播放并刷新当前曲目高亮。
-- 已按用户要求移除 Home 顶部标题图卡（截图对应区域）。
-- 已完成 `T-S2-UI-008`：Queue “Recommend 20” 按钮接线；保留当前播放项，仅替换未播放段；请求失败保持原队列并提示。
-- 已清理 `[Image #1]` 对应残留文案资源（`Skoda Music MVP / Android interactive shell / MVP • Real Emby`）。
-- 已完成 `T-S2-003`：全屏日志面板新增“复制/清理”，并保持预览区与全屏区同步刷新。
-- 已完成 Android 5.0 启动闪退修复：`bg_main_gradient.xml` 角度改为 API 兼容值（`140 -> 135`）。
-- 用户回传验证：Android 5.0 启动测试已通过。
-- 已完成 `T-S3-PLY-001`：锁定 ExoPlayer 旧版依赖（首选 `2.17.1`，备选 `2.16.1`）并写入 Android 构建配置。
-- 已完成 `T-S3-PLY-002`：引入 `PlaybackEngine` 抽象与 `ExoPlaybackEngine` 实现，主播放链路不再直接调用 `MediaPlayer`。
-- 已完成 `T-S3-DL-003`：主播放链路改为 download-only（不再主动请求 stream 端点），并配置 3s 起播 / 1s 补缓阈值。
-- 已完成 `T-S3-NET-009`：接入 CF 优选 IPv4 解析链路（参考域名->候选 IPv4），业务请求 Host 保持 Emby 域名；鉴权/拉库/推荐/播放/下载统一走可注入 DNS 的 OkHttp 客户端并支持系统 DNS 回退。
-- 已完成 `T-S3-DL-010`：下载控制线程按 30s 窗口状态机运行（`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`），满足“当前可播 <30s 下载、>=30s 暂停；剩余播放 <30s 先补完当前再预下下一曲前30s”口径。
-- 已完成 `T-S3-LOG-011`：补齐下载调度与优选 IPv4 诊断日志（phase 切换、暂停原因、chunk 开始/成功/跳过、DNS cache-hit/refresh、优选命中与系统回退原因）。
-- 已完成 API17 构建兼容修复：移除 `extension-okhttp:2.17.1`（`minSdk 21` 约束），Exo 数据源改为 `DefaultHttpDataSource.Factory`，保留 Emby 业务请求与下载控制的 OkHttp 链路。
-- 已完成 `T-S3-UI-013`：
-  - Home 播放区按参考图重排为“封面入口 + 信息区 + 进度条 + 三键控制（Prev/Play/Next）”。
-  - 保持现有颜色与玻璃风格资源，不做主题重构。
-  - `PlaybackEngine` 增加 `seekTo`，进度条支持拖动定位（拖动时暂停自动刷新，松手后 seek）。
-  - 播放错误链路（download/cache）统一改为自动切下一首，并补充错误分类日志（含 `code=4003` 解码失败场景）。
+## Latest Confirmed (User)
+- 路线锁定为“方案1（Legacy 稳态）”。
+- 第一版必须同轮达成：后台服务 + 后台方向盘按键 + 全局浮窗。
+- 浮窗策略锁定：播放/暂停均显示；手动关闭后“进应用再切出”再次显示。
+- 熄火/休眠恢复后自动续播为强需求。
+- 接受前台服务常驻通知。
 
-## Not Started / Unknown
-- API17 全量实机回归结果尚未按清单完整回传（目前仅关键播放链路已验证）。
-- 系统首页音乐卡片第三方入口能力仍未知。
+## Already Completed (Baseline)
+- API17 红线与构建护栏已建立（含 CI guardrails）。
+- 主播放链路为 download-only，队列尾补充与自动切歌逻辑已在主干。
+- 下载缓存统计/清理与设置页入口已落地。
+- 最近车机稳定性修复已合入：
+  - 移除不稳定媒体会话实现（`ff52815`）。
+  - 增加 API17 违规守卫（`8afea55`）。
+  - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
 
-## Current Blockers
-- `T-S3-VAL-012` API17 播放专项回归与证据回填（需人工实机执行并回传）。
-- `T-BLK-001` 系统首页音乐卡片第三方入口接入（待系统能力确认）。
-- `B-LRC-001` 歌词失败回退策略口径（待产品确认）。
-- 本地缺少 `gradle/gradlew.bat`，无法完成构建型验证（需 CI 或外部环境）。
+## Current Focus
+- 稳定化 `T-S4-MEDIA-018`（后台方向盘按键）并进行车机实测闭环。
+- 继续推进 `T-S4-ARCH-017`（播放真源迁移到 Service）。
+- 继续推进 `T-S4-RESUME-020`（熄火/休眠自动续播恢复）。
 
-## Notes
-- `.ai/context/SCOPE.md` 已创建并同步当前阶段边界。
-- `T-S2-IA-001` 已完成（IA 文档与 planning 单一口径清洗）。
-- 当前 Ready 主线: `T-S3-VAL-014/015`（先标准化回归入口，再进入 `T-S3-VAL-012` 实机执行）。
-- 本地无法直接执行 Gradle 构建验证（环境缺少 `gradle/gradlew.bat`），仅完成静态绑定核对。
-- 新增硬约束: `minSdk=17` 为红线，不允许通过升级 SDK/依赖版本绕过兼容问题。
-- 新增口径: “移除登录/加载”在本项目中指“移除相关敏感/冗余日志”，非移除登录与加载功能本身。
-- 诊断补充: 首播卡顿当前只确认链路等待累积问题，`NAT` 可能为放大因素但未被确认为唯一根因。
-- 规划补充: 已生成 S3 任务拆分与队列（`T-S3-PLY-001~T-S3-VAL-007`），Ready 可直接进入 execution。
-- 执行补充: `T-S3-RB-008` 与 `T-S3-NET-009` 已闭环，下一任务为 `T-S3-DL-010`。
-- 讨论纠偏: “优选域名”不作为业务域名，仅作 CF 优选节点参考；业务请求仍走用户 Emby 域名。
-- 新增硬约束: 不做 IPv6（v6）链路，车机环境不支持。
-- 调度口径: 当前曲目按“已下载可播时长 30s 窗口”暂停/恢复；曲目剩余播放 <30s 时先补完当前再预下下一曲前30s。
-- 执行补充: `T-S3-DL-010` 已落地，下载状态机与阈值常量已在 `MainActivity.kt` 接线（`DOWNLOAD_WINDOW_SEC=30`）。
-- 执行补充: `T-S3-LOG-011` 已落地，日志可直接支撑 `T-S3-VAL-012` 的实机复盘与证据留存。
-- 本地处置: 本轮错误实现已按用户要求回滚。
-- 本轮实现说明: 已完成代码与资源接线，但本地无 `gradlew`，尚未完成编译型验证。
+## Implementation Progress (2026-04-26)
+- 已新增后台控制基础模块：
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/MediaButtonReceiver.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackActions.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackControlBus.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
+  - `app/src/main/java/com/skodamusic/app/overlay/OverlayController.kt`
+- 已完成 `MainActivity` 最小接线：前后台通知 Service、播放状态上报、接收外部控制命令（方向盘/通知/浮窗统一入口）。
+- 已完成 `AndroidManifest` 基础声明：前台服务、媒体键接收器、悬浮窗/前台服务权限。
+- 已完成 `T-S4-MEDIA-018` 第一轮稳定化补丁（待车机验证）：
+  - `PlaybackControlBus` 增加命令缓存队列，Activity 生命周期切换期间不直接丢指令。
+  - `PlaybackService` 增加音频焦点请求/释放，提升后台媒体键路由命中概率。
+  - 移除 Service 与 RCC 的重复媒体键注册路径，收敛到 `RemoteControlClientBridge`。
+  - `MediaButtonReceiver` 对有序广播执行 `abortBroadcast()`，减少被其他接收器抢占/重复分发风险。
+  - `MainActivity` 将 `ACTION_SERVICE_INIT` 移到 `onStart`，减少 `onCreate` 首帧前负担。
+  - 悬浮窗权限引导增加 `resolveActivity` 防护，避免设备缺失设置页时异常跳转。
+- 已完成 `T-S4-RESUME-020` 第一轮落地（待车机验证）：
+  - 新增播放恢复持久化：队列、当前索引、进度、播放态、恢复基线账号信息。
+  - 应用启动时恢复上次队列与索引，并尝试用缓存 token 还原会话。
+  - 满足条件时自动续播；播放后自动恢复上次进度 seek。
+  - 引入恢复状态写入节流，避免高频 `SharedPreferences` 写入。
+- 已完成 `T-S4-ARCH-017` 局部增强（待车机验证）：
+  - 外部命令不再依赖 `performClick()`，改为统一播放控制函数（UI/外部命令/硬件键共用同一执行路径）。
+  - `PlaybackService` 增加“待执行命令持久化队列”（controller 不可用时落盘，应用回前台后重放）。
+- 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
-## Recent Commit Delta (2026-04-22, Committed)
-- 工作区当前为 clean，原“Gemini 未提交改动”已不再适用。
-- 最近提交集中在 Android 前台层，主要触达 `MainActivity.kt`、`activity_main.xml` 与多项 drawable/colors/strings 资源。
-- 变更主题以“UI 优化 + 页面重构 + 歌词 loading” 为主，含一笔较大行为改动：`437aabf`（`MainActivity.kt`，`+205/-2`）。
-- 结合现有阻塞项，当前执行重点不再是继续堆叠功能，而是完成 `T-S3-VAL-012` 并回填覆盖新提交范围的实机证据。
+## Known Constraints
+- `minSdk=17` 不可突破。
+- 车机环境窗口有限，回归必须可中断续跑。
+- 本地无 `gradle/gradlew`，编译型验证需依赖 CI/外部构建环境。
+
+## Follow-up Backlog (Confirmed)
+- 长标题滚动异常修复。
+- 删除入口迁移到主屏。
+- 均衡器/音效优化。

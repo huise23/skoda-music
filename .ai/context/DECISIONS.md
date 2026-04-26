@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-23 10:20
+Last Updated: 2026-04-26
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -13,6 +13,30 @@ Last Updated: 2026-04-23 10:20
 - 决策: 播放策略固定为 URL-only stream + download fallback。
 - 决策: 推荐接口固定为 `Users/{id}/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=Random&Limit=20&api_key=...`。
 - 决策: 列表解析仅接收 `Type=Audio`。
+
+## 2026-04-26 - 车机后台控制方案确认（用户逐项确认）
+- 决策: 新阶段采用“方案1（Legacy 稳态）”作为实现主线，不走 MediaSession 分支。
+- 决策: 第一版必须同时达成三项能力：`后台服务常驻播放`、`后台方向盘按键可控`、`全局小浮窗控制`。
+- 决策: 后台播放架构固定为 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`（API17 友好）。
+- 决策: 接受悬浮窗权限（`SYSTEM_ALERT_WINDOW`），优先提供跨应用全局浮窗。
+- 决策: 浮窗显示策略固定为：
+  - 播放中和暂停中都显示；
+  - 用户手动关闭后，当“再次进入应用并切出”时自动重新显示。
+- 决策: “任务划掉后的行为”在目标车机场景不作为需求项（不纳入本阶段验收）。
+- 决策: 车机熄火/休眠恢复后，默认自动续播并尽量恢复上次进度。
+- 决策: 接受前台服务常驻通知作为后台稳定运行的必要前提。
+- 决策: 以下问题进入并行待实现清单：
+  - 长标题滚动异常修复；
+  - 删除入口迁移到主屏（支持“不好听立即删”）；
+  - 均衡器/音效优化。
+
+## 2026-04-26 - T-S4-MEDIA-018 稳定化补丁决策
+- 决策: `PlaybackControlBus` 增加最多 12 条命令缓存，避免 Activity 生命周期切换时命令直接丢失。
+- 决策: `PlaybackService` 增加音频焦点管理（播放时请求，暂停/无曲目时释放），提高车机后台媒体键命中率。
+- 决策: 媒体键注册路径收敛为 `RemoteControlClientBridge`，避免 Service 与 Bridge 双重注册带来的不确定行为。
+- 决策: `MediaButtonReceiver` 对 ordered broadcast 执行 `abortBroadcast()`，减少被其他接收器抢占。
+- 决策: `MainActivity` 启动流程中 `ACTION_SERVICE_INIT` 后移到 `onStart`，降低 `onCreate` 首帧前负担。
+- 决策: 悬浮窗权限引导新增 `resolveActivity` 防护，避免部分车机系统缺失设置页时异常跳转。
 
 ## Pending (Not Yet Confirmed)
 - 待确认: 系统首页卡片第三方入口能力。
@@ -156,3 +180,15 @@ Last Updated: 2026-04-23 10:20
 ## 2026-04-23 10:20 - 启动性能优化与媒体键兼容（执行口径）
 - 决策: 先落地“方案2”（Token 缓存 + 当日推荐缓存 + 冷启动下载缓存清理 + MediaSessionCompat）。
 - 决策: “方案3”服务化媒体会话（`MediaBrowserServiceCompat + 前台通知`）作为后续补充，不在本轮实施。
+
+## 2026-04-26 - T-S4-RESUME-020 第一轮落地决策
+- 决策: 在播放真源尚未迁移到 Service 前，先实现 Activity 侧恢复闭环：持久化队列/索引/进度/播放态并在启动时恢复。
+- 决策: 自动续播增加“新鲜度窗口”限制（12 小时内），避免过旧状态误触发自动播放。
+- 决策: 自动续播优先使用已缓存 Emby 会话（`base + username -> token/userId`）恢复，缺失会话时仅恢复列表不自动播放。
+- 决策: 恢复进度 seek 仅对同一曲目生效，切歌后自动失效，避免错误 seek 到新曲目。
+- 决策: 恢复状态写入采用节流（4s 周期 + 3s 进度差）控制 SharedPreferences 写放大。
+
+## 2026-04-26 - T-S4-ARCH-017 局部增强决策（命令链路）
+- 决策: 外部播放命令不再通过按钮 `performClick()` 间接触发，改为调用统一播放动作函数，减少生命周期依赖。
+- 决策: Service 在 controller 不可用时将命令落盘（最多 16 条），并在 `ACTION_SERVICE_INIT/APP_FOREGROUND` 尝试顺序重放。
+- 决策: `PlaybackControlBus.dispatch` 增加 `queueWhenUnavailable` 参数，Service 路径关闭内存队列，改由持久化队列统一兜底。

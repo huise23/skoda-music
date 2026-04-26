@@ -1,82 +1,61 @@
 # HANDOFF
 
-Last Updated: 2026-04-23 09:25
+Last Updated: 2026-04-26
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: master@1fa5137（2026-04-22 最近一轮 UI/歌词提交已合入）
-- 当前阶段: S3 播放稳态优化（CF 优选 IPv4 + 30s 下载窗口调度）
+- 当前主干: `master@2d5d315`
+- 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
-## Current Goal
-- 目标 1: 先完成 `T-S3-VAL-014/015`（回归清单与报告模板标准化），再推进 `T-S3-VAL-012` 实机验证并回填证据。
-- 目标 2: 回归 `T-S3-UI-013`（自动切歌与可拖动进度）在 API17 设备上的稳定性。
+## User-Confirmed Requirements (Must Keep)
+- 必须有后台服务，避免车机频繁切回应用。
+- 需要全局小浮窗：仅歌名 + 上一曲/播放暂停/下一曲。
+- 浮窗策略：播放和暂停都显示；用户手动关闭后，进入应用再切出需再次显示。
+- 车机熄火/休眠恢复后自动续播。
+- 第一版必须同时满足：后台服务 + 后台方向盘按键 + 浮窗控制。
+- 接受前台服务常驻通知（稳定性优先）。
+- 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
 
-## Plan Hand-off
-- 本轮 `ai-execution` 已完成 `T-S3-NET-009`：
-  - 新增设置项 `CF Preferred Reference Domain`（仅参考，不替换 Emby 业务域名）。
-  - Emby 相关请求链路（鉴权/拉库/推荐/播放/下载）统一切换到支持自定义 DNS 的 OkHttp 客户端。
-  - DNS 解析策略为 IPv4-only：优先使用“参考域名解析得到的候选 IPv4”，并拼接系统 IPv4 作为回退。
-  - ExoPlayer 接入 `extension-okhttp`，通过 `DefaultDataSource + OkHttpDataSource` 复用同一网络策略。
-- 本轮 `ai-execution` 已完成 `T-S3-DL-010`：
-  - 下载控制循环切换为 30s 窗口状态机：`MAINTAIN_CURRENT_WINDOW / FINISH_CURRENT_TRACK / PREFETCH_NEXT_WINDOW / IDLE`。
-  - 非临近结束时：当前曲目 `downloadedPlayableSec < 30s` 才继续下载，`>=30s` 进入 `IDLE`（暂停下载）。
-  - 临近结束（`remainingPlaySec < 30s`）时：优先补完当前曲目，完成后再预下载下一曲前 `30s`。
-  - 新增并落地状态机常量：`DOWNLOAD_WINDOW_SEC=30`、`DOWNLOAD_CHUNK_BYTES`、`DOWNLOAD_CONTROLLER_IDLE_MS`。
-- 本轮 `ai-execution` 已完成 `T-S3-LOG-011`：
-  - 下载调度日志补齐：phase 切换日志中保留 `remainingSec/currentPlayableSec/nextPlayableSec`，并新增 `IDLE` 原因日志。
-  - 下载分块日志补齐：新增 `chunk start / chunk ok / skip-completed / skip-eof`，便于定位“为什么继续/暂停下载”。
-  - DNS 诊断日志补齐：新增 `cache-hit/cache-refresh`、`selected IP`、`bypass/fallback` 与系统 DNS 失败原因。
-- 本轮纠偏已完成 `T-S3-RB-008`：
-  - 按用户要求回滚本地错误实现代码改动。
-  - 仅保留 `.ai/context` 规划与决策文档更新。
-- 本轮讨论确认新口径：
-  - “优选域名”仅用于获取 CF 优选节点信息，不作为业务 URL。
-  - Emby 业务域名保持不变（认证/拉库/播放一致）。
-  - 网络链路仅做 IPv4，不做 IPv6（v6）。
-  - 下载调度采用 30s 窗口规则（当前曲目与下一曲预下载联动）。
-- 本轮 `ai-execution` 已完成 `T-S3-DL-003`：
-  - 主播放 URL 改为 `buildEmbyDownloadUrl(...)`，不再主动使用 stream 端点。
-  - 缓冲策略改为 `>=3s` 起播、`<1s` 重缓冲（通过 Exo LoadControl）。
-  - 下载缓存候选 URL 收敛为 Download 单端点。
-- 本轮 `ai-execution` 已完成 `T-S3-PLY-002`：
-  - `MainActivity.kt` 新增 `PlaybackEngine` 抽象和 `ExoPlaybackEngine` 实现
-  - `start/pause/stream playback/cache playback` 主链路切至引擎接口
-  - 释放逻辑统一为 `releasePlayer -> playbackEngine.release()`
-- 本轮 `ai-execution` 已完成 `T-S3-PLY-001`：
-  - `app/build.gradle.kts` 引入 ExoPlayer 固定依赖
-  - 首选版本 `2.17.1`，备选降级版本 `2.16.1`
-  - 为后续 `T-S3-PLY-002` 播放内核替换提供依赖基线
-- 本轮 `ai-planning` 已完成 S3 规划落盘：
-  - `PLAN.md` 切换到 S3（旧版 ExoPlayer + download-only + 边下边播）
-  - `TASK_BREAKDOWN.md` 新增 `T-S3-PLY-001~T-S3-VAL-007`
-  - `TASK_QUEUE.md` 生成新 Ready/Blocked 队列
-  - `NEXT_STEPS.md` 更新为 S3 执行入口
-- 本轮决策确认：
-  - `minSdk=17` 红线不可动
-  - 播放链路改为 download-only
-  - 使用 `StyledPlayerView`
-  - 缓存保留最近 20 首
-- 说明: 本地环境缺少 `gradle/gradlew.bat`，编译型验证需走 CI 或设备实测。
-- 本轮 `ai-execution` 已完成 `T-S3-UI-013`：
-  - `MainActivity.kt` 扩展 `PlaybackEngine.seekTo`，并接入 `SeekBar` 拖动定位（拖动中不覆盖、松手 seek）。
-  - 下载/缓存两条播放回调的 `onError` 统一走自动切歌处理，新增错误分类与去重处理。
-  - Home 页重排为“封面入口 + 右侧信息 + 进度条 + Prev/Play/Next”，并新增“听推荐”入口复用现有推荐逻辑。
-  - 视觉约束保持：沿用现有 glass 资源与颜色，不改主题体系。
+## Technical Strategy (Confirmed)
+- 采用 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`。
+- 不把 MediaSession 作为本阶段主链路（保持 API17/车机稳定优先）。
+- 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
-## Recent Commit Delta (2026-04-22, Committed)
-- 原“Gemini 本地未提交改动”已转为主干提交历史，当前工作区 clean。
-- 最近提交主要覆盖前台 UI 壳与歌词 loading 行为，核心触达 `MainActivity.kt`、`activity_main.xml` 与多项 drawable/colors/strings。
-- 最近 12 次提交（`30e0186` -> `1fa5137`）主题集中在 `ui优化`、`其他页面重构`、`歌词loading`，已成为当前回归基线。
-- 结论: 下一轮先执行 `T-S3-VAL-014/015` 完成回归入口标准化，再在设备就绪后执行 `T-S3-VAL-012`，并确保验证范围覆盖 2026-04-22 提交簇。
+## Execution Entry
+1. `T-S4-ARCH-017` 播放服务化迁移。
+2. `T-S4-MEDIA-018` 方向盘后台按键接线。
+3. `T-S4-OVL-019` 全局浮窗与显示策略。
+4. `T-S4-RESUME-020` 熄火/休眠恢复自动续播。
+5. `T-S4-REG-022` 车机实机回归与证据回填。
 
-## Recommended Next Action
-1. 执行 `T-S3-VAL-014`：升级 API17 回归清单并纳入 S3 新行为验证。
-2. 执行 `T-S3-VAL-015`：固化 Device Report 模板，准备实机回填字段。
-3. 设备就绪后执行 `T-S3-VAL-012`：完成 API17 实机回归闭环并回填证据。
+## WIP Code Delta (2026-04-26)
+- 已创建后台控制模块文件（service/receiver/overlay/state store/command bus）。
+- `MainActivity` 已接线：
+  - `onStart/onStop` 通知 Service 前后台切换；
+  - `render()` 上报当前播放状态给 Service；
+  - 实现 `PlaybackControlBus.Controller`，可响应外部命令触发 `Prev/PlayPause/Next`。
+- `Manifest` 已新增服务与媒体键接收器声明，权限已补齐。
+- 本轮新增稳定化补丁（`T-S4-MEDIA-018`）：
+  - `PlaybackControlBus` 支持命令缓存队列，Activity 未附着时命令不直接丢弃。
+  - `PlaybackService` 增加音频焦点请求/释放逻辑，降低后台媒体键失效概率。
+  - 收敛媒体键注册路径（由 `RemoteControlClientBridge` 统一管理）。
+  - `MediaButtonReceiver` 增加 `abortBroadcast()`（ordered broadcast）减少抢占。
+  - `MainActivity` 将 `SERVICE_INIT` 后移到 `onStart`，降低启动首帧前负担。
+  - 悬浮窗权限引导增加 `resolveActivity` 防护。
+- 本轮新增恢复补丁（`T-S4-RESUME-020`）：
+  - `MainActivity` 新增恢复状态持久化（队列/索引/进度/播放态 + 账号基线）。
+  - 应用启动恢复上次队列和索引；满足条件时自动触发续播。
+  - 播放启动后自动恢复上次进度（seek）。
+  - 恢复写入加入节流（时间与进度阈值）避免高频写偏慢。
+- 本轮新增命令链路增强（`T-S4-ARCH-017` 局部）：
+  - `MainActivity` 将 `Prev/PlayPause/Next` 抽为统一动作函数，UI点击/外部命令/硬件键复用同一逻辑。
+  - `PlaybackService + PlaybackStateStore` 增加“命令持久化重放”机制：controller 不可用时入队，`ACTION_SERVICE_INIT/APP_FOREGROUND` 时重放。
+- 待完成：
+  - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
+  - 车机实测确认后台方向盘按键是否恢复；
+  - 车机实测确认浮窗策略与后台通知链路稳定性；
+  - 补写 `Section 4：风险控制与验收清单`（用户已明确要该章节）。
 
-## Read First In New Session
-1. `.ai/context/PLAN.md`
-2. `.ai/context/TASK_BREAKDOWN.md`
-3. `.ai/context/TASK_QUEUE.md`
-4. `.ai/context/NEXT_STEPS.md`
-5. `.ai/context/HANDOFF.md`
+## Environment Notes
+- 本地环境无 `gradlew/gradle`，编译型验证依赖 CI 或外部构建环境。
+- 车机测试窗口不连续，必须优先保证上下文文档可中断续跑。

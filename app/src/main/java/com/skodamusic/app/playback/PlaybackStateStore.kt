@@ -11,6 +11,14 @@ class PlaybackStateStore(context: Context) {
         val positionMs: Long
     )
 
+    data class CommandTrace(
+        val action: String,
+        val source: String,
+        val handled: Boolean,
+        val detail: String,
+        val updatedAtMs: Long
+    )
+
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun saveSnapshot(snapshot: Snapshot) {
@@ -42,6 +50,26 @@ class PlaybackStateStore(context: Context) {
         return prefs.getBoolean(KEY_OVERLAY_DISMISSED_BY_USER, false)
     }
 
+    fun saveCommandTrace(action: String, source: String, handled: Boolean, detail: String) {
+        prefs.edit()
+            .putString(KEY_LAST_CMD_ACTION, action)
+            .putString(KEY_LAST_CMD_SOURCE, source)
+            .putBoolean(KEY_LAST_CMD_HANDLED, handled)
+            .putString(KEY_LAST_CMD_DETAIL, detail)
+            .putLong(KEY_LAST_CMD_AT_MS, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun readCommandTrace(): CommandTrace {
+        return CommandTrace(
+            action = prefs.getString(KEY_LAST_CMD_ACTION, "").orEmpty(),
+            source = prefs.getString(KEY_LAST_CMD_SOURCE, "").orEmpty(),
+            handled = prefs.getBoolean(KEY_LAST_CMD_HANDLED, false),
+            detail = prefs.getString(KEY_LAST_CMD_DETAIL, "").orEmpty(),
+            updatedAtMs = prefs.getLong(KEY_LAST_CMD_AT_MS, 0L)
+        )
+    }
+
     private companion object {
         const val PREFS_NAME = "playback_runtime_state"
         const val KEY_TRACK_TITLE = "track_title"
@@ -51,5 +79,10 @@ class PlaybackStateStore(context: Context) {
         const val KEY_POSITION_MS = "position_ms"
         const val KEY_UPDATED_AT_MS = "updated_at_ms"
         const val KEY_OVERLAY_DISMISSED_BY_USER = "overlay_dismissed_by_user"
+        const val KEY_LAST_CMD_ACTION = "last_cmd_action"
+        const val KEY_LAST_CMD_SOURCE = "last_cmd_source"
+        const val KEY_LAST_CMD_HANDLED = "last_cmd_handled"
+        const val KEY_LAST_CMD_DETAIL = "last_cmd_detail"
+        const val KEY_LAST_CMD_AT_MS = "last_cmd_at_ms"
     }
 }

@@ -23,9 +23,13 @@ Last Updated: 2026-04-27
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CORE-026`：S4 大闭环执行（播放服务化 + 方向盘后台控制 + 浮窗 + 通知 + 恢复链路）。
-2. `T-S4-REG-022`：车机实机回归与证据回填。
-3. `T-S4-UI-023/024 + T-S4-AUDIO-025`：主屏删除入口、长标题滚动与音效优化。
+1. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续收口命令链路并执行后台命令矩阵回填。
+2. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：继续关键节点埋点并完成实机压测。
+3. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
+4. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
+5. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
+6. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
+7. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
 
 ## WIP Code Delta (2026-04-26)
 - 已创建后台控制模块文件（service/receiver/overlay/state store/command bus）。
@@ -63,11 +67,30 @@ Last Updated: 2026-04-27
   - `PlaybackService` 前台状态不再持有音频焦点，避免与 Activity ExoPlayer 焦点管理冲突。
   - `AUDIOFOCUS_LOSS` 自动暂停仅在后台生效，降低前台“播放 1 秒停住”风险。
   - 构建号徽标迁移到全局根布局左上角并增大字号，便于车机验包。
+- 本轮新增模块执行进展（2026-04-27）：
+  - `PlaybackControlBus` 增加 `DispatchResult(handled/detail)`，分发失败原因结构化。
+  - `PlaybackService` 将每次命令分发结果写入 `PlaybackStateStore`（`action/source/handled/detail`）。
+  - `MainActivity` 增加服务命令结果同步日志，支持后台命令矩阵快速留证。
+  - 新增 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 作为 `T-S4-CORE-026B` 标准执行模板。
+- 本轮新增规划产物（PostHog）：
+  - `docs/POSTHOG_INSTRUMENTATION_PLAN.md`：覆盖事件模型、上报架构、验证矩阵、AI 导出模板。
+  - 已明确禁报高频低价值事件：播放进度 tick、频繁 buffer 状态、UI redraw、HTTP headers。
+- 本轮新增模块执行落地产物（PostHog）：
+  - `app/src/main/java/com/skodamusic/app/observability/PostHogConfigStore.kt`
+  - `app/src/main/java/com/skodamusic/app/observability/PostHogTracker.kt`
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/POSTHOG_CONFIG_CHECKLIST.md`
+  - `MainActivity/PlaybackService` 已接关键事件上报。
+  - 已内置默认接入参数（用户提供）：
+    - `host=https://us.i.posthog.com`
+    - `project_id=399199`
+    - `project_api_key=phc_wPMBC5C8pCscinCMjqbcFryREP5sKACufHzYiAWxtig6`
 - 待完成：
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；
   - 车机实测确认浮窗策略与后台通知链路稳定性；
   - 补写 `Section 4：风险控制与验收清单`（用户已明确要该章节）。
+  - PostHog 关键事件观测链路落地（schema -> client -> instrumentation -> verification）。
 
 ## Environment Notes
 - 本地环境无 `gradlew/gradle`，编译型验证依赖 CI 或外部构建环境。

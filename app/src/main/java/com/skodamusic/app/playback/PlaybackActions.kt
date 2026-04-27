@@ -17,6 +17,8 @@ object PlaybackActions {
     const val CMD_SOURCE_OVERLAY = "overlay"
     const val CMD_SOURCE_MEDIA_BUTTON = "media_button"
     const val CMD_SOURCE_AUDIO_FOCUS = "audio_focus"
+    const val CMD_SOURCE_UI = "ui"
+    const val CMD_SOURCE_HARDWARE_KEY = "hardware_key"
 
     const val EXTRA_TRACK_TITLE = "extra_track_title"
     const val EXTRA_TRACK_ID = "extra_track_id"

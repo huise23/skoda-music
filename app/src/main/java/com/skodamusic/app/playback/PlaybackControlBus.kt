@@ -3,6 +3,11 @@ package com.skodamusic.app.playback
 import java.lang.ref.WeakReference
 
 object PlaybackControlBus {
+    data class DispatchResult(
+        val handled: Boolean,
+        val detail: String
+    )
+
     interface Controller {
         fun onPlaybackCommand(action: String, source: String, allowToast: Boolean): Boolean
     }
@@ -25,10 +30,25 @@ object PlaybackControlBus {
         }
     }
 
-    fun dispatch(action: String, source: String = "service cmd", allowToast: Boolean = false): Boolean {
+    fun dispatch(
+        action: String,
+        source: String = PlaybackActions.CMD_SOURCE_SERVICE,
+        allowToast: Boolean = false
+    ): Boolean {
+        return dispatchWithResult(action, source, allowToast).handled
+    }
+
+    fun dispatchWithResult(
+        action: String,
+        source: String = PlaybackActions.CMD_SOURCE_SERVICE,
+        allowToast: Boolean = false
+    ): DispatchResult {
+        if (action.isBlank()) {
+            return DispatchResult(handled = false, detail = "invalid_action")
+        }
         val controller = synchronized(lock) {
             controllerRef?.get()
-        } ?: return false
+        } ?: return DispatchResult(handled = false, detail = "controller_unavailable")
         return dispatchTo(controller, action, source, allowToast)
     }
 
@@ -37,11 +57,15 @@ object PlaybackControlBus {
         action: String,
         source: String,
         allowToast: Boolean
-    ): Boolean {
+    ): DispatchResult {
         return try {
-            controller.onPlaybackCommand(action, source, allowToast)
-        } catch (_: Exception) {
-            false
+            if (controller.onPlaybackCommand(action, source, allowToast)) {
+                DispatchResult(handled = true, detail = "handled")
+            } else {
+                DispatchResult(handled = false, detail = "controller_rejected")
+            }
+        } catch (e: Exception) {
+            DispatchResult(handled = false, detail = "controller_exception:${e.javaClass.simpleName}")
         }
     }
 

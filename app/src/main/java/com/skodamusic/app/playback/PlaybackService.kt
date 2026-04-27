@@ -8,9 +8,11 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.skodamusic.app.MainActivity
 import com.skodamusic.app.R
+import com.skodamusic.app.observability.PostHogTracker
 import com.skodamusic.app.overlay.OverlayController
 
 class PlaybackService : Service(), OverlayController.Listener {
@@ -152,7 +154,44 @@ class PlaybackService : Service(), OverlayController.Listener {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: PlaybackActions.CMD_SOURCE_SERVICE
-        PlaybackControlBus.dispatch(action, source = source, allowToast = false)
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "background_command_received",
+            properties = mapOf(
+                "action" to action,
+                "source" to source
+            )
+        )
+        val result = PlaybackControlBus.dispatchWithResult(
+            action = action,
+            source = source,
+            allowToast = false
+        )
+        stateStore.saveCommandTrace(
+            action = action,
+            source = source,
+            handled = result.handled,
+            detail = result.detail
+        )
+        Log.i(
+            LOG_TAG,
+            "dispatch action=$action source=$source handled=${result.handled} detail=${result.detail}"
+        )
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "background_command_result",
+            properties = mapOf(
+                "action" to action,
+                "source" to source,
+                "handled" to result.handled,
+                "detail" to result.detail
+            ),
+            priority = if (result.handled) {
+                PostHogTracker.Priority.NORMAL
+            } else {
+                PostHogTracker.Priority.HIGH
+            }
+        )
     }
 
     private fun buildNotification(): Notification {
@@ -281,6 +320,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private companion object {
+        const val LOG_TAG = "SkodaPlaybackService"
         const val NOTIFICATION_CHANNEL_ID = "playback_service_channel"
         const val NOTIFICATION_ID = 8201
         const val REQ_CONTENT = 1

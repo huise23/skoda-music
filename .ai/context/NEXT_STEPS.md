@@ -2,24 +2,43 @@
 
 Last Updated: 2026-04-27
 
-## Highest Priority
-- [ ] 执行 `T-S4-CORE-026` 大闭环：后台服务/方向盘按键/通知控制/浮窗/恢复链路一体化稳定。
+## Current Priority Module
+- `M-S4-CORE-001` 核心命令与状态链路收口
+- 并行优先模块: `M-S4-OBS-006` PostHog 关键事件观测链路
 
-## Immediate Actions
-- [ ] Stage 1（进行中）：播放真源迁移到 `PlaybackService`。已完成前台 `UI/硬件键 -> Service` 命令入口统一，下一步迁移播放执行真源。
-- [ ] Stage 2：完成熄火/休眠恢复的服务侧闭环，并在车机上验证稳定性。
-- [ ] Stage 3：回填车机验证证据并收敛下一轮修复点。
+## Recommended Execution Mode
+- 模块推进执行（`ai-module-execution`）用于 `M-S4-CORE-001`
+- 模块推进执行（`ai-module-execution`）用于 `M-S4-OBS-006`
+- 微任务执行（`ai-execution`）并行处理 `T-S4-VAL-032`
 
-## Validation Focus (Car Head Unit)
-- [ ] 前台点击播放后 1-3 秒内进入出声+进度增长（验证“前台禁用 Service 焦点干预”热修）。
-- [ ] 连续播放 3 分钟期间不出现“1 秒后静音+进度停住”。
-- [ ] 左上角构建号应清晰显示（更大字号，`#versionCode`）。
-- [ ] 后台播放稳定性（连续切应用、长时间播放）。
-- [ ] 方向盘后台 `上一曲/下一曲/播放暂停` 一致性。
-- [ ] 浮窗显示规则：播放/暂停可见；手动关闭后“进应用再切出”再显示。
-- [ ] 熄火/休眠恢复后的自动续播。
+## Immediate Start
+- [ ] 首选任务: `T-S4-CORE-026A`
+- [ ] 并行任务: `T-S4-CORE-026B`（按 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 执行并回填）
+- [ ] 并行任务: `T-S4-OBS-036`（继续关键节点埋点补齐 + 与 `T-S4-CORE-026A` 对齐 source 语义）
+- [ ] 并行任务: `T-S4-VAL-032`
+- [ ] 跟进任务: `T-S4-CORE-026C`、`T-S4-RESUME-020B`
 
-## Backlog (Confirmed by User)
-- [ ] 长标题滚动异常修复。
-- [ ] 删除入口迁移到主屏（“不好听立即删”）。
-- [ ] 均衡器/音效优化。
+## Why This Order
+- `T-S4-CORE-026A` 是 `026C/020B/REG-022` 的共同前置，不先完成会造成后续全部阻塞。
+- `T-S4-CORE-026B` 已完成观测能力与矩阵模板准备，当前投入设备执行可直接产出可复盘证据。
+- `T-S4-OBS-034/039` 已完成；当前瓶颈转为 `T-S4-OBS-036/037` 的补齐与实机压测。
+- 先冻结“禁报清单”可防止高频低价值事件污染数据并抬高网络开销。
+- `T-S4-VAL-032` 不依赖车机窗口，先完成可减少 `T-S4-REG-022` 现场返工。
+- UI/音效项虽重要，但当前不影响 S4 主验收闭环，应保持 Deferred。
+
+## Main Blockers
+- 车机可用测试窗口不可控（阻塞 `T-S4-REG-022`）。
+- 恢复链路二阶段尚未形成服务侧闭环（阻塞最终验收）。
+- `T-S4-OBS-036/037` 尚未完成实机压测（阻塞 `T-S4-OBS-038` 在线验收）。
+
+## Need Confirmation
+- PostHog 事件保留策略与环境隔离口径（当前内置为 `prod`，是否需额外 `dev` 项目）。
+- 敏感字段边界（是否允许上报错误 message 摘要，默认禁止凭据与完整响应体）。
+- 长标题滚动策略口径（Marquee/Fade/速度）确认。
+- 主屏删除入口的交互与防误触细节确认。
+- 音效优化的目标标准（体感/指标）确认。
+
+## Explicitly Deferred
+- `T-S4-UI-023` 长标题滚动异常修复
+- `T-S4-UI-024` 删除入口迁移到主屏
+- `T-S4-AUDIO-025` 均衡器/音效优化

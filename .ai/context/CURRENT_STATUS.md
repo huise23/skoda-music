@@ -26,6 +26,50 @@ Last Updated: 2026-04-27
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
 
+## Planning Refresh (2026-04-27)
+- 已按 `ai-planning` 重排为模块化执行：`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`。
+- 任务粒度从单个 `T-S4-CORE-026` 调整为 `026A/026B/026C + 020B + 032/022/033`，用于区分可代码推进与实机阻塞任务。
+- 当前状态：`T-S4-CORE-026A` In Progress，`T-S4-VAL-032` Ready。
+
+## Planning Refresh (PostHog, 2026-04-27)
+- 已新增观测模块 `M-S4-OBS-006`：将 PostHog 作为“结构化事件链路”并行接入，不替代全量原始日志。
+- 新增任务链：`T-S4-OBS-034/035/036/037/038/039`，覆盖 schema、API17 兼容上报、关键节点埋点、隐私门禁、查询验证与接入参数确认。
+- 当前状态：`T-S4-OBS-034/039` Done，`T-S4-OBS-035/036/037` In Progress，`T-S4-OBS-038` Blocked。
+- 已新增详细规划文档：`docs/POSTHOG_INSTRUMENTATION_PLAN.md`（含事件预算、节流策略与禁报清单）。
+
+## Module Execution Progress (PostHog, 2026-04-27)
+- 已完成 `T-S4-OBS-034`：
+  - 新增 `docs/POSTHOG_EVENT_DICTIONARY.md`（核心事件、公共属性、错误码、禁报清单）。
+  - 新增 `docs/POSTHOG_CONFIG_CHECKLIST.md`（接入参数确认模板）。
+- 已完成 `T-S4-OBS-035-PREP` 与 `T-S4-OBS-037-PREP`：
+  - 新增 `PostHogConfigStore`（运行时开关/host/key/environment 读取）。
+  - 新增 `PostHogTracker`（API17 兼容、异步上报、fail-open）。
+  - 落地节流与预算：默认 10s coalesce、错误 30s、session 预算 `80/150`。
+  - 落地隐私门禁：敏感键过滤（password/token/header/response_body）+ 字段长度截断。
+- `T-S4-OBS-036` 已启动：
+  - `MainActivity` 接入 `app_start/app_ready/foreground/background/play_start/play_success/playback_failed/pause/resume/resume_restore_*`。
+  - `PlaybackService` 接入 `background_command_received/background_command_result`。
+- 当前阻塞：
+  - `T-S4-OBS-036/037` 需完成实机压测后，`T-S4-OBS-038` 才可执行在线查询验收。
+
+## Config Update (2026-04-27)
+- 已按用户提供信息内置 PostHog 默认配置：
+  - `host=https://us.i.posthog.com`（US Cloud）
+  - `project_api_key=phc_wPMBC5C8pCscinCMjqbcFryREP5sKACufHzYiAWxtig6`
+  - `project_id=399199`
+  - `environment=prod`
+
+## Module Execution Progress (2026-04-27)
+- 已推进 `M-S4-CORE-001` 子阶段：
+  - `PlaybackControlBus` 新增结构化 `DispatchResult(handled/detail)`，避免仅凭布尔值排障。
+  - `PlaybackService` 分发命令后持久化 `action/source/handled/detail` 到 `PlaybackStateStore`。
+  - `MainActivity` 增加服务命令结果同步日志（`service cmd result ...`），用于矩阵验证证据收集。
+  - 统一前台/硬件键 source 标识（`ui`、`hardware_key`）。
+  - 新增 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 作为 `T-S4-CORE-026B` 执行模板。
+- 当前状态调整：
+  - `T-S4-CORE-026A` 继续 In Progress（链路收口未完全结束）。
+  - `T-S4-CORE-026B` 进入 In Progress（模板与观测已就绪，待设备执行矩阵并回填）。
+
 ## Implementation Progress (2026-04-26)
 - 已新增后台控制基础模块：
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`

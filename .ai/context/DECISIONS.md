@@ -220,6 +220,42 @@ Last Updated: 2026-04-27
 - 决策: `AUDIOFOCUS_LOSS` 触发暂停仅在后台生效（`!appInForeground`），前台不再由 Service 下发自动暂停。
 - 决策: 构建号徽标改为全局根布局左上角显示，并增大字号，便于车机快速验包。
 
+## 2026-04-27 - S4 规划结构重排（ai-planning）
+- 决策: 规划从“单个大任务 `T-S4-CORE-026`”重排为模块化执行（`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`）。
+- 决策: Ready 队列仅保留立即可执行且依赖满足的任务（当前为 `T-S4-VAL-032` 与 `T-S4-CORE-026B`）。
+- 决策: `T-S4-REG-022` 维持 Blocked，直到 `026B/026C/020B/032` 完成且车机窗口可用。
+- 决策: `T-S4-UI-023/024` 与 `T-S4-AUDIO-025` 下沉 Deferred，不进入当前 S4 主验收链路。
+
+## 2026-04-27 - M-S4-CORE-001 子阶段执行决策（026A/026B）
+- 决策: 播放命令分发结果从“布尔值”升级为结构化结果（`handled + detail`），用于直接定位失败原因。
+- 决策: `PlaybackService` 每次分发后持久化命令轨迹（`action/source/handled/detail`）到 `PlaybackStateStore`。
+- 决策: `MainActivity` 通过周期同步将服务命令轨迹写入运行日志，作为后台命令矩阵验证证据。
+- 决策: 后台命令矩阵执行统一使用 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 模板。
+
+## 2026-04-27 - PostHog 集成规划决策（ai-planning）
+- 决策: PostHog 定位为“结构化事件平台”，不作为全量文本日志仓库。
+- 决策: 接入策略优先 API17 兼容与稳定性，默认复用现有网络栈实现轻量上报层（fail-open）。
+- 决策: 事件采集范围收敛到关键节点（启动、播放、后台命令、错误、恢复），不采集高频进度类事件。
+- 决策: 事件模型统一命名（snake_case）+ 稳定 `error_code/stage/session_id` 字段，优先服务排障与 AI 分析。
+- 决策: 云版/自建、Host/Project Key/环境口径作为单独前置确认任务（`T-S4-OBS-039`），未确认前不进入在线验收。
+- 决策: 默认禁止敏感字段上报（凭据、token、完整响应体），仅允许摘要化错误信息。
+- 决策: 明确禁报高频低价值事件（进度 tick、频繁 buffer 状态、UI redraw、HTTP headers）。
+- 决策: 建立事件预算与降噪规则（session 事件预算 + 短窗口 coalesce）。
+
+## 2026-04-27 - PostHog 模块执行决策（M-S4-OBS-006）
+- 决策: API17 集成采用“轻量自研 reporter + 现有 OkHttp”路线，避免重 SDK 兼容风险。
+- 决策: Reporter 默认 fail-open；配置缺失时 no-op，仅记录本地提示日志，不影响业务链路。
+- 决策: 上报门禁落地为“敏感键过滤 + 字段截断 + 事件预算 + 短窗口 coalesce”。
+- 决策: 关键链路先接入 `app_* / play_* / background_command_* / resume_restore_*`，不接入高频 buffer/progress/redraw 类事件。
+- 决策: 接入参数确认（Host/Project Key/environment）保持独立前置任务，在线查询验收依赖其完成。
+
+## 2026-04-27 - PostHog 接入参数内置（用户提供）
+- 决策: 默认启用 PostHog 上报（可通过运行时配置覆盖）。
+- 决策: 内置 Host 使用 US Cloud ingest：`https://us.i.posthog.com`。
+- 决策: 内置 `project_id=399199`。
+- 决策: 内置 `project_api_key=phc_wPMBC5C8pCscinCMjqbcFryREP5sKACufHzYiAWxtig6`。
+- 决策: 默认环境标识设为 `prod`，后续可按需增加 `dev` 项目隔离。
+
 ## 2026-04-26 - 执行颗粒度调整（用户确认）
 - 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。
 - 决策: 每轮执行完成后仅记录“已完成 + 下一阶段”，不维护“待执行命令列表”式运行策略。

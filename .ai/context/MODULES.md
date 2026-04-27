@@ -1,0 +1,172 @@
+# MODULES
+
+Last Updated: 2026-04-27
+
+## M-S4-CORE-001
+- Module ID: `M-S4-CORE-001`
+- Name: 核心命令与状态链路收口
+- Goal: 在 API17 下收敛 `MainActivity` 与 `PlaybackService` 的职责边界，确保后台控制链路稳定且可诊断。
+- Why It Matters: 不先收口链路，后续媒体键/浮窗/恢复会持续出现“路径不一致”回归。
+- In Scope:
+  - `PlaybackService` 命令分发与状态快照更新。
+  - `PlaybackControlBus` 执行结果一致性（失败即失败）。
+  - 前后台切换状态同步与焦点策略冲突消减。
+- Out of Scope:
+  - UI 视觉重构。
+  - 引入 MediaSession 新分支。
+- Dependencies: 无
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackControlBus.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
+- Milestone / Done Criteria:
+  - 前台/后台命令入口行为一致，无“执行成功但无动作”假阳性。
+  - 状态快照（`trackId/position/isPlaying`）可稳定驱动通知与浮窗展示。
+- Related Tasks: `T-S4-CORE-026A`, `T-S4-CORE-026B`
+- Priority: P0
+- Status: In Progress（子阶段1完成：命令分发结果可观测化 + 后台命令矩阵模板）
+- Risks:
+  - 前台稳定性补丁与真源迁移目标存在冲突，需要以实机结果裁决。
+- Suitable For Module Execution?: Yes
+
+## M-S4-CONTROL-002
+- Module ID: `M-S4-CONTROL-002`
+- Name: 后台控制面一致性（媒体键/通知/浮窗）
+- Goal: 建立三条后台控制面一致的命令分发与反馈行为。
+- Why It Matters: 车机场景的可用性取决于后台入口是否一致，而非单一 UI 点击链路。
+- In Scope:
+  - `ACTION_MEDIA_BUTTON` -> Service 命令路径验证。
+  - 通知控制条与浮窗三键控制一致性。
+  - 浮窗手动关闭后“进应用再切出”再显示策略。
+- Out of Scope:
+  - 新浮窗样式设计。
+  - 非车机输入设备适配。
+- Dependencies: `M-S4-CORE-001`
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/playback/MediaButtonReceiver.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/RemoteControlClientBridge.kt`
+  - `app/src/main/java/com/skodamusic/app/overlay/OverlayController.kt`
+  - `app/src/main/AndroidManifest.xml`
+- Milestone / Done Criteria:
+  - 三个后台入口均可稳定触发上一曲/播放暂停/下一曲。
+  - 浮窗显示策略符合用户确认口径并可复现验证。
+- Related Tasks: `T-S4-CORE-026C`
+- Priority: P0
+- Status: Pending
+- Risks:
+  - 不同车机对媒体键广播优先级处理差异较大。
+- Suitable For Module Execution?: Yes
+
+## M-S4-RESUME-003
+- Module ID: `M-S4-RESUME-003`
+- Name: 熄火/休眠恢复闭环
+- Goal: 完成服务侧自动续播二阶段闭环（恢复队列/索引/进度/播放态 + 降级）。
+- Why It Matters: 自动续播是用户强需求，也是 S4 验收硬指标。
+- In Scope:
+  - `PlaybackResumeStore` 与 Service 状态恢复逻辑打通。
+  - 新鲜度窗口、账号恢复、进度恢复策略稳定化。
+  - 失败降级日志可用于实机排障。
+- Out of Scope:
+  - 跨账号复杂恢复策略重构。
+  - 长期离线缓存恢复。
+- Dependencies: `M-S4-CORE-001`
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackResumeStore.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Milestone / Done Criteria:
+  - 熄火/休眠恢复后满足条件可自动续播并恢复进度。
+  - 缺失会话或恢复失败时降级路径明确且不崩溃。
+- Related Tasks: `T-S4-RESUME-020B`
+- Priority: P0
+- Status: Pending
+- Risks:
+  - 会话失效与网络波动可能导致恢复结果不稳定。
+- Suitable For Module Execution?: Yes
+
+## M-S4-VALID-004
+- Module ID: `M-S4-VALID-004`
+- Name: API17 实机回归与证据回填
+- Goal: 标准化 S4 回归入口并完成实机执行、证据沉淀和 context 回写。
+- Why It Matters: S4 是否完成必须由实机证据判定，不能仅靠代码推断。
+- In Scope:
+  - 升级 API17 回归清单（覆盖 S4 后台控制能力）。
+  - 补齐“风险控制与验收清单（Section 4）”模板。
+  - 车机实机执行结果回填 `CURRENT_STATUS/HANDOFF/TASK_QUEUE`。
+- Out of Scope:
+  - 纯实验性优化项验证。
+- Dependencies: `M-S4-CORE-001`, `M-S4-CONTROL-002`, `M-S4-RESUME-003`, `M-S4-OBS-006`
+- Related Files / Areas:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `.ai/context/CURRENT_STATUS.md`
+  - `.ai/context/HANDOFF.md`
+  - `.ai/context/TASK_QUEUE.md`
+- Milestone / Done Criteria:
+  - 至少 1 台 API17 设备完成 S4 清单并给出 PASS/FAIL/Blocker。
+  - 证据已结构化回写到 `.ai/context`。
+- Related Tasks: `T-S4-VAL-032`, `T-S4-REG-022`, `T-S4-VAL-033`
+- Priority: P0
+- Status: Pending
+- Risks:
+  - 设备窗口不可控，可能导致阶段收尾延后。
+- Suitable For Module Execution?: Yes
+
+## M-S4-OBS-006
+- Module ID: `M-S4-OBS-006`
+- Name: PostHog 关键事件观测链路
+- Goal: 在不影响播放稳定性的前提下，建立 API17 可用的 PostHog 结构化事件上报链路。
+- Why It Matters: S4 验收不仅要“能复现”，还要“可聚合诊断”；结构化事件可直接用于问题定位与 AI 分析。
+- In Scope:
+  - 事件模型（event name + properties + error_code）与命名规范。
+  - API17 兼容的轻量上报客户端（优先复用现有 OkHttp，不强依赖重 SDK）。
+  - 关键节点埋点（启动/播放链路/后台命令/错误与恢复）。
+  - 失败不阻断业务（fail-open）、节流与最小隐私策略。
+  - 数据导出与 AI 分析输入模板。
+- Out of Scope:
+  - 将 PostHog 作为全量原始日志仓库。
+  - 上报高频播放进度与大体积 payload。
+  - 自托管 PostHog 基础设施搭建（本阶段默认云版或已提供 endpoint）。
+- Dependencies: `M-S4-CORE-001`（部分事件依赖命令链路收口）
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/PlaybackActions.kt`
+  - `docs/`（新增事件字典与上报策略文档）
+- Milestone / Done Criteria:
+  - 10~20 个核心事件定义稳定，命名与属性统一。
+  - 关键路径事件可在 PostHog 查询（启动、播放成功/失败、后台命令、恢复失败）。
+  - 上报失败不影响播放主链路，具备节流与禁用开关。
+  - 可导出单 session 事件流用于 AI 排障。
+- Related Tasks: `T-S4-OBS-034`, `T-S4-OBS-035`, `T-S4-OBS-036`, `T-S4-OBS-037`, `T-S4-OBS-038`
+- Priority: P1
+- Status: In Progress（已完成 schema 文档 + API17 fail-open reporter + 隐私/节流门禁，待真实参数联调与在线查询验收）
+- Risks:
+  - 采集过多会稀释信号并增加车机网络负担。
+  - 若字段设计不稳定，后续跨版本分析成本上升。
+- Suitable For Module Execution?: Yes
+
+## M-S4-UX-005
+- Module ID: `M-S4-UX-005`
+- Name: 并行体验改进池（暂缓）
+- Goal: 管理已确认但不应阻塞 S4 主链路的体验改进项。
+- Why It Matters: 需求有效，但当前推进会稀释后台控制闭环目标。
+- In Scope:
+  - 长标题滚动异常修复任务预案。
+  - 主屏删除入口迁移方案预案。
+  - 均衡器/音效优化验证预案。
+- Out of Scope:
+  - 在 S4 主链路未验收前进入 Ready 开发。
+- Dependencies: `M-S4-VALID-004`（建议在 S4 主验收后启动）
+- Related Files / Areas:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Milestone / Done Criteria:
+  - 三项需求均有明确口径与验收标准，且不影响 S4 主验收节奏。
+- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024`, `T-S4-AUDIO-025`
+- Priority: P2
+- Status: Deferred
+- Risks:
+  - 提前执行容易引发范围扩张并拖慢主链路。
+- Suitable For Module Execution?: No

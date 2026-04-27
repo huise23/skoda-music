@@ -3,37 +3,50 @@
 Last Updated: 2026-04-27
 
 ## Ready
-- [ ] `T-S4-CORE-026` S4 后台控制稳定化大闭环（ARCH + MEDIA + OVL + NOTIFY + RESUME）
+- [ ] `T-S4-VAL-032` 升级 API17 回归清单并补齐 Section 4 验收模板（不依赖车机窗口，可立即执行）
 
 ## In Progress
-- [ ] `T-S4-CORE-026` 进行中（已完成服务/媒体键/浮窗基础接线、恢复存储抽离、命令链路失败即失败、前台 UI/硬件键优先经 Service 分发；待完成播放真源迁移与车机稳定性闭环）
+- [ ] `T-S4-CORE-026A` 核心命令链路收口（Service/Activity 职责边界）
+- [ ] `T-S4-CORE-026B` 后台命令矩阵自测（已落地 command trace 与矩阵模板，待设备执行并回填结果）
+- [ ] `T-S4-OBS-035` API17 兼容 PostHog 上报客户端（已落地 fail-open 基线，待实机补充验证）
+- [ ] `T-S4-OBS-036` 关键节点埋点接线（已接 `app/play/background_command/resume` 主链路，待补齐 playlist 与在线联调）
+- [ ] `T-S4-OBS-037` 上报门禁与隐私策略（已落地敏感字段黑名单 + 字符串截断 + 节流预算，待实机压测）
 
 ## Blocked
-- [ ] `T-S4-REG-022` 车机实机回归（依赖车机测试窗口）
-
-## Backlog
-- [ ] `T-S4-UI-023` 长标题滚动异常修复
-- [ ] `T-S4-UI-024` 删除入口迁移到主屏（符合“不好听立即删”）
-- [ ] `T-S4-AUDIO-025` 均衡器/音效优化（听感提升）
-- [ ] `T-BLK-001` 系统首页音乐卡片第三方入口能力确认
-- [ ] `B-LRC-001` 歌词失败回退策略口径确认
+- [ ] `T-S4-CORE-026C` 浮窗与通知策略闭环（依赖 `T-S4-CORE-026A` 收口完成）
+- [ ] `T-S4-RESUME-020B` 服务侧自动续播二阶段闭环（依赖 `T-S4-CORE-026A`）
+- [ ] `T-S4-OBS-038` 查询验证与 AI 导出模板（依赖 `T-S4-OBS-036/037` 完成）
+- [ ] `T-S4-REG-022` 车机实机回归执行（依赖 `026B/026C/020B/032/OBS-036/OBS-037` + 车机窗口）
+- [ ] `T-S4-VAL-033` 实机证据回写与阶段收口（依赖 `T-S4-REG-022`）
+- [ ] `T-BLK-001` 系统首页音乐卡片第三方入口能力确认（依赖系统能力确认）
+- [ ] `B-LRC-001` 歌词失败回退策略口径确认（依赖产品口径确认）
 
 ## Done
-- [x] `T-S4-ARCH-017H` 前台停播热修：Service 前台不再管理音频焦点，`AUDIOFOCUS_LOSS` 自动暂停仅后台生效；构建号徽标迁移全局左上并放大
+- [x] `T-S4-OBS-039` PostHog 接入参数确认：已内置 US Cloud host + project key + project id 默认值
+- [x] `T-S4-OBS-034` PostHog 事件模型与字段规范：新增 `POSTHOG_INSTRUMENTATION_PLAN` 与 `POSTHOG_EVENT_DICTIONARY`
+- [x] `T-S4-OBS-035-PREP` API17 fail-open reporter 基线：新增 `PostHogTracker/PostHogConfigStore`（配置缺失 no-op）
+- [x] `T-S4-OBS-037-PREP` 门禁基线：敏感字段过滤、字符串截断、事件预算、短窗口 coalesce
+- [x] `T-S4-CORE-026B-PREP` 后台命令矩阵预备：新增 `dispatch result` 持久化与 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 执行模板
+- [x] `T-S4-ARCH-017H` 前台停播热修（前台禁用 Service 焦点干预 + 构建号徽标优化）
 - [x] `T-S4-ARCH-017G` 车机停播热修（忽略 transient audio focus loss 自动暂停）
 - [x] `T-S4-ARCH-017F` 后台命令来源标记透传（notification/overlay/media_button/audio_focus）
-- [x] `T-S4-ARCH-017E` 播放回归热修：前台 UI/硬件键恢复本地直执，优先修复“点击播放无进度”问题
-- [x] `T-S4-ARCH-017D` Service 状态上报优化（位置增量+播放中心跳，降低快照位置滞后）
-- [x] `T-S4-ARCH-017C` 命令上下文透传（`source/allowToast` 贯通 Activity -> Service -> ControlBus）
-- [x] `T-S4-ARCH-017B` 命令入口统一（该方案已在 `T-S4-ARCH-017E` 中对前台控制做稳定性回滚）
-- [x] `T-S4-ARCH-017A` 移除命令持久化重试（不记录待执行命令，不做延迟重放，失败即失败）
-- [x] `T-S3-UI-013` Home 播放模块重排 + 可拖动进度 + 解码失败自动切歌
+- [x] `T-S4-ARCH-017E` 播放回归热修（前台 UI/硬件键恢复本地直执）
+- [x] `T-S4-ARCH-017D` Service 状态上报优化（位置增量 + 播放心跳）
+- [x] `T-S4-ARCH-017C` 命令上下文透传（`source/allowToast`）
+- [x] `T-S4-ARCH-017A` 移除命令持久化重试（失败即失败）
+- [x] `T-S3-UI-013` Home 播放模块重排 + SeekBar + 解码失败自动切歌
 - [x] `T-S3-RB-008` 回滚错误实现并恢复基线
 - [x] `T-S3-NET-009` CF 优选 IPv4 解析链路接线
-- [x] `T-S3-DL-010` 30s 下载窗口调度状态机
+- [x] `T-S3-DL-010` 30s 下载窗口状态机
 - [x] `T-S3-LOG-011` 下载调度与优选 IP 诊断日志补齐
 
+## Deferred
+- [ ] `T-S4-UI-023` 长标题滚动异常修复（当前口径未定）
+- [ ] `T-S4-UI-024` 删除入口迁移到主屏（交互细节待确认）
+- [ ] `T-S4-AUDIO-025` 均衡器/音效优化（不阻塞 S4 主验收）
+
 ## Queue Notes
-- S4 第一优先为车机场景可用性闭环，不再以前台页面微调为主线。
-- 第一版验收必须同时满足：后台服务、后台方向盘按键、全局小浮窗。
-- 技术红线保持：`minSdk=17`、`IPv4 only`、业务 Host 仍为 Emby 域名。
+- 当前主线是 S4 验收闭环，不将未确认需求放入 Ready。
+- PostHog 仅作为结构化事件链路，不替代本地全量原始日志。
+- 技术红线保持：`minSdk=17`、Emby-only、IPv4-only、业务 Host 不替换。
+- 推荐执行模式：核心模块用模块推进，文档与清单类任务用微任务并行推进。

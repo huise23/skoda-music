@@ -35,10 +35,12 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.skodamusic.app.observability.PostHogTracker
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackControlBus
 import com.skodamusic.app.playback.PlaybackResumeStore
 import com.skodamusic.app.playback.PlaybackService
+import com.skodamusic.app.playback.PlaybackStateStore
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.MediaItem
@@ -435,6 +437,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastResumePersistAtMs: Long = 0L
     private var downloadControllerThread: Thread? = null
     private lateinit var playbackResumeStore: PlaybackResumeStore
+    private lateinit var playbackStateStore: PlaybackStateStore
+    private var postHogSessionId: String = ""
+    private var lastObservedCommandTraceAtMs: Long = 0L
     private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
         ?: throw IllegalStateException("json media type parse failed")
 
@@ -444,6 +449,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         setContentView(R.layout.activity_main)
         PlaybackControlBus.attach(this)
         playbackResumeStore = PlaybackResumeStore(applicationContext)
+        playbackStateStore = PlaybackStateStore(applicationContext)
+        postHogSessionId = PostHogTracker.startNewSession(
+            context = applicationContext,
+            launchSource = "cold_start"
+        )
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "app_start",
+            properties = mapOf(
+                "cold_start" to true,
+                "launch_source" to "launcher",
+                "session_id_local" to postHogSessionId
+            )
+        )
 
         embyBaseUrlInput = findViewById(R.id.emby_base_url_input)
         cfRefDomainInput = findViewById(R.id.cf_ref_domain_input)
@@ -519,6 +538,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             startUiProgressTicker()
             reportPlaybackStateToService(force = true)
             appendRuntimeLog("app boot completed +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "app_ready",
+                properties = mapOf(
+                    "startup_ms" to (SystemClock.elapsedRealtime() - bootStartMs).coerceAtLeast(0L)
+                )
+            )
             uiProgressHandler.postDelayed(
                 { maybeAutoRefreshQueueRecommendations("app-startup") },
                 APP_STARTUP_QUEUE_REFRESH_DELAY_MS
@@ -531,6 +557,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         sendPlaybackServiceIntent(PlaybackActions.ACTION_SERVICE_INIT)
         maybeRequestOverlayPermission()
         sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "app_foreground"
+        )
         reportPlaybackStateToService(force = true)
         maybeStartPendingAutoResume("activity-onStart")
     }
@@ -539,6 +569,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         maybePersistPlaybackResumeState(force = true)
         reportPlaybackStateToService(force = true)
         sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_BACKGROUND)
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "app_background"
+        )
         super.onStop()
     }
 
@@ -655,15 +689,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         })
 
         prevButton.setOnClickListener {
-            performPrevAction(source = "ui click", allowToast = false)
+            performPrevAction(source = PlaybackActions.CMD_SOURCE_UI, allowToast = false)
         }
 
         playPauseButton.setOnClickListener {
-            performPlayPauseAction(forcePlay = null, source = "ui click", allowToast = true)
+            performPlayPauseAction(
+                forcePlay = null,
+                source = PlaybackActions.CMD_SOURCE_UI,
+                allowToast = true
+            )
         }
 
         nextButton.setOnClickListener {
-            performNextAction(source = "ui click", allowToast = true)
+            performNextAction(source = PlaybackActions.CMD_SOURCE_UI, allowToast = true)
         }
 
         testEmbyButton.setOnClickListener {
@@ -745,7 +783,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 )
             }
             rebuildTrackLists()
-            playTrackAtCurrentIndex()
+            playTrackAtCurrentIndex(source)
             return true
         }
         currentTrackIndex = (currentTrackIndex - 1).coerceAtLeast(0)
@@ -761,7 +799,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         }
         rebuildTrackLists()
-        playTrackAtCurrentIndex()
+        playTrackAtCurrentIndex(source)
         if (allowToast) {
             showToast(R.string.toast_playing)
         }
@@ -779,13 +817,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         if (shouldPlay) {
             appendRuntimeLog("$source play/pause -> play")
-            startOrResumePlayback()
+            startOrResumePlayback(source)
             if (allowToast) {
                 showToast(R.string.toast_playing)
             }
         } else {
             appendRuntimeLog("$source play/pause -> pause")
-            pausePlayback()
+            pausePlayback(source)
             if (allowToast) {
                 showToast(R.string.toast_paused)
             }
@@ -829,7 +867,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         rebuildTrackLists()
         appendRuntimeLog("$source next -> play immediately index=$currentTrackIndex")
-        playTrackAtCurrentIndex()
+        playTrackAtCurrentIndex(source)
         return true
     }
 
@@ -1511,7 +1549,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         }
         rebuildTrackLists()
-        playTrackAtCurrentIndex()
+        playTrackAtCurrentIndex(if (source == ListSource.QUEUE) "queue_tap" else "library_tap")
     }
 
     private fun promptDeleteSourceTrack(track: EmbyTrack) {
@@ -1884,6 +1922,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 playbackSeekBar.progress = 0
             }
             renderHomeLyricsByPosition(0L)
+            maybeSyncServiceCommandTrace()
             return
         }
 
@@ -1938,7 +1977,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
         maybeApplyPendingResumeSeek(durationMs)
         maybePersistPlaybackResumeState(positionMs = positionMs)
+        maybeSyncServiceCommandTrace()
 
+    }
+
+    private fun maybeSyncServiceCommandTrace() {
+        if (!this::playbackStateStore.isInitialized) {
+            return
+        }
+        val trace = playbackStateStore.readCommandTrace()
+        if (trace.updatedAtMs <= 0L || trace.updatedAtMs == lastObservedCommandTraceAtMs) {
+            return
+        }
+        lastObservedCommandTraceAtMs = trace.updatedAtMs
+        appendRuntimeLog(
+            "service cmd result action=${trace.action} source=${trace.source} handled=${trace.handled} detail=${trace.detail}"
+        )
     }
 
     private fun applySeekTarget(targetMs: Long) {
@@ -1978,6 +2032,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return PlaybackFailureCategory.SOURCE_FAILURE
         }
         return PlaybackFailureCategory.UNKNOWN
+    }
+
+    private fun mapPlaybackErrorCode(code: Int, category: PlaybackFailureCategory): String {
+        return when (category) {
+            PlaybackFailureCategory.DECODER_FAILURE -> {
+                if (code == 4003) "CODEC_INIT_TIMEOUT" else "DECODER_FAILURE"
+            }
+            PlaybackFailureCategory.NETWORK_FAILURE -> {
+                if (code > 0) "NETWORK_$code" else "NETWORK_FAILURE"
+            }
+            PlaybackFailureCategory.SOURCE_FAILURE -> {
+                if (code > 0) "SOURCE_$code" else "SOURCE_FAILURE"
+            }
+            PlaybackFailureCategory.UNKNOWN -> {
+                if (code > 0) "UNKNOWN_$code" else "UNKNOWN_FAILURE"
+            }
+        }
     }
 
     private fun handlePlaybackErrorAutoSkip(
@@ -2160,7 +2231,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         showToast(R.string.toast_emby_success)
                         if (loadedTracks.isNotEmpty()) {
                             appendRuntimeLog("emby load success autoplay-first-track")
-                            playTrackAtCurrentIndex()
+                            playTrackAtCurrentIndex("autoplay_first")
                         }
                     } else {
                         appendRuntimeLog("emby load failed")
@@ -2278,10 +2349,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun startOrResumePlayback() {
+    private fun startOrResumePlayback(source: String) {
         val existing = playbackEngine
         if (existing != null) {
             if (existing.play()) {
+                val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
+                PostHogTracker.capture(
+                    context = applicationContext,
+                    eventName = "resume",
+                    properties = mapOf(
+                        "track_id" to trackId,
+                        "source" to source
+                    )
+                )
                 updateState {
                     it.copy(
                         isPlaying = true,
@@ -2294,13 +2374,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
             releasePlayer()
         }
-        playTrackAtCurrentIndex()
+        playTrackAtCurrentIndex(source)
     }
 
-    private fun pausePlayback() {
+    private fun pausePlayback(source: String) {
         playbackRequestId += 1
         stopDownloadController()
         playbackEngine?.pause()
+        val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "pause",
+            properties = mapOf(
+                "track_id" to trackId,
+                "source" to source
+            )
+        )
         updateState {
             it.copy(
                 isPlaying = false,
@@ -2311,7 +2400,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun playTrackAtCurrentIndex() {
+    private fun playTrackAtCurrentIndex(source: String = "system") {
         if (loadedTracks.isEmpty()) {
             return
         }
@@ -2322,6 +2411,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val userId = embySessionUserId
         val token = embyAccessToken
         if (base.isNullOrBlank() || userId.isNullOrBlank() || token.isNullOrBlank()) {
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "playback_failed",
+                properties = mapOf(
+                    "track_id" to loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty(),
+                    "stage" to "session_check",
+                    "error_code" to "SESSION_UNAVAILABLE",
+                    "source" to source
+                ),
+                priority = PostHogTracker.Priority.HIGH
+            )
             updateState {
                 it.copy(
                     isPlaying = false,
@@ -2341,6 +2441,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val requestId = ++playbackRequestId
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
+        val prepareStartMs = SystemClock.elapsedRealtime()
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "play_start",
+            properties = mapOf(
+                "track_id" to track.id,
+                "position_ms" to 0L,
+                "from_source" to source
+            )
+        )
         appendRuntimeLog("play request track=${track.title} downloadUrl=$downloadUrl requestId=$requestId")
         releasePlayer()
         startDownloadController(
@@ -2389,6 +2499,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             return
                         }
                         streamPrepared.set(true)
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "play_success",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "prepare_ms" to (SystemClock.elapsedRealtime() - prepareStartMs).coerceAtLeast(0L),
+                                "decoder" to "exo_download"
+                            )
+                        )
                         appendRuntimeLog("play prepared requestId=$requestId track=${track.title} source=download")
                         engine.play()
                         runOnUiThread {
@@ -2417,7 +2536,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                                     )
                                 }
                                 rebuildTrackLists()
-                                playTrackAtCurrentIndex()
+                                playTrackAtCurrentIndex("auto_next")
                             } else {
                                 updateState { s ->
                                     s.copy(
@@ -2437,6 +2556,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        val category = categorizePlaybackError(code, detail)
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "playback_failed",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "stage" to "download_prepare",
+                                "error_code" to mapPlaybackErrorCode(code, category),
+                                "error_summary" to detail.take(160)
+                            ),
+                            priority = PostHogTracker.Priority.HIGH
+                        )
                         handlePlaybackErrorAutoSkip(
                             requestId = requestId,
                             code = code,
@@ -2950,58 +3081,79 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     engine.prepare(
                         source = Uri.fromFile(cacheFile),
                         callback = object : PlaybackEngineCallback {
-                            override fun onPrepared() {
-                                if (requestId != playbackRequestId) {
-                                    return
-                                }
-                                appendRuntimeLog("cache playback prepared requestId=$requestId")
-                                engine.play()
-                                runOnUiThread {
-                                    updateState {
-                                        it.copy(
-                                            isPlaying = true,
-                                            playbackStatusRes = R.string.status_playing,
-                                            playPauseLabelRes = R.string.action_pause,
-                                            feedbackText = "动作反馈：正在播放缓存 ${track.title}"
-                                        )
-                                    }
-                                }
+                    override fun onPrepared() {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "play_success",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "prepare_ms" to -1L,
+                                "decoder" to "exo_cache"
+                            )
+                        )
+                        appendRuntimeLog("cache playback prepared requestId=$requestId")
+                        engine.play()
+                        runOnUiThread {
+                            updateState {
+                                it.copy(
+                                    isPlaying = true,
+                                    playbackStatusRes = R.string.status_playing,
+                                    playPauseLabelRes = R.string.action_pause,
+                                    feedbackText = "动作反馈：正在播放缓存 ${track.title}"
+                                )
                             }
+                        }
+                    }
 
-                            override fun onCompletion() {
-                                if (requestId != playbackRequestId) {
-                                    return
+                    override fun onCompletion() {
+                        if (requestId != playbackRequestId) {
+                            return
+                        }
+                        runOnUiThread {
+                            val nextTitle = moveToNextTrack()
+                            if (nextTitle != null) {
+                                updateState { s ->
+                                    s.copy(
+                                        currentTrack = nextTitle,
+                                        nextEnabled = hasNextTrack()
+                                    )
                                 }
-                                runOnUiThread {
-                                    val nextTitle = moveToNextTrack()
-                                    if (nextTitle != null) {
-                                        updateState { s ->
-                                            s.copy(
-                                                currentTrack = nextTitle,
-                                                nextEnabled = hasNextTrack()
-                                            )
-                                        }
-                                        rebuildTrackLists()
-                                        playTrackAtCurrentIndex()
-                                    } else {
-                                        updateState { s ->
-                                            s.copy(
-                                                isPlaying = false,
-                                                playbackStatusRes = R.string.status_paused,
-                                                playPauseLabelRes = R.string.action_play,
-                                                nextEnabled = false,
-                                                feedbackText = getString(R.string.feedback_end_of_queue)
-                                            )
-                                        }
-                                        rebuildTrackLists()
-                                    }
+                                rebuildTrackLists()
+                                playTrackAtCurrentIndex("auto_next")
+                            } else {
+                                updateState { s ->
+                                    s.copy(
+                                        isPlaying = false,
+                                        playbackStatusRes = R.string.status_paused,
+                                        playPauseLabelRes = R.string.action_play,
+                                        nextEnabled = false,
+                                        feedbackText = getString(R.string.feedback_end_of_queue)
+                                    )
                                 }
+                                rebuildTrackLists()
                             }
+                        }
+                    }
 
                             override fun onError(code: Int, detail: String) {
                                 if (requestId != playbackRequestId) {
                                     return
                                 }
+                                val category = categorizePlaybackError(code, detail)
+                                PostHogTracker.capture(
+                                    context = applicationContext,
+                                    eventName = "playback_failed",
+                                    properties = mapOf(
+                                        "track_id" to track.id,
+                                        "stage" to "cache_prepare",
+                                        "error_code" to mapPlaybackErrorCode(code, category),
+                                        "error_summary" to detail.take(160)
+                                    ),
+                                    priority = PostHogTracker.Priority.HIGH
+                                )
                                 handlePlaybackErrorAutoSkip(
                                     requestId = requestId,
                                     code = code,
@@ -3873,12 +4025,29 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         resumeRestoreAttempted = true
         val snapshot = playbackResumeStore.read() ?: return
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "resume_restore_attempt",
+            properties = mapOf(
+                "has_snapshot" to true,
+                "snapshot_age_ms" to (System.currentTimeMillis() - snapshot.savedAtMs).coerceAtLeast(0L)
+            )
+        )
         val payload = snapshot.queueJson
         if (payload.isBlank()) {
             return
         }
         val restoredTracks = parseCachedTrackArray(payload)
         if (restoredTracks.isEmpty()) {
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "resume_restore_failed",
+                properties = mapOf(
+                    "stage" to "parse_snapshot",
+                    "error_code" to "RESUME_SNAPSHOT_INVALID"
+                ),
+                priority = PostHogTracker.Priority.HIGH
+            )
             clearPersistedPlaybackResumeState()
             return
         }
@@ -3898,6 +4067,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         pendingAutoResumePlayback = wasPlaying && isResumeAutoplayFresh(savedAtMs)
         if (pendingAutoResumePlayback && !hasPlaybackSession()) {
             appendRuntimeLog("resume restore pending reason=missing-session")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "resume_restore_failed",
+                properties = mapOf(
+                    "stage" to "session_restore",
+                    "error_code" to "RESUME_SESSION_MISSING"
+                ),
+                priority = PostHogTracker.Priority.HIGH
+            )
         }
 
         val feedback = if (pendingAutoResumePlayback) {
@@ -3963,6 +4141,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         pendingAutoResumePlayback = false
         appendRuntimeLog("resume autoplay start trigger=$trigger track=${loadedTracks[currentTrackIndex].title}")
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "resume_restore_success",
+            properties = mapOf(
+                "track_id" to loadedTracks[currentTrackIndex].id,
+                "position_ms" to pendingResumeSeekMs.coerceAtLeast(0L)
+            )
+        )
         updateState {
             it.copy(
                 isPlaying = true,
@@ -3971,7 +4157,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 feedbackText = "动作反馈：恢复上次播放中"
             )
         }
-        playTrackAtCurrentIndex()
+        playTrackAtCurrentIndex("resume_autoplay")
     }
 
     private fun maybeApplyPendingResumeSeek(durationMs: Long) {
@@ -4433,23 +4619,43 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PREV, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(
+                        PlaybackActions.ACTION_CMD_PREV,
+                        source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
+                        allowToast = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_NEXT, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(
+                        PlaybackActions.ACTION_CMD_NEXT,
+                        source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
+                        allowToast = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(
+                        PlaybackActions.ACTION_CMD_PLAY_PAUSE,
+                        source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
+                        allowToast = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PLAY, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(
+                        PlaybackActions.ACTION_CMD_PLAY,
+                        source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
+                        allowToast = false
+                    )
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    performPlaybackCommand(PlaybackActions.ACTION_CMD_PAUSE, source = "hardware key", allowToast = false)
+                    performPlaybackCommand(
+                        PlaybackActions.ACTION_CMD_PAUSE,
+                        source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
+                        allowToast = false
+                    )
                     return true
                 }
             }

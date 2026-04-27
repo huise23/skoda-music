@@ -55,9 +55,10 @@ Last Updated: 2026-04-26
   - 前台 `UI` 按钮与硬件媒体键已回滚为本地直执（稳定优先），Service 路径保留给通知/浮窗/后台外部命令。
   - 执行层保留命令上下文参数（`source/allowToast`），由 Service 调度时统一传入。
   - 后台命令来源已细化并透传（`notification/overlay/media_button/audio_focus`），便于实机日志定位触发链路。
+  - `PlaybackService` 音频焦点策略调整为“仅 `AUDIOFOCUS_LOSS` 暂停”，忽略 transient loss，规避车机 1 秒停播回归。
   - Service 侧移除“无活动曲目前置拦截”过滤，避免状态滞后导致命令被误丢弃。
   - 播放状态上报增加“位置增量 + 播放中心跳”策略，提升 Service 侧 `positionMs` 快照时效性。
-  - 右上角构建标识改为显示 `#versionCode`（如 `#79`），用于实机快速确认版本。
+  - 构建标识调整为左上角大号显示 `#versionCode`（如 `#79`），用于实机快速确认版本。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
   - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。

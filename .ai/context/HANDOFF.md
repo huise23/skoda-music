@@ -53,9 +53,10 @@ Last Updated: 2026-04-26
   - 前台 `UI` 按钮和前台硬件媒体键已回滚为本地直执路径（实机稳定优先）。
   - Service 统一分发路径保留给通知/浮窗/后台外部命令，命令执行层保留 `source/allowToast` 参数。
   - 后台命令来源标记已打通：通知/浮窗/媒体键/音频焦点均带来源进入 Service 分发。
+  - 音频焦点策略改为“仅永久失焦暂停”，忽略 transient 失焦，降低车机短时停播概率。
   - Service 移除“无活动曲目前置过滤”，避免状态滞后导致命令被误丢弃。
   - 播放状态上报补充位置心跳（`>=2s` 位置增量或 `>=10s` 播放中心跳），提高 Service 快照位置准确度。
-  - 顶部版本标识显示 `#versionCode`（如 `#79`）以便现场验包。
+  - 顶部版本标识调整为左上角大号显示 `#versionCode`（如 `#79`）以便现场验包。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
 - 待完成：

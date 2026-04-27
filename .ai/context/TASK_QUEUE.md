@@ -19,6 +19,7 @@ Last Updated: 2026-04-26
 - [ ] `B-LRC-001` 歌词失败回退策略口径确认
 
 ## Done
+- [x] `T-S4-ARCH-017G` 车机停播热修（忽略 transient audio focus loss 自动暂停）
 - [x] `T-S4-ARCH-017F` 后台命令来源标记透传（notification/overlay/media_button/audio_focus）
 - [x] `T-S4-ARCH-017E` 播放回归热修：前台 UI/硬件键恢复本地直执，优先修复“点击播放无进度”问题
 - [x] `T-S4-ARCH-017D` Service 状态上报优化（位置增量+播放中心跳，降低快照位置滞后）

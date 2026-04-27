@@ -30,8 +30,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     )
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+            AudioManager.AUDIOFOCUS_LOSS -> {
                 if (snapshot.isPlaying) {
                     val pauseIntent = Intent(this, PlaybackService::class.java)
                         .setAction(PlaybackActions.ACTION_CMD_PAUSE)
@@ -41,6 +40,10 @@ class PlaybackService : Service(), OverlayController.Listener {
                         )
                     startService(pauseIntent)
                 }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Head-unit implementations may dispatch transient focus changes during normal playback.
+                // Avoid pausing on transient changes to prevent one-second stop regressions.
             }
         }
     }

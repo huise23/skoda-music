@@ -211,6 +211,10 @@ Last Updated: 2026-04-26
 - 决策: Service 命令分发保留来源标记，统一透传到执行层：`notification`、`overlay`、`media_button`、`audio_focus`、`service`。
 - 决策: 来源标记仅用于行为观测与日志定位，不改变当前“失败即失败”执行策略。
 
+## 2026-04-27 - 车机停播热修决策
+- 决策: `PlaybackService` 遇到 `AUDIOFOCUS_LOSS_TRANSIENT` 不再自动暂停，仅 `AUDIOFOCUS_LOSS` 执行暂停。
+- 决策: 构建号展示位移到左上角，并放大显示，格式保持 `#versionCode`。
+
 ## 2026-04-26 - 执行颗粒度调整（用户确认）
 - 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。
 - 决策: 每轮执行完成后仅记录“已完成 + 下一阶段”，不维护“待执行命令列表”式运行策略。

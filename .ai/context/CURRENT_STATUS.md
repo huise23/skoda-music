@@ -4,7 +4,7 @@ Last Updated: 2026-04-27
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@955cbae`（本地含未提交热修）
+- 当前主干: `master@5e6f155`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。

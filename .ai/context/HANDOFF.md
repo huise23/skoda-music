@@ -4,7 +4,7 @@ Last Updated: 2026-04-27
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@955cbae`（本地含未提交热修）
+- 当前主干: `master@5e6f155`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)

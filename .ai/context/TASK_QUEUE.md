@@ -6,10 +6,10 @@ Last Updated: 2026-04-27
 - [ ] `T-S4-VAL-032` 升级 API17 回归清单并补齐 Section 4 验收模板（不依赖车机窗口，可立即执行）
 
 ## In Progress
-- [ ] `T-S4-CORE-026A` 核心命令链路收口（Service/Activity 职责边界）
+- [ ] `T-S4-CORE-026A` 核心命令链路收口（已完成 `eb10b46` 热修：service focus-neutral + cache fallback 失败自动下一曲，待车机验收）
 - [ ] `T-S4-CORE-026B` 后台命令矩阵自测（已落地 command trace 与矩阵模板，待设备执行并回填结果）
 - [ ] `T-S4-OBS-035` API17 兼容 PostHog 上报客户端（已落地 fail-open 基线，待实机补充验证）
-- [ ] `T-S4-OBS-036` 关键节点埋点接线（已接 `app/play/background_command/resume` 主链路，待补齐 playlist 与在线联调）
+- [ ] `T-S4-OBS-036` 关键节点埋点接线（已补 `capture ok` 成功日志与 cache 回退失败事件，待在线联调）
 - [ ] `T-S4-OBS-037` 上报门禁与隐私策略（已落地敏感字段黑名单 + 字符串截断 + 节流预算，待实机压测）
 
 ## Blocked
@@ -22,6 +22,8 @@ Last Updated: 2026-04-27
 - [ ] `B-LRC-001` 歌词失败回退策略口径确认（依赖产品口径确认）
 
 ## Done
+- [x] `T-S4-CORE-026A-HF-20260427` 用户故障热修：自动下一曲失败 + Home 后无声卡住（提交 `eb10b46`）
+- [x] `T-S4-OBS-036-HF-20260427` PostHog 上报成功可见性：新增 `capture ok event=...` 日志
 - [x] `T-S4-OBS-039` PostHog 接入参数确认：已内置 US Cloud host + project key + project id 默认值
 - [x] `T-S4-OBS-034` PostHog 事件模型与字段规范：新增 `POSTHOG_INSTRUMENTATION_PLAN` 与 `POSTHOG_EVENT_DICTIONARY`
 - [x] `T-S4-OBS-035-PREP` API17 fail-open reporter 基线：新增 `PostHogTracker/PostHogConfigStore`（配置缺失 no-op）
@@ -50,3 +52,4 @@ Last Updated: 2026-04-27
 - PostHog 仅作为结构化事件链路，不替代本地全量原始日志。
 - 技术红线保持：`minSdk=17`、Emby-only、IPv4-only、业务 Host 不替换。
 - 推荐执行模式：核心模块用模块推进，文档与清单类任务用微任务并行推进。
+- 最新待验构建：`master@eb10b46`（已推送）。

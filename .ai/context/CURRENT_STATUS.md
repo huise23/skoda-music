@@ -4,7 +4,7 @@ Last Updated: 2026-04-27
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@5e6f155`
+- 当前主干: `master@eb10b46`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -69,6 +69,16 @@ Last Updated: 2026-04-27
 - 当前状态调整：
   - `T-S4-CORE-026A` 继续 In Progress（链路收口未完全结束）。
   - `T-S4-CORE-026B` 进入 In Progress（模板与观测已就绪，待设备执行矩阵并回填）。
+
+## Module Execution Progress (Hotfix Round, 2026-04-27)
+- 已按用户现场故障反馈完成一轮定点修复并推送：
+  - 提交：`eb10b46`（`origin/master`）。
+  - 问题 1（PostHog 上报是否成功）：`PostHogTracker` 新增 2xx 成功日志 `capture ok event=...`，可直接在 logcat 验证。
+  - 问题 2（未自动跳下一曲）：缓存回退下载失败/缓存播放异常分支改为统一走 `handlePlaybackErrorAutoSkip(...)`。
+  - 问题 3（Home 后悬浮窗有但无声/卡住）：`PlaybackService` 服务侧音频焦点改为 focus-neutral，不再触发服务侧焦点暂停链路干扰。
+- 当前判断：
+  - `M-S4-CORE-001` 已完成“故障定点热修”子阶段，待车机窗口完成行为验收后再评估是否可收口 `T-S4-CORE-026A`。
+  - `M-S4-OBS-006` 已具备“上报成功可见性”最小联调条件，`T-S4-OBS-038` 仍需实机在线查询完成闭环。
 
 ## Implementation Progress (2026-04-26)
 - 已新增后台控制基础模块：

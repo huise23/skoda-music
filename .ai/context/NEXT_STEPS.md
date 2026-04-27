@@ -12,9 +12,9 @@ Last Updated: 2026-04-27
 - 微任务执行（`ai-execution`）并行处理 `T-S4-VAL-032`
 
 ## Immediate Start
-- [ ] 首选任务: `T-S4-CORE-026A`
-- [ ] 并行任务: `T-S4-CORE-026B`（按 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 执行并回填）
-- [ ] 并行任务: `T-S4-OBS-036`（继续关键节点埋点补齐 + 与 `T-S4-CORE-026A` 对齐 source 语义）
+- [ ] 首选任务: `T-S4-CORE-026A` 车机验收（验证 `eb10b46`：自动下一曲 + Home 后音频连续性 + 焦点冲突是否消失）
+- [ ] 并行任务: `T-S4-CORE-026B`（按 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 回填 notification/overlay/media_button/audio_focus 四来源结果）
+- [ ] 并行任务: `T-S4-OBS-036`（检查 `SkodaPostHog` 的 `capture ok` 是否稳定出现，并补齐失败样本）
 - [ ] 并行任务: `T-S4-VAL-032`
 - [ ] 跟进任务: `T-S4-CORE-026C`、`T-S4-RESUME-020B`
 
@@ -30,6 +30,7 @@ Last Updated: 2026-04-27
 - 车机可用测试窗口不可控（阻塞 `T-S4-REG-022`）。
 - 恢复链路二阶段尚未形成服务侧闭环（阻塞最终验收）。
 - `T-S4-OBS-036/037` 尚未完成实机压测（阻塞 `T-S4-OBS-038` 在线验收）。
+- 当前环境无 `adb` 与 `gradle/gradlew`，本地无法直接完成设备日志抓取与编译回归。
 
 ## Need Confirmation
 - PostHog 事件保留策略与环境隔离口径（当前内置为 `prod`，是否需额外 `dev` 项目）。

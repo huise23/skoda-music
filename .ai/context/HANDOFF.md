@@ -4,7 +4,7 @@ Last Updated: 2026-04-27
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@5e6f155`
+- 当前主干: `master@eb10b46`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -23,7 +23,7 @@ Last Updated: 2026-04-27
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续收口命令链路并执行后台命令矩阵回填。
+1. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：先验证 `eb10b46`（自动下一曲、Home 后音频连续性、后台命令矩阵）并回填。
 2. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：继续关键节点埋点并完成实机压测。
 3. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
 4. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
@@ -67,6 +67,10 @@ Last Updated: 2026-04-27
   - `PlaybackService` 前台状态不再持有音频焦点，避免与 Activity ExoPlayer 焦点管理冲突。
   - `AUDIOFOCUS_LOSS` 自动暂停仅在后台生效，降低前台“播放 1 秒停住”风险。
   - 构建号徽标迁移到全局根布局左上角并增大字号，便于车机验包。
+- 本轮新增用户故障定点热修（2026-04-27，`eb10b46`）：
+  - `PostHogTracker` 增加成功上报日志：`capture ok event=... code=2xx`，用于验证事件是否真实入库。
+  - `MainActivity.downloadAndPlayTrack` 在缓存下载失败/缓存播放异常时改为自动切下一曲，不再停在失败曲目。
+  - `PlaybackService` 服务侧音频焦点改为 focus-neutral，并忽略服务侧焦点暂停链路，降低 Home 后悬浮窗无声/卡住概率。
 - 本轮新增模块执行进展（2026-04-27）：
   - `PlaybackControlBus` 增加 `DispatchResult(handled/detail)`，分发失败原因结构化。
   - `PlaybackService` 将每次命令分发结果写入 `PlaybackStateStore`（`action/source/handled/detail`）。

@@ -220,6 +220,12 @@ Last Updated: 2026-04-27
 - 决策: `AUDIOFOCUS_LOSS` 触发暂停仅在后台生效（`!appInForeground`），前台不再由 Service 下发自动暂停。
 - 决策: 构建号徽标改为全局根布局左上角显示，并增大字号，便于车机快速验包。
 
+## 2026-04-27 - 用户故障定点热修决策（`eb10b46`）
+- 决策: `PostHogTracker` 增加 2xx 成功上报日志（`capture ok event=...`），用于现场快速确认“是否上报成功”。
+- 决策: `downloadAndPlayTrack` 在缓存下载失败或缓存播放 setup 异常时，统一走 `handlePlaybackErrorAutoSkip(...)` 自动切下一曲。
+- 决策: `PlaybackService` 服务侧焦点策略保持 focus-neutral（仅释放、不主动请求），并忽略服务侧 `AUDIOFOCUS_LOSS` 触发暂停链路，优先消除 Home 后悬浮窗无声/卡住回归。
+- 决策: 本轮修复属于 `M-S4-CORE-001` 稳态补丁，不改变“后续可迁移播放真源至 Service”的长期方向。
+
 ## 2026-04-27 - S4 规划结构重排（ai-planning）
 - 决策: 规划从“单个大任务 `T-S4-CORE-026`”重排为模块化执行（`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`）。
 - 决策: Ready 队列仅保留立即可执行且依赖满足的任务（当前为 `T-S4-VAL-032` 与 `T-S4-CORE-026B`）。

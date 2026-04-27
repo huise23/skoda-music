@@ -25,8 +25,9 @@ Last Updated: 2026-04-27
   - 状态快照（`trackId/position/isPlaying`）可稳定驱动通知与浮窗展示。
 - Related Tasks: `T-S4-CORE-026A`, `T-S4-CORE-026B`
 - Priority: P0
-- Status: In Progress（子阶段1完成：命令分发结果可观测化 + 后台命令矩阵模板）
+- Status: In Progress（子阶段2完成：`eb10b46` 已修复 cache fallback 失败不跳歌 + Home 后服务焦点冲突，待车机验收）
 - Risks:
+  - 当前 focus-neutral 为稳态补丁，后续若迁移播放真源到 Service 需重新定义焦点策略。
   - 前台稳定性补丁与真源迁移目标存在冲突，需要以实机结果裁决。
 - Suitable For Module Execution?: Yes
 
@@ -141,7 +142,7 @@ Last Updated: 2026-04-27
   - 可导出单 session 事件流用于 AI 排障。
 - Related Tasks: `T-S4-OBS-034`, `T-S4-OBS-035`, `T-S4-OBS-036`, `T-S4-OBS-037`, `T-S4-OBS-038`
 - Priority: P1
-- Status: In Progress（已完成 schema 文档 + API17 fail-open reporter + 隐私/节流门禁，待真实参数联调与在线查询验收）
+- Status: In Progress（已完成 schema + fail-open reporter + 隐私门禁 + `capture ok` 成功日志，待真实参数联调与在线查询验收）
 - Risks:
   - 采集过多会稀释信号并增加车机网络负担。
   - 若字段设计不稳定，后续跨版本分析成本上升。

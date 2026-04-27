@@ -226,7 +226,9 @@ object PostHogTracker {
                 .post(body)
                 .build()
             client.newCall(request).execute().use { response ->
-                if (response.code() !in 200..299) {
+                if (response.code() in 200..299) {
+                    Log.i(TAG, "capture ok event=$eventName code=${response.code()}")
+                } else {
                     Log.w(TAG, "capture failed event=$eventName code=${response.code()}")
                 }
             }

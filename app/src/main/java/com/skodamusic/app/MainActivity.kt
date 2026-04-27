@@ -3063,14 +3063,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 }
                 if (cacheFile == null || !cacheFile.exists()) {
                     appendRuntimeLog("cache fallback failed requestId=$requestId track=${track.title}")
-                    updateState {
-                        it.copy(
-                            isPlaying = false,
-                            playbackStatusRes = R.string.status_paused,
-                            playPauseLabelRes = R.string.action_play,
-                            feedbackText = "动作反馈：缓存回退下载失败"
-                        )
-                    }
+                    PostHogTracker.capture(
+                        context = applicationContext,
+                        eventName = "playback_failed",
+                        properties = mapOf(
+                            "track_id" to track.id,
+                            "stage" to "cache_download",
+                            "error_code" to "CACHE_DOWNLOAD_FAILED",
+                            "error_summary" to "cache file missing after fallback download"
+                        ),
+                        priority = PostHogTracker.Priority.HIGH
+                    )
+                    handlePlaybackErrorAutoSkip(
+                        requestId = requestId,
+                        code = -1,
+                        detail = "cache fallback download failed",
+                        source = "cache_download"
+                    )
                     return@runOnUiThread
                 }
 
@@ -3189,14 +3198,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 } catch (e: Exception) {
                     appendRuntimeLog("cache playback exception requestId=$requestId type=${e.javaClass.simpleName} msg=${e.message}")
                     releasePlayer()
-                    updateState {
-                        it.copy(
-                            isPlaying = false,
-                            playbackStatusRes = R.string.status_paused,
-                            playPauseLabelRes = R.string.action_play,
-                            feedbackText = "动作反馈：缓存播放失败（${e.javaClass.simpleName}）"
-                        )
-                    }
+                    PostHogTracker.capture(
+                        context = applicationContext,
+                        eventName = "playback_failed",
+                        properties = mapOf(
+                            "track_id" to track.id,
+                            "stage" to "cache_prepare",
+                            "error_code" to "CACHE_PLAYBACK_SETUP_EXCEPTION",
+                            "error_summary" to e.javaClass.simpleName
+                        ),
+                        priority = PostHogTracker.Priority.HIGH
+                    )
+                    handlePlaybackErrorAutoSkip(
+                        requestId = requestId,
+                        code = -1,
+                        detail = "cache playback exception ${e.javaClass.simpleName}",
+                        source = "cache"
+                    )
                 }
             }
         }.start()

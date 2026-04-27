@@ -33,19 +33,10 @@ class PlaybackService : Service(), OverlayController.Listener {
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
-                if (!appInForeground && snapshot.isPlaying) {
-                    val pauseIntent = Intent(this, PlaybackService::class.java)
-                        .setAction(PlaybackActions.ACTION_CMD_PAUSE)
-                        .putExtra(
-                            PlaybackActions.EXTRA_CMD_SOURCE,
-                            PlaybackActions.CMD_SOURCE_AUDIO_FOCUS
-                        )
-                    startService(pauseIntent)
-                }
+                Log.i(LOG_TAG, "audio focus loss ignored in service focusChange=$focusChange")
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                // Head-unit implementations may dispatch transient focus changes during normal playback.
-                // Avoid pausing on transient changes to prevent one-second stop regressions.
+                Log.i(LOG_TAG, "audio focus transient loss ignored in service focusChange=$focusChange")
             }
         }
     }
@@ -279,32 +270,14 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private fun updateAudioFocus(shouldHoldFocus: Boolean) {
-        // Foreground playback is owned by ExoPlayer in activity; avoid duplicate focus control here.
-        if (appInForeground) {
+        // Playback is still activity/ExoPlayer-owned. Service-side focus arbitration can conflict with
+        // in-app player on head-unit ROMs, causing silent/background stuck states after HOME.
+        // Keep service focus-neutral until playback ownership is fully migrated into the service.
+        if (shouldHoldFocus || appInForeground) {
             abandonAudioFocusIfHeld()
             return
         }
-        if (shouldHoldFocus) {
-            requestAudioFocusIfNeeded()
-        } else {
-            abandonAudioFocusIfHeld()
-        }
-    }
-
-    private fun requestAudioFocusIfNeeded() {
-        if (hasAudioFocus) {
-            return
-        }
-        val manager = audioManager ?: return
-        try {
-            val result = manager.requestAudioFocus(
-                audioFocusListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            )
-            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } catch (_: Exception) {
-        }
+        abandonAudioFocusIfHeld()
     }
 
     private fun abandonAudioFocusIfHeld() {

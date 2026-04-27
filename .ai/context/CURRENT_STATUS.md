@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-27
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@2d5d315`
+- 当前主干: `master@955cbae`（本地含未提交热修）
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -61,6 +61,8 @@ Last Updated: 2026-04-26
   - 构建标识调整为左上角大号显示 `#versionCode`（如 `#79`），用于实机快速确认版本。
   - 恢复状态读写已从 `MainActivity` 抽离到 `PlaybackResumeStore`（含 legacy 键迁移），为后续 Service 真源迁移做结构准备。
   - `ACTION_STATE_UPDATE` 现已上报并持久化 `trackId/positionMs`，为 Service 侧状态机接管准备元数据基线。
+  - 新增热修：前台场景下 Service 不再管理音频焦点，避免与 Activity ExoPlayer 重复抢焦点导致“播放 1 秒后停住”。
+  - 构建号徽标改为全局左上角显示并进一步放大，格式保持 `#versionCode`。
 - 当前状态：S4 代码已进入“可车机联调 + 问题定点修复”阶段。
 
 ## Known Constraints

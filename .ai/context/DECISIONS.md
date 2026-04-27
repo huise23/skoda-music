@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-27
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -214,6 +214,11 @@ Last Updated: 2026-04-26
 ## 2026-04-27 - 车机停播热修决策
 - 决策: `PlaybackService` 遇到 `AUDIOFOCUS_LOSS_TRANSIENT` 不再自动暂停，仅 `AUDIOFOCUS_LOSS` 执行暂停。
 - 决策: 构建号展示位移到左上角，并放大显示，格式保持 `#versionCode`。
+
+## 2026-04-27 - 前台 1 秒停播补丁决策
+- 决策: 前台播放时（`appInForeground=true`）`PlaybackService` 不再请求/持有音频焦点，避免与 `MainActivity` 的 ExoPlayer 焦点管理冲突。
+- 决策: `AUDIOFOCUS_LOSS` 触发暂停仅在后台生效（`!appInForeground`），前台不再由 Service 下发自动暂停。
+- 决策: 构建号徽标改为全局根布局左上角显示，并增大字号，便于车机快速验包。
 
 ## 2026-04-26 - 执行颗粒度调整（用户确认）
 - 决策: 执行任务改为大颗粒阶段闭环，减少过细拆分，单轮优先产出可联调结果。

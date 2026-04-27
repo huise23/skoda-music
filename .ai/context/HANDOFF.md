@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-27
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@2d5d315`
+- 当前主干: `master@955cbae`（本地含未提交热修）
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -59,6 +59,10 @@ Last Updated: 2026-04-26
   - 顶部版本标识调整为左上角大号显示 `#versionCode`（如 `#79`）以便现场验包。
   - 恢复状态存储抽离为 `PlaybackResumeStore`（带 legacy 键迁移），`MainActivity` 不再直接操作恢复键。
   - `ACTION_STATE_UPDATE` 扩展 `trackId/positionMs` 上报，并写入 `PlaybackStateStore.Snapshot`。
+- 本轮新增热修（2026-04-27）：
+  - `PlaybackService` 前台状态不再持有音频焦点，避免与 Activity ExoPlayer 焦点管理冲突。
+  - `AUDIOFOCUS_LOSS` 自动暂停仅在后台生效，降低前台“播放 1 秒停住”风险。
+  - 构建号徽标迁移到全局根布局左上角并增大字号，便于车机验包。
 - 待完成：
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；

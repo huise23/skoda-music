@@ -31,7 +31,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
-                if (snapshot.isPlaying) {
+                if (!appInForeground && snapshot.isPlaying) {
                     val pauseIntent = Intent(this, PlaybackService::class.java)
                         .setAction(PlaybackActions.ACTION_CMD_PAUSE)
                         .putExtra(
@@ -240,6 +240,11 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     private fun updateAudioFocus(shouldHoldFocus: Boolean) {
+        // Foreground playback is owned by ExoPlayer in activity; avoid duplicate focus control here.
+        if (appInForeground) {
+            abandonAudioFocusIfHeld()
+            return
+        }
         if (shouldHoldFocus) {
             requestAudioFocusIfNeeded()
         } else {

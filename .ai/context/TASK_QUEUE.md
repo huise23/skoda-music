@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-27
 
 ## Ready
 - [ ] `T-S4-CORE-026` S4 后台控制稳定化大闭环（ARCH + MEDIA + OVL + NOTIFY + RESUME）
@@ -19,6 +19,7 @@ Last Updated: 2026-04-26
 - [ ] `B-LRC-001` 歌词失败回退策略口径确认
 
 ## Done
+- [x] `T-S4-ARCH-017H` 前台停播热修：Service 前台不再管理音频焦点，`AUDIOFOCUS_LOSS` 自动暂停仅后台生效；构建号徽标迁移全局左上并放大
 - [x] `T-S4-ARCH-017G` 车机停播热修（忽略 transient audio focus loss 自动暂停）
 - [x] `T-S4-ARCH-017F` 后台命令来源标记透传（notification/overlay/media_button/audio_focus）
 - [x] `T-S4-ARCH-017E` 播放回归热修：前台 UI/硬件键恢复本地直执，优先修复“点击播放无进度”问题

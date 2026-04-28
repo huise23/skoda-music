@@ -2084,7 +2084,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             ensureLibraryTracksLoaded("emby-load-success")
                         }
                         showToast(R.string.toast_emby_success)
-                        if (loadedTracks.isNotEmpty()) {
+                        if (AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD && loadedTracks.isNotEmpty()) {
                             appendRuntimeLog("emby load success autoplay-first-track")
                             playTrackAtCurrentIndex("autoplay_first")
                         }
@@ -4241,6 +4241,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
+        const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
         @Volatile var downloadCacheClearedAtColdStart = false
     }
 }

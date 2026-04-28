@@ -81,49 +81,82 @@ class OverlayController(
         }
 
         val container = LinearLayout(context)
-        container.orientation = LinearLayout.HORIZONTAL
-        container.gravity = Gravity.CENTER_VERTICAL
+        container.orientation = LinearLayout.VERTICAL
+        container.gravity = Gravity.CENTER_HORIZONTAL
         container.setBackgroundColor(Color.parseColor("#CC162431"))
-        val padding = dp(10)
+        val padding = dp(12)
         container.setPadding(padding, padding, padding, padding)
 
         val title = TextView(context)
         title.setTextColor(Color.WHITE)
-        title.textSize = 14f
-        title.maxLines = 1
-        val titleParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        title.textSize = 16f
+        title.maxLines = 2
+        title.gravity = Gravity.CENTER
+        val titleParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(10)
+        }
         container.addView(title, titleParams)
 
-        val prev = ImageButton(context)
-        prev.setImageResource(android.R.drawable.ic_media_previous)
-        prev.setBackgroundColor(Color.TRANSPARENT)
-        prev.setOnClickListener { listener.onCommand(PlaybackActions.ACTION_CMD_PREV) }
-        container.addView(prev, LinearLayout.LayoutParams(dp(36), dp(36)))
+        val firstRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val secondRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
 
-        val playPause = ImageButton(context)
-        playPause.setImageResource(android.R.drawable.ic_media_play)
-        playPause.setBackgroundColor(Color.TRANSPARENT)
-        playPause.setOnClickListener { listener.onCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE) }
-        container.addView(playPause, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val rowParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(6)
+        }
+        container.addView(firstRow, rowParams)
+        container.addView(secondRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
 
-        val next = ImageButton(context)
-        next.setImageResource(android.R.drawable.ic_media_next)
-        next.setBackgroundColor(Color.TRANSPARENT)
-        next.setOnClickListener { listener.onCommand(PlaybackActions.ACTION_CMD_NEXT) }
-        container.addView(next, LinearLayout.LayoutParams(dp(36), dp(36)))
-
-        val close = ImageButton(context)
-        close.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-        close.setBackgroundColor(Color.TRANSPARENT)
-        close.setOnClickListener {
+        val prev = createControlButton(android.R.drawable.ic_media_previous) {
+            listener.onCommand(PlaybackActions.ACTION_CMD_PREV)
+        }
+        val playPause = createControlButton(android.R.drawable.ic_media_play) {
+            listener.onCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE)
+        }
+        val next = createControlButton(android.R.drawable.ic_media_next) {
+            listener.onCommand(PlaybackActions.ACTION_CMD_NEXT)
+        }
+        val close = createControlButton(android.R.drawable.ic_menu_close_clear_cancel) {
             hide()
             listener.onDismissByUser()
         }
-        container.addView(close, LinearLayout.LayoutParams(dp(34), dp(34)))
+
+        firstRow.addView(prev, buildControlButtonParams(rightMargin = dp(6)))
+        firstRow.addView(playPause, buildControlButtonParams())
+        secondRow.addView(next, buildControlButtonParams(rightMargin = dp(6)))
+        secondRow.addView(close, buildControlButtonParams())
 
         rootView = container
         titleView = title
         playPauseButton = playPause
+    }
+
+    private fun createControlButton(iconRes: Int, onClick: () -> Unit): ImageButton {
+        return ImageButton(context).apply {
+            setImageResource(iconRes)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun buildControlButtonParams(rightMargin: Int = 0): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+            this.rightMargin = rightMargin
+        }
     }
 
     private fun buildLayoutParams(): WindowManager.LayoutParams {
@@ -132,7 +165,7 @@ class OverlayController(
             else -> WindowManager.LayoutParams.TYPE_PHONE
         }
         return WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            dp(240),
             WindowManager.LayoutParams.WRAP_CONTENT,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -140,9 +173,9 @@ class OverlayController(
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP
-            x = 0
-            y = dp(32)
+            gravity = Gravity.TOP or Gravity.END
+            x = dp(8)
+            y = dp(44)
         }
     }
 

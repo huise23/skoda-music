@@ -12,6 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -292,37 +293,50 @@ class AppUpdateManager(
     }
 
     private fun fetchLatestRelease(): ReleaseFetchResult {
-        val url = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
-        val request = Request.Builder()
-            .url(url)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", UPDATE_USER_AGENT)
-            .build()
+        val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
+        val requestUrls = listOf(
+            buildCfProxyUrl(apiUrl),
+            apiUrl
+        ).distinct()
 
-        return try {
-            client.newCall(request).execute().use { response ->
-                if (response.code() !in 200..299) {
-                    return ReleaseFetchResult(
-                        httpStatus = response.code(),
-                        errorCode = "GITHUB_RELEASE_HTTP_${response.code()}",
-                        message = "github releases http ${response.code()}"
-                    )
+        var lastFailure = ReleaseFetchResult(
+            errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",
+            message = "no request executed"
+        )
+        for (url in requestUrls) {
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", UPDATE_USER_AGENT)
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.code() !in 200..299) {
+                        lastFailure = ReleaseFetchResult(
+                            httpStatus = response.code(),
+                            errorCode = "GITHUB_RELEASE_HTTP_${response.code()}",
+                            message = "github releases http ${response.code()} via ${shortenUrlForLog(url)}"
+                        )
+                    } else {
+                        val body = response.body()?.string().orEmpty()
+                        if (body.isBlank()) {
+                            lastFailure = ReleaseFetchResult(
+                                errorCode = "GITHUB_RELEASE_EMPTY_BODY",
+                                message = "github releases empty body via ${shortenUrlForLog(url)}"
+                            )
+                        } else {
+                            return parseReleasePayload(body)
+                        }
+                    }
                 }
-                val body = response.body()?.string().orEmpty()
-                if (body.isBlank()) {
-                    return ReleaseFetchResult(
-                        errorCode = "GITHUB_RELEASE_EMPTY_BODY",
-                        message = "github releases empty body"
-                    )
-                }
-                parseReleasePayload(body)
+            } catch (e: Exception) {
+                lastFailure = ReleaseFetchResult(
+                    errorCode = "GITHUB_RELEASE_EXCEPTION",
+                    message = "${e.javaClass.simpleName}: ${e.message.orEmpty()} via ${shortenUrlForLog(url)}"
+                )
             }
-        } catch (e: Exception) {
-            ReleaseFetchResult(
-                errorCode = "GITHUB_RELEASE_EXCEPTION",
-                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
-            )
         }
+        return lastFailure
     }
 
     private fun parseReleasePayload(payload: String): ReleaseFetchResult {
@@ -638,12 +652,28 @@ class AppUpdateManager(
         if (normalized.isBlank()) {
             return emptyList()
         }
-        return listOf(
+        val directCandidates = listOf(
             "https://ghfast.top/$normalized",
             "https://mirror.ghproxy.com/$normalized",
             "https://ghproxy.net/$normalized",
             normalized
         ).distinct()
+        val cfCandidates = directCandidates.map { buildCfProxyUrl(it) }
+        return (cfCandidates + directCandidates).distinct()
+    }
+
+    private fun buildCfProxyUrl(rawUrl: String): String {
+        val normalized = rawUrl.trim()
+        if (normalized.isEmpty()) {
+            return normalized
+        }
+        val encoded = URLEncoder.encode(normalized, "UTF-8")
+        return "$CF_ACCEL_PROXY_PREFIX$encoded"
+    }
+
+    private fun shortenUrlForLog(rawUrl: String): String {
+        val text = rawUrl.trim()
+        return if (text.length <= 96) text else text.take(96) + "..."
     }
 
     private fun sanitizeApkFileName(raw: String): String {
@@ -681,6 +711,7 @@ class AppUpdateManager(
         const val KEY_REMOTE_VERSION_NAME = "remote_version_name"
 
         const val GITHUB_API_BASE = "https://api.github.com"
+        const val CF_ACCEL_PROXY_PREFIX = "https://config-ui.52mn.ru/api/fetch-url?SECRET_TOKEN=id93UYra8P0E1I&url="
         const val UPDATE_USER_AGENT = "skoda-music-update-checker"
 
         const val AUTO_CHECK_SUCCESS_COOLDOWN_MS = 24L * 60L * 60L * 1000L

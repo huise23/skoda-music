@@ -35,6 +35,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
+import com.skodamusic.app.data.EmbySessionCache
 import com.skodamusic.app.model.AuthByNameResult
 import com.skodamusic.app.model.DeleteTrackOutcome
 import com.skodamusic.app.model.DownloadControlPhase
@@ -47,6 +48,7 @@ import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.LyricLine
 import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.model.TrackCodec
 import com.skodamusic.app.model.TrackDownloadState
 import com.skodamusic.app.model.UiState
 import com.skodamusic.app.observability.PostHogTracker
@@ -80,7 +82,6 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.net.URLEncoder
 import java.net.URL
-import java.text.Collator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
@@ -203,6 +204,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var appUpdateCoordinator: AppUpdateCoordinator
     private lateinit var backgroundExecutor: AppBackgroundExecutor
     private lateinit var wifiNetworkGate: WifiNetworkGate
+    private lateinit var embySessionCache: EmbySessionCache
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
     private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
@@ -217,6 +219,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackStateStore = PlaybackStateStore(applicationContext)
         backgroundExecutor = AppBackgroundExecutor(ioThreads = 3)
         wifiNetworkGate = WifiNetworkGate(this) { message -> appendRuntimeLog(message) }
+        embySessionCache = EmbySessionCache(
+            context = applicationContext,
+            prefsName = PREFS_EMBY,
+            keyAuthBaseUrl = KEY_AUTH_BASE_URL,
+            keyAuthUsername = KEY_AUTH_USERNAME,
+            keyAuthAccessToken = KEY_AUTH_ACCESS_TOKEN,
+            keyAuthUserId = KEY_AUTH_USER_ID,
+            keyAuthSavedAtMs = KEY_AUTH_SAVED_AT_MS,
+            keyRecommendCacheDay = KEY_RECOMMEND_CACHE_DAY,
+            keyRecommendCacheOwner = KEY_RECOMMEND_CACHE_OWNER,
+            keyRecommendCacheJson = KEY_RECOMMEND_CACHE_JSON
+        )
         postHogSessionId = PostHogTracker.startNewSession(
             context = applicationContext,
             launchSource = "cold_start"
@@ -861,8 +875,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 log = { message -> appendRuntimeLog("library $message") },
                 httpClient = embyClient
             )
-            val pageTracks = if (response.code in 200..299) parseTrackItems(response.payload) else emptyList()
-            val totalCount = parseTotalRecordCount(response.payload, start + pageTracks.size)
+            val pageTracks = if (response.code in 200..299) TrackCodec.parseTrackItems(response.payload) else emptyList()
+            val totalCount = TrackCodec.parseTotalRecordCount(response.payload, start + pageTracks.size)
             runOnUiThread {
                 libraryLoadInFlight = false
                 if (response.code !in 200..299) {
@@ -877,7 +891,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         existingIds.add(track.id)
                     }
                 }
-                libraryTracks.sortWith(trackTitleComparator())
+                libraryTracks.sortWith(TrackCodec.titleComparator())
                 libraryNextStartIndex = (start + pageTracks.size).coerceAtLeast(libraryTracks.size)
                 libraryTotalRecordCount = totalCount.coerceAtLeast(libraryTracks.size)
                 appendRuntimeLog(
@@ -1654,7 +1668,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     token = refreshed.accessToken
                     embySessionUserId = refreshed.userId
                     embyAccessToken = refreshed.accessToken
-                    persistCachedSessionAuth(base, credentials.username, refreshed)
+                    embySessionCache.persistCachedSessionAuth(base, credentials.username, refreshed)
                     response = executeGet(
                         endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
                         token = token,
@@ -1664,7 +1678,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 }
             }
-            val fetched = if (response.code in 200..299) parseTrackItems(response.payload) else emptyList()
+            val fetched = if (response.code in 200..299) TrackCodec.parseTrackItems(response.payload) else emptyList()
             runOnUiThread {
                 queueTailRefillInFlight = false
                 if (response.code !in 200..299 || fetched.isEmpty()) {
@@ -3235,11 +3249,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         try {
             val embyBase = normalizeEmbyBase(credentials.baseUrl)
             val embyClient = buildEmbyHttpClient(embyBase, credentials.cfReferenceDomain)
-            val ownerKey = buildRecommendCacheOwnerKey(embyBase, credentials.username)
+            val ownerKey = TrackCodec.buildRecommendCacheOwnerKey(embyBase, credentials.username)
             logger("base=$embyBase")
             logger("force-refresh=$forceRefreshRecommendations")
 
-            var auth: AuthByNameResult? = loadCachedSessionAuth(
+            var auth: AuthByNameResult? = embySessionCache.loadCachedSessionAuth(
                 embyBase = embyBase,
                 username = credentials.username
             )
@@ -3250,7 +3264,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
 
             if (!forceRefreshRecommendations && auth != null) {
-                val cachedTracks = loadTodayRecommendCache(ownerKey)
+                val cachedTracks = embySessionCache.loadTodayRecommendCache(ownerKey)
                 if (cachedTracks.isNotEmpty()) {
                     logger("tracks=${cachedTracks.size}")
                     logger("tracks-source=缓存-当日")
@@ -3309,7 +3323,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
                 if (recommendedResponse.code == 401 && !retriedAfterUnauthorized) {
                     logger("recommend unauthorized -> re-auth")
-                    clearCachedSessionAuth(embyBase, credentials.username)
+                    embySessionCache.clearCachedSessionAuth(embyBase, credentials.username)
                     auth = authenticateByName(
                         embyBase = embyBase,
                         username = credentials.username,
@@ -3332,7 +3346,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 }
 
                 val source = "随机-${DEFAULT_HOME_QUEUE_SIZE}"
-                val tracks = parseTrackItems(recommendedResponse.payload)
+                val tracks = TrackCodec.parseTrackItems(recommendedResponse.payload)
 
                 logger("tracks=${tracks.size}")
                 if (tracks.isNotEmpty()) {
@@ -3346,12 +3360,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 }
 
-                persistCachedSessionAuth(
+                embySessionCache.persistCachedSessionAuth(
                     embyBase = embyBase,
                     username = credentials.username,
                     auth = activeAuth
                 )
-                persistTodayRecommendCache(ownerKey, tracks)
+                embySessionCache.persistTodayRecommendCache(ownerKey, tracks)
 
                 return EmbyLoadResult(
                     success = true,
@@ -3683,94 +3697,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
     }
 
-    private fun parseTrackItems(jsonText: String): List<EmbyTrack> {
-        val out = mutableListOf<EmbyTrack>()
-        val trimmed = jsonText.trim()
-        if (trimmed.isEmpty()) {
-            return out
-        }
-        if (trimmed.startsWith("[")) {
-            val items = JSONArray(trimmed)
-            for (i in 0 until items.length()) {
-                val track = extractTrack(items.optJSONObject(i))
-                if (track != null) {
-                    out.add(track)
-                }
-            }
-            return out
-        }
-
-        val root = JSONObject(trimmed)
-        val items = root.optJSONArray("Items") ?: return out
-        for (i in 0 until items.length()) {
-            val track = extractTrack(items.optJSONObject(i))
-            if (track != null) {
-                out.add(track)
-            }
-        }
-        return out
-    }
-
-    private fun parseTotalRecordCount(jsonText: String, fallback: Int): Int {
-        val trimmed = jsonText.trim()
-        if (trimmed.isEmpty() || !trimmed.startsWith("{")) {
-            return fallback
-        }
-        return try {
-            val root = JSONObject(trimmed)
-            val total = root.optInt("TotalRecordCount", fallback)
-            if (total <= 0) fallback else total
-        } catch (_: Exception) {
-            fallback
-        }
-    }
-
-    private fun extractTrack(item: JSONObject?): EmbyTrack? {
-        if (item == null) {
-            return null
-        }
-        val itemType = item.optString("Type").trim()
-        if (itemType.isNotEmpty() && !itemType.equals("Audio", ignoreCase = true)) {
-            return null
-        }
-        val trackId = item.optString("Id").trim()
-        val candidates = listOf(
-            item.optString("Name").trim(),
-            item.optString("SortName").trim(),
-            item.optString("Album").trim()
-        )
-        val title = candidates.firstOrNull { it.isNotEmpty() }.orEmpty()
-        val artists = item.optJSONArray("Artists")
-        val artist = if (artists != null && artists.length() > 0) {
-            artists.optString(0).trim()
-        } else {
-            item.optString("AlbumArtist").trim()
-        }
-        if (trackId.isEmpty() || title.isEmpty()) {
-            return null
-        }
-        return EmbyTrack(
-            id = trackId,
-            title = title,
-            artist = artist,
-            runtimeTicks = item.optLong("RunTimeTicks", -1L)
-        )
-    }
-
-    private fun trackTitleComparator(): Comparator<EmbyTrack> {
-        val collator = Collator.getInstance(Locale.CHINA).apply {
-            strength = Collator.PRIMARY
-        }
-        return Comparator { left, right ->
-            val titleCompare = collator.compare(left.title.trim(), right.title.trim())
-            if (titleCompare != 0) {
-                titleCompare
-            } else {
-                left.id.compareTo(right.id, ignoreCase = true)
-            }
-        }
-    }
-
     private fun readTextWithLineBreaks(stream: InputStream?): String {
         if (stream == null) {
             return ""
@@ -3829,126 +3755,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return lower.startsWith("http://") || lower.startsWith("https://")
     }
 
-    private fun buildRecommendCacheOwnerKey(embyBase: String, username: String): String {
-        return "${embyBase.lowercase(Locale.US)}|${username.trim().lowercase(Locale.US)}"
-    }
-
-    private fun currentDayKey(): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    }
-
-    private fun loadCachedSessionAuth(
-        embyBase: String,
-        username: String
-    ): AuthByNameResult? {
-        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-        val savedBase = prefs.getString(KEY_AUTH_BASE_URL, "").orEmpty().trim()
-        val savedUser = prefs.getString(KEY_AUTH_USERNAME, "").orEmpty().trim()
-        if (!savedBase.equals(embyBase, ignoreCase = true) || !savedUser.equals(username, ignoreCase = true)) {
-            return null
-        }
-        val token = prefs.getString(KEY_AUTH_ACCESS_TOKEN, "").orEmpty().trim()
-        val userId = prefs.getString(KEY_AUTH_USER_ID, "").orEmpty().trim()
-        if (token.isEmpty() || userId.isEmpty()) {
-            return null
-        }
-        return AuthByNameResult(accessToken = token, userId = userId)
-    }
-
-    private fun persistCachedSessionAuth(
-        embyBase: String,
-        username: String,
-        auth: AuthByNameResult
-    ) {
-        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .edit()
-            .putString(KEY_AUTH_BASE_URL, embyBase)
-            .putString(KEY_AUTH_USERNAME, username)
-            .putString(KEY_AUTH_ACCESS_TOKEN, auth.accessToken)
-            .putString(KEY_AUTH_USER_ID, auth.userId)
-            .putLong(KEY_AUTH_SAVED_AT_MS, System.currentTimeMillis())
-            .apply()
-    }
-
-    private fun clearCachedSessionAuth(embyBase: String, username: String) {
-        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-        val savedBase = prefs.getString(KEY_AUTH_BASE_URL, "").orEmpty().trim()
-        val savedUser = prefs.getString(KEY_AUTH_USERNAME, "").orEmpty().trim()
-        if (!savedBase.equals(embyBase, ignoreCase = true) || !savedUser.equals(username, ignoreCase = true)) {
-            return
-        }
-        prefs.edit()
-            .remove(KEY_AUTH_BASE_URL)
-            .remove(KEY_AUTH_USERNAME)
-            .remove(KEY_AUTH_ACCESS_TOKEN)
-            .remove(KEY_AUTH_USER_ID)
-            .remove(KEY_AUTH_SAVED_AT_MS)
-            .apply()
-    }
-
-    private fun loadTodayRecommendCache(ownerKey: String): List<EmbyTrack> {
-        val prefs = getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-        val day = prefs.getString(KEY_RECOMMEND_CACHE_DAY, "").orEmpty()
-        val owner = prefs.getString(KEY_RECOMMEND_CACHE_OWNER, "").orEmpty()
-        if (day != currentDayKey() || owner != ownerKey) {
-            return emptyList()
-        }
-        val payload = prefs.getString(KEY_RECOMMEND_CACHE_JSON, "").orEmpty()
-        if (payload.isBlank()) {
-            return emptyList()
-        }
-        return parseCachedTrackArray(payload)
-    }
-
-    private fun persistTodayRecommendCache(ownerKey: String, tracks: List<EmbyTrack>) {
-        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .edit()
-            .putString(KEY_RECOMMEND_CACHE_DAY, currentDayKey())
-            .putString(KEY_RECOMMEND_CACHE_OWNER, ownerKey)
-            .putString(KEY_RECOMMEND_CACHE_JSON, buildCachedTrackArray(tracks))
-            .apply()
-    }
-
-    private fun buildCachedTrackArray(tracks: List<EmbyTrack>): String {
-        val arr = JSONArray()
-        tracks.forEach { track ->
-            arr.put(
-                JSONObject()
-                    .put("id", track.id)
-                    .put("title", track.title)
-                    .put("artist", track.artist)
-                    .put("runtimeTicks", track.runtimeTicks)
-            )
-        }
-        return arr.toString()
-    }
-
-    private fun parseCachedTrackArray(payload: String): List<EmbyTrack> {
-        return try {
-            val arr = JSONArray(payload)
-            val out = mutableListOf<EmbyTrack>()
-            for (i in 0 until arr.length()) {
-                val item = arr.optJSONObject(i) ?: continue
-                val id = item.optString("id").trim()
-                val title = item.optString("title").trim()
-                if (id.isEmpty() || title.isEmpty()) {
-                    continue
-                }
-                out.add(
-                    EmbyTrack(
-                        id = id,
-                        title = title,
-                        artist = item.optString("artist").trim(),
-                        runtimeTicks = item.optLong("runtimeTicks", -1L)
-                    )
-                )
-            }
-            out
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
     private fun restorePlaybackResumeStateIfNeeded() {
         if (resumeRestoreAttempted) {
             return
@@ -3972,7 +3778,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             appendRuntimeLog("resume restore snapshot-empty")
             return
         }
-        val restoredTracks = parseCachedTrackArray(payload)
+        val restoredTracks = TrackCodec.parseCachedTrackArray(payload)
         if (restoredTracks.isEmpty()) {
             appendRuntimeLog("resume restore snapshot-parse-empty")
             PostHogTracker.capture(
@@ -4048,7 +3854,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (embyBase.isEmpty() || username.isEmpty()) {
             return
         }
-        val auth = loadCachedSessionAuth(embyBase = embyBase, username = username)
+        val auth = embySessionCache.loadCachedSessionAuth(embyBase = embyBase, username = username)
         if (auth != null) {
             embySessionBaseUrl = embyBase
             embySessionUserId = auth.userId
@@ -4161,7 +3967,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val usernameForPersist = embyUsernameInput.text?.toString()?.trim().orEmpty()
         playbackResumeStore.save(
             PlaybackResumeStore.Snapshot(
-                queueJson = buildCachedTrackArray(loadedTracks),
+                queueJson = TrackCodec.buildCachedTrackArray(loadedTracks),
                 index = safeIndex,
                 positionMs = resolvedPosition.coerceAtLeast(0L),
                 wasPlaying = isPlaying,
@@ -4224,13 +4030,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (payload.isBlank()) {
             return
         }
-        val tracks = parseCachedTrackArray(payload)
+        val tracks = TrackCodec.parseCachedTrackArray(payload)
         val filtered = tracks.filterNot { it.id == trackId }
         if (filtered.size == tracks.size) {
             return
         }
         prefs.edit()
-            .putString(KEY_RECOMMEND_CACHE_JSON, buildCachedTrackArray(filtered))
+            .putString(KEY_RECOMMEND_CACHE_JSON, TrackCodec.buildCachedTrackArray(filtered))
             .apply()
     }
 
@@ -4266,7 +4072,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun resolveResumeTrackIdForColdStartKeep(): String? {
         val snapshot = playbackResumeStore.read() ?: return null
-        val tracks = parseCachedTrackArray(snapshot.queueJson)
+        val tracks = TrackCodec.parseCachedTrackArray(snapshot.queueJson)
         if (tracks.isEmpty()) {
             return null
         }

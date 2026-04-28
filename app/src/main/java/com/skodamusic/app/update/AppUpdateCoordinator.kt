@@ -89,7 +89,7 @@ class AppUpdateCoordinator(
         if (updateCheckInFlight || updateInstallInFlight) {
             return
         }
-        if (!ensureWifiConnectedForNetworkRequest(requestTag = "update_check", promptUser = trigger != "cold_start")) {
+        if (!ensureWifiConnectedForNetworkRequest("update_check", trigger != "cold_start")) {
             if (trigger != "cold_start") {
                 setFeedbackText(activity.getString(R.string.feedback_network_wifi_required))
                 showToast(R.string.toast_network_wifi_required)
@@ -204,7 +204,7 @@ class AppUpdateCoordinator(
         if (updateInstallInFlight || updateCheckInFlight) {
             return
         }
-        if (!ensureWifiConnectedForNetworkRequest(requestTag = "update_download_install", promptUser = true)) {
+        if (!ensureWifiConnectedForNetworkRequest("update_download_install", true)) {
             setFeedbackText(activity.getString(R.string.feedback_network_wifi_required))
             showToast(R.string.toast_network_wifi_required)
             return

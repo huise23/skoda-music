@@ -36,6 +36,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
+import com.skodamusic.app.emby.EmbyApi
 import com.skodamusic.app.model.AuthByNameResult
 import com.skodamusic.app.model.DeleteTrackOutcome
 import com.skodamusic.app.model.DownloadControlPhase
@@ -64,11 +65,8 @@ import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.skodamusic.app.update.AppUpdateCoordinator
 import com.skodamusic.app.update.AppUpdateManager
-import okhttp3.Dns
-import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -76,12 +74,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 import java.net.URLEncoder
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
@@ -167,8 +160,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
     private var playbackErrorHandledRequestId: Int = -1
-    private val dnsCacheLock = Any()
-    private val cfPreferredIpv4Cache = LinkedHashMap<String, Pair<Long, List<InetAddress>>>()
     private val downloadStateLock = Any()
     private val trackDownloadStates = LinkedHashMap<String, TrackDownloadState>()
     private val uiProgressHandler = Handler(Looper.getMainLooper())
@@ -205,10 +196,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var backgroundExecutor: AppBackgroundExecutor
     private lateinit var wifiNetworkGate: WifiNetworkGate
     private lateinit var embySessionCache: EmbySessionCache
+    private lateinit var embyApi: EmbyApi
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
-    private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
-        ?: throw IllegalStateException("json media type parse failed")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val bootStartMs = SystemClock.elapsedRealtime()
@@ -231,6 +221,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             keyRecommendCacheOwner = KEY_RECOMMEND_CACHE_OWNER,
             keyRecommendCacheJson = KEY_RECOMMEND_CACHE_JSON
         )
+        embyApi = EmbyApi { message -> appendRuntimeLog(message) }
         postHogSessionId = PostHogTracker.startNewSession(
             context = applicationContext,
             launchSource = "cold_start"
@@ -865,10 +856,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val limit = LIBRARY_PAGE_SIZE
         libraryLoadInFlight = true
         appendRuntimeLog("library load start trigger=$trigger start=$start limit=$limit")
-        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
+        val embyClient = embyApi.buildHttpClient(base, resolveCfReferenceDomain())
         backgroundExecutor.execute {
-            val endpoint = buildEmbyLibraryItemsUrl(base, userId, token, start, limit)
-            val response = executeGet(
+            val endpoint = embyApi.buildLibraryItemsUrl(base, userId, token, start, limit)
+            val response = embyApi.executeGet(
                 endpoint = endpoint,
                 token = token,
                 requestLabel = "GET /Users/{id}/Items (Library Paging)",
@@ -1051,9 +1042,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .trim()
     }
 
+    private fun resolveCfReferenceDomain(): String {
+        val input = cfRefDomainInput.text?.toString()?.trim().orEmpty()
+        if (input.isNotEmpty()) {
+            return input
+        }
+        return getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .getString(KEY_CF_REF_DOMAIN, "")
+            .orEmpty()
+            .trim()
+    }
+
     private fun fetchLyricsLinesFromLrcApi(baseUrl: String, trackName: String, artistName: String): List<LyricLine> {
         val endpoint = buildLrcApiLyricsUrl(baseUrl, trackName, artistName)
-        val lrcApiClient = buildEmbyHttpClient(baseUrl, resolveCfReferenceDomain())
+        val lrcApiClient = embyApi.buildHttpClient(baseUrl, resolveCfReferenceDomain())
         return try {
             appendRuntimeLog("lyrics fetch GET $endpoint")
             val request = Request.Builder()
@@ -1064,7 +1066,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             lrcApiClient.newCall(request).execute().use { response ->
                 val code = response.code()
                 val payload = response.body()?.string().orEmpty()
-                appendRuntimeLog("lyrics fetch response code=$code body=${previewPayload(payload)}")
+                appendRuntimeLog("lyrics fetch response code=$code body=${embyApi.previewPayload(payload)}")
                 if (code !in 200..299 || payload.isBlank()) {
                     emptyList()
                 } else {
@@ -1420,7 +1422,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         val wasPlaying = uiState.isPlaying
         appendRuntimeLog("delete source start track=${track.title} id=${shortId(track.id)}")
-        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
+        val embyClient = embyApi.buildHttpClient(base, resolveCfReferenceDomain())
         backgroundExecutor.execute {
             val code = requestDeleteTrackFromEmby(base, token, track.id, embyClient)
             runOnUiThread {
@@ -1646,17 +1648,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
 
         appendRuntimeLog("queue tail refill start trigger=$trigger removed=$removedPlayed keep=${loadedTracks.size}")
-        val embyClient = buildEmbyHttpClient(base, credentials.cfReferenceDomain)
+        val embyClient = embyApi.buildHttpClient(base, credentials.cfReferenceDomain)
         backgroundExecutor.execute {
-            var response = executeGet(
-                endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
+            var response = embyApi.executeGet(
+                endpoint = embyApi.buildRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
                 token = token,
                 requestLabel = "GET /Users/{id}/Items (Tail Refill/${DEFAULT_HOME_QUEUE_SIZE})",
                 log = { message -> appendRuntimeLog("queue-refill $message") },
                 httpClient = embyClient
             )
             if (response.code == 401 && credentials.username.isNotEmpty() && credentials.password.isNotEmpty()) {
-                val refreshed = authenticateByName(
+                val refreshed = embyApi.authenticateByName(
                     embyBase = base,
                     username = credentials.username,
                     password = credentials.password,
@@ -1669,8 +1671,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     embySessionUserId = refreshed.userId
                     embyAccessToken = refreshed.accessToken
                     embySessionCache.persistCachedSessionAuth(base, credentials.username, refreshed)
-                    response = executeGet(
-                        endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
+                    response = embyApi.executeGet(
+                        endpoint = embyApi.buildRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
                         token = token,
                         requestLabel = "GET /Users/{id}/Items (Tail Refill Retry/${DEFAULT_HOME_QUEUE_SIZE})",
                         log = { message -> appendRuntimeLog("queue-refill $message") },
@@ -2178,7 +2180,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 feedbackText = getString(R.string.feedback_lrcapi_failed)
             )
         }
-        val lrcApiClient = buildEmbyHttpClient(normalized, resolveCfReferenceDomain())
+        val lrcApiClient = embyApi.buildHttpClient(normalized, resolveCfReferenceDomain())
         return try {
             appendRuntimeLog("lrcapi test GET $normalized")
             val request = Request.Builder()
@@ -2299,8 +2301,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         currentTrackIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val track = loadedTracks[currentTrackIndex]
         val nextTrack = loadedTracks.getOrNull(currentTrackIndex + 1)
-        val downloadUrl = buildEmbyDownloadUrl(base, track.id, token)
-        val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
+        val downloadUrl = embyApi.buildDownloadUrl(base, track.id, token)
+        val embyClient = embyApi.buildHttpClient(base, resolveCfReferenceDomain())
         val requestId = ++playbackRequestId
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
@@ -2844,7 +2846,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         appendRuntimeLog("dl-ctl chunk start track=${track.title} range=$start-$end")
         val request = Request.Builder()
-            .url(buildEmbyDownloadUrl(embyBase, track.id, token))
+            .url(embyApi.buildDownloadUrl(embyBase, track.id, token))
             .get()
             .header("Accept", "audio/*")
             .header("X-Emby-Token", token)
@@ -3146,7 +3148,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         httpClient: OkHttpClient
     ): File? {
         val candidateUrls = listOf(
-            buildEmbyDownloadUrl(embyBase, track.id, token)
+            embyApi.buildDownloadUrl(embyBase, track.id, token)
         )
         for (candidateUrl in candidateUrls) {
             try {
@@ -3247,8 +3249,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
 
         try {
-            val embyBase = normalizeEmbyBase(credentials.baseUrl)
-            val embyClient = buildEmbyHttpClient(embyBase, credentials.cfReferenceDomain)
+            val embyBase = embyApi.normalizeEmbyBase(credentials.baseUrl)
+            val embyClient = embyApi.buildHttpClient(embyBase, credentials.cfReferenceDomain)
             val ownerKey = TrackCodec.buildRecommendCacheOwnerKey(embyBase, credentials.username)
             logger("base=$embyBase")
             logger("force-refresh=$forceRefreshRecommendations")
@@ -3288,7 +3290,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
 
             if (auth == null) {
-                auth = authenticateByName(
+                auth = embyApi.authenticateByName(
                     embyBase = embyBase,
                     username = credentials.username,
                     password = credentials.password,
@@ -3307,13 +3309,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     headline = "动作反馈：Emby 鉴权失败",
                     logs = logs
                 )
-                val recommendedEndpoint = buildEmbyRecommendedItemsUrl(
+                val recommendedEndpoint = embyApi.buildRecommendedItemsUrl(
                     embyBase = embyBase,
                     userId = activeAuth.userId,
                     token = activeAuth.accessToken,
                     limit = DEFAULT_HOME_QUEUE_SIZE
                 )
-                val recommendedResponse = executeGet(
+                val recommendedResponse = embyApi.executeGet(
                     endpoint = recommendedEndpoint,
                     token = activeAuth.accessToken,
                     requestLabel = "GET /Users/{id}/Items (Random/${DEFAULT_HOME_QUEUE_SIZE})",
@@ -3324,7 +3326,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (recommendedResponse.code == 401 && !retriedAfterUnauthorized) {
                     logger("recommend unauthorized -> re-auth")
                     embySessionCache.clearCachedSessionAuth(embyBase, credentials.username)
-                    auth = authenticateByName(
+                    auth = embyApi.authenticateByName(
                         embyBase = embyBase,
                         username = credentials.username,
                         password = credentials.password,
@@ -3389,314 +3391,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun authenticateByName(
-        embyBase: String,
-        username: String,
-        password: String,
-        log: (String) -> Unit,
-        httpClient: OkHttpClient
-    ): AuthByNameResult? {
-        return try {
-            val endpoint = buildAuthenticateByNameUrl(embyBase)
-            log("POST $endpoint")
-            val body = JSONObject()
-                .put("Username", username)
-                .put("Pw", password)
-                .toString()
-            val requestBody = RequestBody.create(jsonMediaType, body)
-            val request = Request.Builder()
-                .url(endpoint)
-                .post(requestBody)
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json; charset=utf-8")
-                .build()
-            val callClient = httpClient.newBuilder()
-                .connectTimeout(6000L, TimeUnit.MILLISECONDS)
-                .readTimeout(10000L, TimeUnit.MILLISECONDS)
-                .build()
-            callClient.newCall(request).execute().use { response ->
-                val code = response.code()
-                val payload = response.body()?.string().orEmpty()
-                log("POST $endpoint -> HTTP $code")
-                log("auth body=${previewPayload(payload)}")
-                if (code !in 200..299) {
-                    return null
-                }
-                val root = JSONObject(payload)
-                val token = root.optString("AccessToken").trim()
-                val userId = root.optJSONObject("User")?.optString("Id")?.trim().orEmpty()
-                if (token.isEmpty() || userId.isEmpty()) {
-                    log("auth response missing token/user")
-                    return null
-                }
-                return AuthByNameResult(accessToken = token, userId = userId)
-            }
-        } catch (e: Exception) {
-            log("auth exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
-            null
-        }
-    }
-
-    private fun executeGet(
-        endpoint: String,
-        token: String,
-        requestLabel: String,
-        log: (String) -> Unit,
-        httpClient: OkHttpClient
-    ): HttpResult {
-        return try {
-            log("$requestLabel url=$endpoint")
-            val request = Request.Builder()
-                .url(endpoint)
-                .get()
-                .header("Accept", "application/json")
-                .header("X-Emby-Token", token)
-                .build()
-            val callClient = httpClient.newBuilder()
-                .connectTimeout(6000L, TimeUnit.MILLISECONDS)
-                .readTimeout(10000L, TimeUnit.MILLISECONDS)
-                .build()
-            callClient.newCall(request).execute().use { response ->
-                val code = response.code()
-                val payload = response.body()?.string().orEmpty()
-                log("$requestLabel -> HTTP $code, body=${previewPayload(payload)}")
-                HttpResult(code = code, payload = payload)
-            }
-        } catch (e: Exception) {
-            log("$requestLabel exception=${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
-            HttpResult(code = -1, payload = "")
-        }
-    }
-
-    private fun buildEmbyHttpClient(embyBase: String, cfReferenceRaw: String): OkHttpClient {
-        val embyHost = try {
-            URL(embyBase).host.trim()
-        } catch (_: Exception) {
-            ""
-        }
-        if (embyHost.isEmpty()) {
-            return OkHttpClient()
-        }
-        val refHost = parseCfReferenceHost(cfReferenceRaw)
-        if (refHost.isNullOrEmpty()) {
-            appendRuntimeLog("cf-opt disabled reason=empty-reference-domain host=$embyHost")
-            return OkHttpClient()
-        }
-        appendRuntimeLog("cf-opt enabled embyHost=$embyHost referenceHost=$refHost ipv6=disabled")
-        return OkHttpClient.Builder()
-            .dns(object : Dns {
-                override fun lookup(hostname: String): List<InetAddress> {
-                    return resolveDnsForHost(hostname, embyHost, refHost)
-                }
-            })
-            .connectTimeout(10000L, TimeUnit.MILLISECONDS)
-            .readTimeout(20000L, TimeUnit.MILLISECONDS)
-            .build()
-    }
-
-    private fun parseCfReferenceHost(raw: String): String? {
-        val trimmed = raw.trim().trim('/')
-        if (trimmed.isEmpty()) {
-            return null
-        }
-        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
-        } else {
-            "https://$trimmed"
-        }
-        return try {
-            URL(withScheme).host.trim().takeIf { it.isNotEmpty() }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun resolveCfReferenceDomain(): String {
-        val input = cfRefDomainInput.text?.toString()?.trim().orEmpty()
-        if (input.isNotEmpty()) {
-            return input
-        }
-        return getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .getString(KEY_CF_REF_DOMAIN, "")
-            .orEmpty()
-            .trim()
-    }
-
-    private fun resolveDnsForHost(
-        hostname: String,
-        embyHost: String,
-        referenceHost: String
-    ): List<InetAddress> {
-        val systemResolved = safeLookupIpv4(hostname)
-        if (!hostname.equals(embyHost, ignoreCase = true)) {
-            if (systemResolved.isNotEmpty()) {
-                appendRuntimeLog("cf-opt bypass host=$hostname reason=non-emby ipv4Count=${systemResolved.size}")
-                return systemResolved
-            }
-            appendRuntimeLog("cf-opt bypass-fail host=$hostname reason=non-emby-no-ipv4")
-            throw UnknownHostException("No IPv4 address for host: $hostname")
-        }
-
-        val preferredFromReference = resolvePreferredCfIpv4Candidates(referenceHost)
-        if (preferredFromReference.isEmpty()) {
-            appendRuntimeLog("cf-opt fallback reason=reference-resolve-empty host=$hostname")
-            if (systemResolved.isNotEmpty()) {
-                return systemResolved
-            }
-            throw UnknownHostException("No IPv4 address for emby host: $hostname")
-        }
-
-        val merged = ArrayList<InetAddress>(preferredFromReference.size + systemResolved.size)
-        val dedupe = HashSet<String>()
-        for (addr in preferredFromReference) {
-            if (dedupe.add(addr.hostAddress ?: "")) {
-                merged.add(addr)
-            }
-        }
-        for (addr in systemResolved) {
-            if (dedupe.add(addr.hostAddress ?: "")) {
-                merged.add(addr)
-            }
-        }
-        val preview = merged.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
-        val selected = merged.firstOrNull()?.hostAddress ?: "?"
-        appendRuntimeLog(
-            "cf-opt dns host=$hostname selected=$selected preferredCount=${preferredFromReference.size} systemCount=${systemResolved.size} merged=${merged.size} sample=$preview"
-        )
-        if (merged.isNotEmpty()) {
-            return merged
-        }
-        if (systemResolved.isNotEmpty()) {
-            appendRuntimeLog("cf-opt fallback reason=merge-empty-use-system host=$hostname systemCount=${systemResolved.size}")
-            return systemResolved
-        }
-        throw UnknownHostException("No IPv4 address after cf-opt merge for host: $hostname")
-    }
-
-    private fun resolvePreferredCfIpv4Candidates(referenceHost: String): List<InetAddress> {
-        val now = SystemClock.elapsedRealtime()
-        synchronized(dnsCacheLock) {
-            val cached = cfPreferredIpv4Cache[referenceHost]
-            if (cached != null && now - cached.first < CF_IP_CACHE_TTL_MS) {
-                val preview = cached.second.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
-                appendRuntimeLog(
-                    "cf-opt cache-hit referenceHost=$referenceHost ageMs=${now - cached.first} ipv4Count=${cached.second.size} sample=$preview"
-                )
-                return cached.second
-            }
-        }
-        val resolved = safeLookupIpv4(referenceHost)
-        val deduped = LinkedHashMap<String, InetAddress>()
-        for (addr in resolved) {
-            val key = addr.hostAddress ?: continue
-            if (!deduped.containsKey(key)) {
-                deduped[key] = addr
-            }
-            if (deduped.size >= MAX_CF_IP_CANDIDATES) {
-                break
-            }
-        }
-        val result = deduped.values.toList()
-        val resolvedPreview = result.take(MAX_CF_IP_PREVIEW).joinToString(",") { it.hostAddress ?: "?" }
-        appendRuntimeLog("cf-opt cache-refresh referenceHost=$referenceHost ipv4Count=${result.size} sample=$resolvedPreview")
-        synchronized(dnsCacheLock) {
-            cfPreferredIpv4Cache[referenceHost] = now to result
-            if (cfPreferredIpv4Cache.size > CF_IP_CACHE_MAX_HOSTS) {
-                val iterator = cfPreferredIpv4Cache.entries.iterator()
-                if (iterator.hasNext()) {
-                    iterator.next()
-                    iterator.remove()
-                }
-            }
-        }
-        return result
-    }
-
-    private fun safeLookupIpv4(host: String): List<InetAddress> {
-        return try {
-            Dns.SYSTEM.lookup(host)
-                .filterIsInstance<Inet4Address>()
-        } catch (_: SocketTimeoutException) {
-            appendRuntimeLog("cf-opt system-dns-timeout host=$host")
-            emptyList()
-        } catch (e: Exception) {
-            appendRuntimeLog("cf-opt system-dns-fail host=$host type=${e.javaClass.simpleName}")
-            emptyList()
-        }
-    }
-
-    private fun normalizeEmbyBase(baseUrl: String): String {
-        val normalized = baseUrl.trim().trimEnd('/')
-        return if (normalized.endsWith("/emby", ignoreCase = true)) {
-            normalized
-        } else {
-            "$normalized/emby"
-        }
-    }
-
-    private fun buildAuthenticateByNameUrl(embyBase: String): String {
-        return "$embyBase/Users/AuthenticateByName?${buildCommonEmbyQuery()}"
-    }
-
-    private fun buildEmbyRecommendedItemsUrl(
-        embyBase: String,
-        userId: String,
-        token: String,
-        limit: Int = DEFAULT_HOME_QUEUE_SIZE
-    ): String {
-        val params = mutableListOf(
-            "IncludeItemTypes=Audio",
-            "Recursive=true",
-            "SortBy=Random",
-            "Limit=${limit.coerceAtLeast(1)}",
-            "api_key=${urlEncode(token)}"
-        )
-        return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
-    }
-
-    private fun buildEmbyLibraryItemsUrl(
-        embyBase: String,
-        userId: String,
-        token: String,
-        startIndex: Int,
-        limit: Int
-    ): String {
-        val params = mutableListOf(
-            "IncludeItemTypes=Audio",
-            "Recursive=true",
-            "SortBy=SortName",
-            "SortOrder=Ascending",
-            "StartIndex=${startIndex.coerceAtLeast(0)}",
-            "Limit=${limit.coerceAtLeast(1)}",
-            "EnableTotalRecordCount=true",
-            "api_key=${urlEncode(token)}"
-        )
-        return "$embyBase/Users/${urlEncode(userId)}/Items?${params.joinToString("&")}"
-    }
-
-    private fun buildEmbyDownloadUrl(
-        embyBase: String,
-        trackId: String,
-        token: String
-    ): String {
-        val params = mutableListOf(
-            "api_key=${urlEncode(token)}"
-        )
-        return "$embyBase/Items/${urlEncode(trackId)}/Download?${params.joinToString("&")}"
-    }
-
-    private fun buildCommonEmbyQuery(): String = commonEmbyQueryParams().joinToString("&")
-
-    private fun commonEmbyQueryParams(): List<String> {
-        return listOf(
-            "X-Emby-Client=${urlEncode(EMBY_QUERY_CLIENT)}",
-            "X-Emby-Device-Name=${urlEncode(EMBY_QUERY_DEVICE_NAME)}",
-            "X-Emby-Device-Id=${urlEncode(EMBY_QUERY_DEVICE_ID)}",
-            "X-Emby-Client-Version=${urlEncode(EMBY_QUERY_CLIENT_VERSION)}",
-            "X-Emby-Language=${urlEncode(EMBY_QUERY_LANGUAGE)}"
-        )
-    }
-
     private fun readTextWithLineBreaks(stream: InputStream?): String {
         if (stream == null) {
             return ""
@@ -3730,18 +3424,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             builder.append('\n').append("- ").append(line)
         }
         return builder.toString()
-    }
-
-    private fun previewPayload(payload: String): String {
-        if (payload.isBlank()) {
-            return "<empty>"
-        }
-        val singleLine = payload.replace(Regex("\\s+"), " ").trim()
-        return if (singleLine.length <= 160) {
-            singleLine
-        } else {
-            singleLine.substring(0, 160) + "..."
-        }
     }
 
     private fun shortId(value: String): String {
@@ -3847,7 +3529,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val inputUser = embyUsernameInput.text?.toString()?.trim().orEmpty()
         val embyBase = when {
             persistedBase.isNotEmpty() -> persistedBase
-            isHttpUrl(inputBase) -> normalizeEmbyBase(inputBase)
+            isHttpUrl(inputBase) -> embyApi.normalizeEmbyBase(inputBase)
             else -> ""
         }
         val username = if (persistedUser.isNotEmpty()) persistedUser else inputUser
@@ -4007,7 +3689,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!isHttpUrl(inputBase)) {
             return null
         }
-        return runCatching { normalizeEmbyBase(inputBase) }.getOrNull()
+        return runCatching { embyApi.normalizeEmbyBase(inputBase) }.getOrNull()
     }
 
     private fun isResumeAutoplayFresh(savedAtMs: Long): Boolean {
@@ -4527,20 +4209,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_RECOMMEND_CACHE_DAY = "recommend_cache_day"
         const val KEY_RECOMMEND_CACHE_OWNER = "recommend_cache_owner"
         const val KEY_RECOMMEND_CACHE_JSON = "recommend_cache_json"
-        const val EMBY_QUERY_CLIENT = "Emby Web"
-        const val EMBY_QUERY_DEVICE_NAME = "Google Chrome Windows"
-        const val EMBY_QUERY_DEVICE_ID = "6ec2a066-66a2-49af-bd97-6302ee307eaf"
-        const val EMBY_QUERY_CLIENT_VERSION = "4.9.1.90"
-        const val EMBY_QUERY_LANGUAGE = "zh-cn"
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
         const val LOAD_CONTROL_PLAYBACK_MS = 3_000
         const val LOAD_CONTROL_REBUFFER_MS = 1_000
-        const val CF_IP_CACHE_TTL_MS = 60_000L
-        const val CF_IP_CACHE_MAX_HOSTS = 8
-        const val MAX_CF_IP_CANDIDATES = 6
-        const val MAX_CF_IP_PREVIEW = 3
         const val DOWNLOAD_WINDOW_SEC = 30L
         const val DOWNLOAD_CHUNK_BYTES = 512L * 1024L
         const val DOWNLOAD_CONTROLLER_IDLE_MS = 300L

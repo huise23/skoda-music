@@ -3,8 +3,8 @@ package com.skodamusic.app
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -17,8 +17,6 @@ import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.util.Log
-import android.net.Uri
-import android.provider.Settings
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -35,23 +33,35 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
+import com.skodamusic.app.core.network.WifiNetworkGate
+import com.skodamusic.app.model.AuthByNameResult
+import com.skodamusic.app.model.DeleteTrackOutcome
+import com.skodamusic.app.model.DownloadControlPhase
+import com.skodamusic.app.model.EmbyCredentials
+import com.skodamusic.app.model.EmbyLoadResult
+import com.skodamusic.app.model.EmbyTrack
+import com.skodamusic.app.model.HttpResult
+import com.skodamusic.app.model.ListSource
+import com.skodamusic.app.model.LrcApiCredentials
+import com.skodamusic.app.model.LrcApiTestResult
+import com.skodamusic.app.model.LyricLine
+import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.model.TrackDownloadState
+import com.skodamusic.app.model.UiState
 import com.skodamusic.app.observability.PostHogTracker
+import com.skodamusic.app.player.ExoPlaybackEngine
+import com.skodamusic.app.player.PlaybackEngine
+import com.skodamusic.app.player.PlaybackEngineCallback
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackControlBus
 import com.skodamusic.app.playback.PlaybackResumeStore
 import com.skodamusic.app.playback.PlaybackService
 import com.skodamusic.app.playback.PlaybackStateStore
-import com.google.android.exoplayer2.C
-import com.google.android.exoplayer2.DefaultLoadControl
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.PlaybackException
-import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.SimpleExoPlayer
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
-import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
-import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
+import com.skodamusic.app.update.AppUpdateCoordinator
+import com.skodamusic.app.update.AppUpdateManager
 import okhttp3.Dns
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
@@ -81,257 +91,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
-    private data class LyricLine(
-        val timeMs: Long,
-        val text: String
-    )
-
-    private enum class DownloadControlPhase {
-        MAINTAIN_CURRENT_WINDOW,
-        FINISH_CURRENT_TRACK,
-        PREFETCH_NEXT_WINDOW,
-        IDLE
-    }
-
-    private enum class PlaybackFailureCategory {
-        DECODER_FAILURE,
-        SOURCE_FAILURE,
-        NETWORK_FAILURE,
-        UNKNOWN
-    }
-
-    private interface PlaybackEngineCallback {
-        fun onPrepared()
-        fun onCompletion()
-        fun onError(code: Int, detail: String)
-        fun onBufferingStart()
-        fun onBufferingEnd()
-    }
-
-    private interface PlaybackEngine {
-        fun prepare(source: Uri, callback: PlaybackEngineCallback)
-        fun play(): Boolean
-        fun pause()
-        fun seekTo(positionMs: Long): Boolean
-        fun isPlaying(): Boolean
-        fun currentPositionMs(): Long
-        fun durationMs(): Long
-        fun release()
-    }
-
-    private class ExoPlaybackEngine(
-        private val context: Context,
-        private val dataSourceFactory: DataSource.Factory
-    ) : PlaybackEngine {
-        private var exoPlayer: SimpleExoPlayer? = null
-
-        override fun prepare(source: Uri, callback: PlaybackEngineCallback) {
-            releaseInternal()
-            val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    LOAD_CONTROL_MIN_BUFFER_MS,
-                    LOAD_CONTROL_MAX_BUFFER_MS,
-                    LOAD_CONTROL_PLAYBACK_MS,
-                    LOAD_CONTROL_REBUFFER_MS
-                )
-                .build()
-            val player = SimpleExoPlayer.Builder(context)
-                .setLoadControl(loadControl)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-                .build()
-            exoPlayer = player
-
-            var preparedNotified = false
-            var buffering = false
-
-            player.setAudioAttributes(
-                ExoAudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .build(),
-                true
-            )
-            player.addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    when (state) {
-                        Player.STATE_BUFFERING -> {
-                            if (!buffering) {
-                                buffering = true
-                                callback.onBufferingStart()
-                            }
-                        }
-                        Player.STATE_READY -> {
-                            if (!preparedNotified) {
-                                preparedNotified = true
-                                callback.onPrepared()
-                            }
-                            if (buffering) {
-                                buffering = false
-                                callback.onBufferingEnd()
-                            }
-                        }
-                        Player.STATE_ENDED -> {
-                            callback.onCompletion()
-                        }
-                    }
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    callback.onError(error.errorCode, error.message ?: error.javaClass.simpleName)
-                }
-            })
-            player.setMediaItem(MediaItem.fromUri(source))
-            player.prepare()
-        }
-
-        override fun play(): Boolean {
-            val player = exoPlayer ?: return false
-            return try {
-                player.playWhenReady = true
-                player.play()
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        override fun pause() {
-            try {
-                exoPlayer?.pause()
-            } catch (_: Exception) {
-            }
-        }
-
-        override fun seekTo(positionMs: Long): Boolean {
-            val player = exoPlayer ?: return false
-            return try {
-                player.seekTo(positionMs.coerceAtLeast(0L))
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        override fun isPlaying(): Boolean {
-            return try {
-                exoPlayer?.isPlaying == true
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        override fun currentPositionMs(): Long {
-            return try {
-                exoPlayer?.currentPosition ?: -1L
-            } catch (_: Exception) {
-                -1L
-            }
-        }
-
-        override fun durationMs(): Long {
-            return try {
-                val value = exoPlayer?.duration ?: -1L
-                if (value <= 0L) -1L else value
-            } catch (_: Exception) {
-                -1L
-            }
-        }
-
-        override fun release() {
-            releaseInternal()
-        }
-
-        private fun releaseInternal() {
-            val player = exoPlayer ?: return
-            try {
-                player.stop()
-            } catch (_: Exception) {
-            }
-            try {
-                player.release()
-            } catch (_: Exception) {
-            }
-            exoPlayer = null
-        }
-    }
-
-    private enum class ListSource {
-        QUEUE,
-        LIBRARY
-    }
-
-    private data class UiState(
-        val currentTrack: String,
-        @StringRes val playbackStatusRes: Int,
-        @StringRes val playPauseLabelRes: Int,
-        val feedbackText: String,
-        val embyStatusText: String,
-        val lrcApiStatusText: String,
-        val isPlaying: Boolean,
-        val playPauseEnabled: Boolean,
-        val nextEnabled: Boolean,
-        val testEmbyEnabled: Boolean,
-        val testLrcApiEnabled: Boolean
-    )
-
-    private data class EmbyCredentials(
-        val baseUrl: String,
-        val username: String,
-        val password: String,
-        val cfReferenceDomain: String
-    )
-
-    private data class LrcApiCredentials(
-        val baseUrl: String
-    )
-
-    private data class EmbyTrack(
-        val id: String,
-        val title: String,
-        val artist: String = "",
-        val runtimeTicks: Long = -1L
-    )
-
-    private data class AuthByNameResult(
-        val accessToken: String,
-        val userId: String
-    )
-
-    private data class HttpResult(
-        val code: Int,
-        val payload: String
-    )
-
-    private data class EmbyLoadResult(
-        val success: Boolean,
-        val statusText: String,
-        val feedbackText: String,
-        val tracks: List<EmbyTrack> = emptyList(),
-        val embyBase: String? = null,
-        val embyUserId: String? = null,
-        val accessToken: String? = null
-    )
-
-    private data class LrcApiTestResult(
-        val success: Boolean,
-        val statusText: String,
-        val feedbackText: String
-    )
-
-    private data class TrackDownloadState(
-        val trackId: String,
-        var totalBytes: Long = -1L,
-        var downloadedBytes: Long = 0L,
-        var completed: Boolean = false,
-        var bitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
-    )
-
-    private data class DeleteTrackOutcome(
-        val removedFromQueue: Boolean,
-        val removedCurrentTrack: Boolean,
-        val queueEmptyAfterDelete: Boolean,
-        val removedAnything: Boolean
-    )
-
     private lateinit var embyBaseUrlInput: EditText
     private lateinit var cfRefDomainInput: EditText
     private lateinit var embyUsernameInput: EditText
@@ -341,6 +100,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var lrcApiStatusValue: TextView
     private lateinit var downloadCacheSizeValue: TextView
     private lateinit var clearDownloadCacheButton: Button
+    private lateinit var checkUpdateButton: Button
+    private lateinit var updateStatusValue: TextView
     private lateinit var buildIdBadge: TextView
     private lateinit var trackValue: TextView
     private lateinit var trackArtistValue: TextView
@@ -438,6 +199,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var downloadControllerThread: Thread? = null
     private lateinit var playbackResumeStore: PlaybackResumeStore
     private lateinit var playbackStateStore: PlaybackStateStore
+    private lateinit var appUpdateManager: AppUpdateManager
+    private lateinit var appUpdateCoordinator: AppUpdateCoordinator
+    private lateinit var backgroundExecutor: AppBackgroundExecutor
+    private lateinit var wifiNetworkGate: WifiNetworkGate
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
     private val jsonMediaType: MediaType = MediaType.parse("application/json; charset=utf-8")
@@ -450,9 +215,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         PlaybackControlBus.attach(this)
         playbackResumeStore = PlaybackResumeStore(applicationContext)
         playbackStateStore = PlaybackStateStore(applicationContext)
+        backgroundExecutor = AppBackgroundExecutor(ioThreads = 3)
+        wifiNetworkGate = WifiNetworkGate(this) { message -> appendRuntimeLog(message) }
         postHogSessionId = PostHogTracker.startNewSession(
             context = applicationContext,
             launchSource = "cold_start"
+        )
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "boot_stage",
+            properties = mapOf(
+                "stage" to "on_create_start",
+                "elapsed_ms" to 0L
+            )
         )
         PostHogTracker.capture(
             context = applicationContext,
@@ -473,6 +248,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
         downloadCacheSizeValue = findViewById(R.id.download_cache_size_value)
         clearDownloadCacheButton = findViewById(R.id.btn_clear_download_cache)
+        checkUpdateButton = findViewById(R.id.btn_check_update)
+        updateStatusValue = findViewById(R.id.update_status_value)
         buildIdBadge = findViewById(R.id.build_id_badge)
         trackValue = findViewById(R.id.track_value)
         trackArtistValue = findViewById(R.id.track_artist_value)
@@ -505,14 +282,43 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         pageQueue = findViewById(R.id.page_queue)
         pageLibrary = findViewById(R.id.page_library)
         pageSettings = findViewById(R.id.page_settings)
+        appUpdateManager = AppUpdateManager(
+            context = applicationContext,
+            owner = "huise23",
+            repo = "skoda-music",
+            log = { msg -> appendRuntimeLog(msg) }
+        )
+        appUpdateCoordinator = AppUpdateCoordinator(
+            activity = this,
+            appUpdateManager = appUpdateManager,
+            checkUpdateButton = checkUpdateButton,
+            updateStatusValue = updateStatusValue,
+            ensureWifiConnectedForNetworkRequest = { requestTag, promptUser ->
+                ensureWifiConnectedForNetworkRequest(requestTag, promptUser)
+            },
+            setFeedbackText = { feedback ->
+                updateState { it.copy(feedbackText = feedback) }
+            },
+            showToast = { resId ->
+                showToast(resId)
+            },
+            appendRuntimeLog = { message ->
+                appendRuntimeLog(message)
+            }
+        )
         buildIdBadge.text = resolveBuildVersionTag()
         buildIdBadge.visibility = View.VISIBLE
+        appendRuntimeLog("boot stage=views_bound +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+        captureBootStage(stage = "views_bound", bootStartMs = bootStartMs)
+        appUpdateCoordinator.restoreLastUpdateState()
         configureModernHomeShell()
         switchHomeTab(showRecommend = false)
         bindLibraryPaging()
         bindNavigation()
         switchPage(PAGE_HOME)
         loadSavedCredentials()
+        appendRuntimeLog("boot stage=credentials_loaded +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+        captureBootStage(stage = "credentials_loaded", bootStartMs = bootStartMs)
 
         uiState = UiState(
             currentTrack = getString(R.string.track_not_loaded),
@@ -529,10 +335,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
         render(uiState)
         bindActions()
-        restorePlaybackResumeStateIfNeeded()
         window.decorView.post {
             appendRuntimeLog("boot first-frame +${SystemClock.elapsedRealtime() - bootStartMs}ms")
-            maybeClearDownloadCacheOnColdStart()
+            captureBootStage(stage = "first_frame", bootStartMs = bootStartMs)
+            restorePlaybackResumeStateIfNeeded()
+            appendRuntimeLog("boot stage=resume_restore_done +${SystemClock.elapsedRealtime() - bootStartMs}ms")
+            captureBootStage(stage = "resume_restore_done", bootStartMs = bootStartMs)
             rebuildTrackLists()
             refreshDownloadCacheInfoUi()
             startUiProgressTicker()
@@ -545,6 +353,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     "startup_ms" to (SystemClock.elapsedRealtime() - bootStartMs).coerceAtLeast(0L)
                 )
             )
+            appUpdateCoordinator.scheduleAutoUpdateCheck(uiProgressHandler, AUTO_UPDATE_CHECK_DELAY_MS)
             uiProgressHandler.postDelayed(
                 { maybeAutoRefreshQueueRecommendations("app-startup") },
                 APP_STARTUP_QUEUE_REFRESH_DELAY_MS
@@ -586,6 +395,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackRequestId += 1
         stopDownloadController()
         releasePlayer()
+        backgroundExecutor.shutdown()
     }
 
     private fun configureModernHomeShell() {
@@ -763,6 +573,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (cleared) R.string.toast_download_cache_cleared
                 else R.string.toast_download_cache_clear_failed
             )
+        }
+
+        checkUpdateButton.setOnClickListener {
+            appUpdateCoordinator.onCheckButtonClicked()
         }
     }
 
@@ -1002,6 +816,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (libraryLoadInFlight) {
             return
         }
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "library_load", promptUser = true)) {
+            return
+        }
         if (libraryNextStartIndex >= libraryTotalRecordCount) {
             return
         }
@@ -1035,7 +852,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         libraryLoadInFlight = true
         appendRuntimeLog("library load start trigger=$trigger start=$start limit=$limit")
         val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
-        Thread {
+        backgroundExecutor.execute {
             val endpoint = buildEmbyLibraryItemsUrl(base, userId, token, start, limit)
             val response = executeGet(
                 endpoint = endpoint,
@@ -1071,7 +888,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     loadMoreLibraryTracks("$trigger-fill-viewport")
                 }
             }
-        }.start()
+        }
     }
 
     private fun renderHomeRecommendationPreview() {
@@ -1168,6 +985,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (cleanTrack.isEmpty() || cleanTrack == getString(R.string.track_not_loaded)) {
             return
         }
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "lyrics_fetch", promptUser = false)) {
+            return
+        }
         val baseUrl = resolveLrcApiBaseUrl()
         if (baseUrl.isEmpty() || !isHttpUrl(baseUrl)) {
             appendRuntimeLog("lyrics fetch skip reason=invalid-lrcapi-base track=$cleanTrack")
@@ -1177,7 +997,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         homeLyricsRequestTrackKey = trackKey
-        Thread {
+        backgroundExecutor.execute {
             val fetchedLines = fetchLyricsLinesFromLrcApi(baseUrl, cleanTrack, artistName.trim())
             runOnUiThread {
                 if (homeLyricsRequestTrackKey == trackKey) {
@@ -1203,7 +1023,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 renderHomeLyricsByPosition(positionMs)
                 appendRuntimeLog("lyrics fetch success track=$cleanTrack lines=${fetchedLines.size}")
             }
-        }.start()
+        }
     }
 
     private fun resolveLrcApiBaseUrl(): String {
@@ -1587,7 +1407,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val wasPlaying = uiState.isPlaying
         appendRuntimeLog("delete source start track=${track.title} id=${shortId(track.id)}")
         val embyClient = buildEmbyHttpClient(base, resolveCfReferenceDomain())
-        Thread {
+        backgroundExecutor.execute {
             val code = requestDeleteTrackFromEmby(base, token, track.id, embyClient)
             runOnUiThread {
                 if (code !in 200..299 && code != 404) {
@@ -1656,7 +1476,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 appendRuntimeLog("delete source success code=$code track=${track.title} id=${shortId(track.id)}")
                 showToast(R.string.toast_delete_source_success)
             }
-        }.start()
+        }
     }
 
     private fun requestDeleteTrackFromEmby(
@@ -1782,6 +1602,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (queueTailRefillInFlight) {
             return
         }
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "queue_tail_refill", promptUser = false)) {
+            return
+        }
         if (loadedTracks.size < 4) {
             return
         }
@@ -1810,7 +1633,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         appendRuntimeLog("queue tail refill start trigger=$trigger removed=$removedPlayed keep=${loadedTracks.size}")
         val embyClient = buildEmbyHttpClient(base, credentials.cfReferenceDomain)
-        Thread {
+        backgroundExecutor.execute {
             var response = executeGet(
                 endpoint = buildEmbyRecommendedItemsUrl(base, userId, token, DEFAULT_HOME_QUEUE_SIZE),
                 token = token,
@@ -1870,7 +1693,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 }
                 appendRuntimeLog("queue tail refill done appended=${append.size} total=${loadedTracks.size}")
             }
-        }.start()
+        }
     }
 
     private fun syncNativeQueueToCurrentIndex(): Boolean {
@@ -2155,6 +1978,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             appendRuntimeLog("queue auto refresh skip trigger=$trigger reason=missing-emby-credentials")
             return
         }
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "queue_auto_refresh", promptUser = true)) {
+            return
+        }
         lastQueueAutoRefreshMs = now
         queueAutoRefreshInFlight = true
         appendRuntimeLog("queue auto refresh start trigger=$trigger")
@@ -2172,6 +1998,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         onFinished: (() -> Unit)? = null,
         forceRefreshRecommendations: Boolean = false
     ) {
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "emby_load", promptUser = true)) {
+            onFinished?.invoke()
+            updateState {
+                it.copy(
+                    testEmbyEnabled = true,
+                    embyStatusText = getString(R.string.emby_status_failed),
+                    feedbackText = getString(R.string.feedback_network_wifi_required)
+                )
+            }
+            showToast(R.string.toast_network_wifi_required)
+            return
+        }
         appendRuntimeLog("emby load start base=${credentials.baseUrl}")
         updateState {
             it.copy(
@@ -2181,7 +2019,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         }
 
-        Thread {
+        backgroundExecutor.execute {
             val result = fetchTracksFromEmby(
                 credentials = credentials,
                 forceRefreshRecommendations = forceRefreshRecommendations
@@ -2267,10 +2105,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     onFinished?.invoke()
                 }
             }
-        }.start()
+        }
     }
 
     private fun requestLrcApiConnectionTest(credentials: LrcApiCredentials) {
+        if (!ensureWifiConnectedForNetworkRequest(requestTag = "lrcapi_test", promptUser = true)) {
+            updateState {
+                it.copy(
+                    testLrcApiEnabled = true,
+                    lrcApiStatusText = getString(R.string.lrcapi_status_failed),
+                    feedbackText = getString(R.string.feedback_network_wifi_required)
+                )
+            }
+            showToast(R.string.toast_network_wifi_required)
+            return
+        }
         updateState {
             it.copy(
                 testLrcApiEnabled = false,
@@ -2278,7 +2127,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 feedbackText = getString(R.string.feedback_lrcapi_testing)
             )
         }
-        Thread {
+        backgroundExecutor.execute {
             val result = testLrcApiConnection(credentials.baseUrl)
             runOnUiThread {
                 if (result.success) {
@@ -2302,7 +2151,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     showToast(R.string.toast_lrcapi_failed)
                 }
             }
-        }.start()
+        }
     }
 
     private fun testLrcApiConnection(baseUrl: String): LrcApiTestResult {
@@ -2442,12 +2291,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
         val prepareStartMs = SystemClock.elapsedRealtime()
+        val wasPlayingAtStart = uiState.isPlaying
+        var bufferingStartMs = 0L
+        var prepareTimeoutTriggered = false
         PostHogTracker.capture(
             context = applicationContext,
             eventName = "play_start",
             properties = mapOf(
                 "track_id" to track.id,
                 "position_ms" to 0L,
+                "is_playing_before_start" to wasPlayingAtStart,
                 "from_source" to source
             )
         )
@@ -2580,7 +2433,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        bufferingStartMs = SystemClock.elapsedRealtime()
                         appendRuntimeLog("play buffering start requestId=$requestId track=${track.title}")
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "playback_buffering_start",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "source" to source
+                            )
+                        )
                         runOnUiThread {
                             updateState {
                                 it.copy(
@@ -2598,6 +2460,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             return
                         }
                         appendRuntimeLog("play buffering end requestId=$requestId track=${track.title}")
+                        val bufferingMs = if (bufferingStartMs > 0L) {
+                            (SystemClock.elapsedRealtime() - bufferingStartMs).coerceAtLeast(0L)
+                        } else {
+                            -1L
+                        }
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "playback_buffering_end",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "source" to source,
+                                "buffering_ms" to bufferingMs
+                            )
+                        )
                         runOnUiThread {
                             updateState {
                                 it.copy(
@@ -2640,6 +2516,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         return@runOnUiThread
                     }
                     appendRuntimeLog("play timeout guard confirmed requestId=$requestId")
+                    prepareTimeoutTriggered = true
+                    PostHogTracker.capture(
+                        context = applicationContext,
+                        eventName = "playback_stall_detected",
+                        properties = mapOf(
+                            "track_id" to track.id,
+                            "stage" to "download_prepare",
+                            "error_code" to "PREPARE_TIMEOUT",
+                            "source" to source,
+                            "timeout_ms" to STREAM_PREPARE_TIMEOUT_MS
+                        ),
+                        priority = PostHogTracker.Priority.HIGH
+                    )
                     triggerCachedFallback("动作反馈：下载播放超时，切换本地缓存播放")
                 }
             }.start()
@@ -3055,7 +2944,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 )
             }
         }
-        Thread {
+        backgroundExecutor.execute {
             val cacheFile = downloadTrackToCache(track, embyBase, token, httpClient)
             runOnUiThread {
                 if (requestId != playbackRequestId) {
@@ -3175,17 +3064,33 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                                 if (requestId != playbackRequestId) {
                                     return
                                 }
-                                appendRuntimeLog("cache buffering start requestId=$requestId")
-                            }
+                        appendRuntimeLog("cache buffering start requestId=$requestId")
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "playback_buffering_start",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "source" to "cache_fallback"
+                            )
+                        )
+                    }
 
-                            override fun onBufferingEnd() {
-                                if (requestId != playbackRequestId) {
-                                    return
-                                }
-                                appendRuntimeLog("cache buffering end requestId=$requestId")
-                            }
+                    override fun onBufferingEnd() {
+                        if (requestId != playbackRequestId) {
+                            return
                         }
-                    )
+                        appendRuntimeLog("cache buffering end requestId=$requestId")
+                        PostHogTracker.capture(
+                            context = applicationContext,
+                            eventName = "playback_buffering_end",
+                            properties = mapOf(
+                                "track_id" to track.id,
+                                "source" to "cache_fallback"
+                            )
+                        )
+                    }
+                }
+            )
                     appendRuntimeLog("cache playback prepareAsync requestId=$requestId")
                     updateState {
                         it.copy(
@@ -3217,7 +3122,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 }
             }
-        }.start()
+        }
     }
 
     private fun downloadTrackToCache(
@@ -3288,7 +3193,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return null
     }
 
-    private fun ensurePlaybackEngine(httpClient: OkHttpClient): PlaybackEngine {
+    private fun ensurePlaybackEngine(@Suppress("UNUSED_PARAMETER") httpClient: OkHttpClient): PlaybackEngine {
         val existing = playbackEngine
         if (existing != null) {
             return existing
@@ -3300,7 +3205,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
         )
-        val created = ExoPlaybackEngine(this, defaultDataSourceFactory)
+        val created = ExoPlaybackEngine(
+            context = this,
+            dataSourceFactory = defaultDataSourceFactory,
+            minBufferMs = LOAD_CONTROL_MIN_BUFFER_MS,
+            maxBufferMs = LOAD_CONTROL_MAX_BUFFER_MS,
+            playbackBufferMs = LOAD_CONTROL_PLAYBACK_MS,
+            rebufferMs = LOAD_CONTROL_REBUFFER_MS
+        )
         playbackEngine = created
         return created
     }
@@ -4043,20 +3955,26 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         resumeRestoreAttempted = true
         val snapshot = playbackResumeStore.read() ?: return
+        val ageMs = (System.currentTimeMillis() - snapshot.savedAtMs).coerceAtLeast(0L)
+        appendRuntimeLog(
+            "resume restore snapshot-hit ageMs=$ageMs queueLen=${snapshot.queueJson.length} index=${snapshot.index} wasPlaying=${snapshot.wasPlaying}"
+        )
         PostHogTracker.capture(
             context = applicationContext,
             eventName = "resume_restore_attempt",
             properties = mapOf(
                 "has_snapshot" to true,
-                "snapshot_age_ms" to (System.currentTimeMillis() - snapshot.savedAtMs).coerceAtLeast(0L)
+                "snapshot_age_ms" to ageMs
             )
         )
         val payload = snapshot.queueJson
         if (payload.isBlank()) {
+            appendRuntimeLog("resume restore snapshot-empty")
             return
         }
         val restoredTracks = parseCachedTrackArray(payload)
         if (restoredTracks.isEmpty()) {
+            appendRuntimeLog("resume restore snapshot-parse-empty")
             PostHogTracker.capture(
                 context = applicationContext,
                 eventName = "resume_restore_failed",
@@ -4213,6 +4131,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         if (loadedTracks.isEmpty()) {
+            appendRuntimeLog("resume persist skip reason=empty-queue")
             clearPersistedPlaybackResumeState()
             return
         }
@@ -4251,6 +4170,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 username = usernameForPersist
             )
         )
+        appendRuntimeLog(
+            "resume persist saved index=$safeIndex queueSize=$queueSize positionMs=${resolvedPosition.coerceAtLeast(0L)} wasPlaying=$isPlaying"
+        )
         lastResumePersistTrackId = activeTrack.id
         lastResumePersistIndex = safeIndex
         lastResumePersistQueueSize = queueSize
@@ -4261,6 +4183,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun clearPersistedPlaybackResumeState() {
         playbackResumeStore.clear()
+        appendRuntimeLog("resume persist cleared")
         lastResumePersistTrackId = ""
         lastResumePersistIndex = -1
         lastResumePersistQueueSize = -1
@@ -4328,30 +4251,91 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         downloadCacheClearedAtColdStart = true
-        Thread {
-            clearDownloadCacheFiles("cold-start")
+        backgroundExecutor.execute {
+            val keepTrackId = resolveResumeTrackIdForColdStartKeep()
+            val cleared = clearDownloadCacheFiles(
+                reason = "cold-start",
+                keepTrackId = keepTrackId
+            )
+            appendRuntimeLog("download-cache cold-start keepTrackId=$keepTrackId success=$cleared")
             runOnUiThread {
                 refreshDownloadCacheInfoUi()
             }
-        }.start()
+        }
     }
 
-    private fun clearDownloadCacheFiles(reason: String): Boolean {
+    private fun resolveResumeTrackIdForColdStartKeep(): String? {
+        val snapshot = playbackResumeStore.read() ?: return null
+        val tracks = parseCachedTrackArray(snapshot.queueJson)
+        if (tracks.isEmpty()) {
+            return null
+        }
+        val safeIndex = snapshot.index.coerceIn(0, tracks.lastIndex)
+        return tracks.getOrNull(safeIndex)?.id?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun clearDownloadCacheFiles(reason: String, keepTrackId: String? = null): Boolean {
         val files = cacheDir?.listFiles()?.filter {
             it.isFile && it.name.startsWith("emby_") && it.name.endsWith(".cache")
         }.orEmpty()
+        val keepFileName = keepTrackId?.let { "emby_${it}.cache" }
+        var kept = 0
         var allDeleted = true
         files.forEach { file ->
+            if (!keepFileName.isNullOrEmpty() && file.name == keepFileName) {
+                kept += 1
+                return@forEach
+            }
             val deleted = runCatching { file.delete() }.getOrDefault(false)
             if (!deleted) {
                 allDeleted = false
             }
         }
         synchronized(downloadStateLock) {
-            trackDownloadStates.clear()
+            if (keepTrackId.isNullOrEmpty()) {
+                trackDownloadStates.clear()
+            } else {
+                val keepState = trackDownloadStates[keepTrackId]
+                trackDownloadStates.clear()
+                if (keepState != null) {
+                    trackDownloadStates[keepTrackId] = keepState
+                }
+            }
         }
-        appendRuntimeLog("download-cache clear reason=$reason files=${files.size} success=$allDeleted")
+        appendRuntimeLog(
+            "download-cache clear reason=$reason files=${files.size} kept=$kept keepTrackId=${keepTrackId.orEmpty()} success=$allDeleted"
+        )
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "cache_cleanup",
+            properties = mapOf(
+                "reason" to reason,
+                "files_total" to files.size,
+                "files_kept" to kept,
+                "keep_track_id" to keepTrackId.orEmpty(),
+                "success" to allDeleted
+            ),
+            priority = if (allDeleted) PostHogTracker.Priority.NORMAL else PostHogTracker.Priority.HIGH
+        )
         return allDeleted
+    }
+
+    private fun ensureWifiConnectedForNetworkRequest(requestTag: String, promptUser: Boolean): Boolean {
+        return wifiNetworkGate.ensureWifiConnectedForNetworkRequest(
+            requestTag = requestTag,
+            promptUser = promptUser
+        )
+    }
+
+    private fun captureBootStage(stage: String, bootStartMs: Long) {
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "boot_stage",
+            properties = mapOf(
+                "stage" to stage,
+                "elapsed_ms" to (SystemClock.elapsedRealtime() - bootStartMs).coerceAtLeast(0L)
+            )
+        )
     }
 
     private fun calculateDownloadCacheBytes(): Long {
@@ -4369,7 +4353,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::downloadCacheSizeValue.isInitialized) {
             return
         }
-        Thread {
+        backgroundExecutor.execute {
             val bytes = calculateDownloadCacheBytes()
             runOnUiThread {
                 if (!this::downloadCacheSizeValue.isInitialized) {
@@ -4378,7 +4362,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 val text = Formatter.formatShortFileSize(this, bytes)
                 downloadCacheSizeValue.text = getString(R.string.download_cache_size_format, text)
             }
-        }.start()
+        }
     }
 
     private fun loadSavedCredentials() {
@@ -4770,6 +4754,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
+        const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2

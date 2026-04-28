@@ -362,6 +362,124 @@ Last Updated: 2026-04-27
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: No
 
+## T-S4-UPD-040
+- Task ID: `T-S4-UPD-040`
+- Title: 更新源与版本比较规则落地（GitHub Releases）
+- Module ID: `M-S4-UPD-007`
+- Goal: 定义并实现版本元数据读取、tag 解析、版本比较与稳定版本过滤规则。
+- Why: 无稳定规则会导致误报更新或漏检，后续下载链路不可控。
+- Dependencies: 无
+- Inputs:
+  - `.github/workflows/package-mvp.yml`
+  - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
+  - 当前版本号来源（`versionName/versionCode`）
+- Expected Outputs:
+  - 更新元数据模型（tag/versionName/versionCode/apk asset/url）。
+  - 版本比较策略（优先 `versionCode`，兼容 tag 解析）。
+  - prerelease/draft 过滤策略与失败回退行为。
+- Done Criteria:
+  - 可稳定得到“是否有更新 + 目标下载链接 + 展示文案”。
+  - 解析失败不会影响主流程（fail-open）。
+- Risks:
+  - release 资产命名不一致导致匹配失败。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-UPD-041
+- Task ID: `T-S4-UPD-041`
+- Title: 冷启动自动检测与节流策略
+- Module ID: `M-S4-UPD-007`
+- Goal: 在冷启动流程接入自动检测，并加入检测周期节流与网络失败回退。
+- Why: 自动检测是核心诉求，但必须避免每次冷启动都触发重网络请求。
+- Dependencies: `T-S4-UPD-040`
+- Inputs:
+  - `MainActivity.kt` 启动链路
+  - 本地持久化策略（SharedPreferences）
+- Expected Outputs:
+  - 冷启动检测触发点（不阻断播放初始化）。
+  - 检测节流参数（建议 24h，可配置）。
+  - 失败回退与状态缓存（避免频繁重试）。
+- Done Criteria:
+  - 冷启动可自动触发检测，且命中节流时不重复请求。
+  - 检测失败仅记录状态，不影响播放功能。
+- Risks:
+  - 与现有启动优化链路冲突，影响首帧体验。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-UPD-042
+- Task ID: `T-S4-UPD-042`
+- Title: 设置页手动检查更新入口与结果展示
+- Module ID: `M-S4-UPD-007`
+- Goal: 在 Settings 页面增加“检查更新”入口，并展示明确状态。
+- Why: 自动检测需要手动兜底入口，便于现场排障与用户主动升级。
+- Dependencies: `T-S4-UPD-040`
+- Inputs:
+  - `activity_main.xml`（Settings 区域）
+  - `MainActivity.kt` 设置页事件绑定
+  - `strings.xml`
+- Expected Outputs:
+  - 设置页按钮与状态文本（检测中/已最新/发现更新/失败）。
+  - 手动检查触发逻辑（可绕过冷启动节流）。
+- Done Criteria:
+  - 设置页可重复手动检查并得到可理解反馈。
+  - UI 状态变化与日志一致。
+- Risks:
+  - 状态文案不清晰会误导用户。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-UPD-043
+- Task ID: `T-S4-UPD-043`
+- Title: GitHub 镜像加速下载与官方回退链路
+- Module ID: `M-S4-UPD-007`
+- Goal: 对更新 APK 下载实现“镜像优先 + 官方回退”的容错下载链路。
+- Why: 车机网络环境复杂，单一路径下载失败率高。
+- Dependencies: `T-S4-UPD-040`
+- Inputs:
+  - GitHub release 资产链接
+  - 镜像域名策略（默认内置，可后续配置化）
+  - 下载与文件落地路径策略
+- Expected Outputs:
+  - 镜像 URL 构造与优先级策略（例如 `ghproxy` / `github.moeyy` 等）。
+  - 下载失败自动回退到下一镜像或官方链接。
+  - 下载进度/结果记录（日志 + 事件）。
+- Done Criteria:
+  - 至少 1 条镜像链路与官方链路可完成下载。
+  - 任一镜像失败不导致整体更新流程中断。
+- Risks:
+  - 镜像服务可用性与合规性存在波动。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-UPD-044
+- Task ID: `T-S4-UPD-044`
+- Title: 安装触发与更新链路观测闭环
+- Module ID: `M-S4-UPD-007`
+- Goal: 下载完成后触发系统安装，并补齐更新链路关键观测事件。
+- Why: 没有安装触发和观测，更新能力无法形成可验证闭环。
+- Dependencies: `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-OBS-036`
+- Inputs:
+  - 下载完成的 APK 文件
+  - 安装触发 Intent/FileProvider 配置
+  - PostHog 事件上报组件
+- Expected Outputs:
+  - 安装触发逻辑（兼容 API17 文件 URI 约束）。
+  - 关键事件：`update_check_*`, `update_download_*`, `update_install_triggered/failed`。
+  - 最小验收文档（手动回归步骤与故障排查指引）。
+- Done Criteria:
+  - 下载完成后可触发系统安装器。
+  - 链路关键节点均可在日志/事件中看到。
+- Risks:
+  - 不同 ROM 对安装权限和未知来源策略差异较大。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
 ## Blocked Candidates (Carry Forward)
 
 ### T-BLK-001

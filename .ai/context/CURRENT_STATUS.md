@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -25,11 +25,33 @@ Last Updated: 2026-04-27
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
+- 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
 
 ## Planning Refresh (2026-04-27)
 - 已按 `ai-planning` 重排为模块化执行：`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`。
 - 任务粒度从单个 `T-S4-CORE-026` 调整为 `026A/026B/026C + 020B + 032/022/033`，用于区分可代码推进与实机阻塞任务。
 - 当前状态：`T-S4-CORE-026A` In Progress，`T-S4-VAL-032` Ready。
+
+## Planning Refresh (Update, 2026-04-27)
+- 已将“自动检测并更新”纳入当前阶段范围，新增模块 `M-S4-UPD-007`。
+- 新增任务链：`T-S4-UPD-040/041/042/043/044`，覆盖版本源解析、冷启动检测、设置手动检测、镜像下载与安装触发闭环。
+- 当前状态：
+  - `T-S4-UPD-040` Done（已落地 GitHub Releases 解析 + 版本比较规则）。
+  - `T-S4-UPD-041/042/043` Done（已落地冷启动检测/设置手动检测/镜像回退下载）。
+  - `T-S4-UPD-044` In Progress（已完成安装触发与事件接线，待 CI/实机验证）。
+
+## Module Execution Progress (Update, 2026-04-28)
+- 已按 `M-S4-UPD-007` 落地更新模块代码主链路：
+  - 新增 `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`。
+  - 新增 `GitHub Releases` 拉取与解析：过滤 `draft/prerelease`，选择 APK 资产，按 `versionCode/tag` 比较版本。
+  - 冷启动自动检测：`MainActivity` 在首帧后异步触发，命中冷却自动跳过（成功 24h、失败 30min）。
+  - 设置页手动检测：新增“检查更新”按钮与状态文本，支持重复触发。
+  - 下载策略：镜像优先（`ghfast.top`、`mirror.ghproxy.com`、`ghproxy.net`）并回退官方 GitHub 下载链接。
+  - 安装触发：新增 `FileProvider` + `res/xml/file_paths.xml`，API17/24+ 路径兼容处理。
+  - 观测接线：新增 `update_check_* / update_download_* / update_install_*` 事件与 runtime log。
+- 当前验证状态：
+  - `scripts/check_api17_guardrails.sh` 已通过。
+  - 当前环境无 `gradle/gradlew`，尚未完成本地编译与车机实机验收。
 
 ## Planning Refresh (PostHog, 2026-04-27)
 - 已新增观测模块 `M-S4-OBS-006`：将 PostHog 作为“结构化事件链路”并行接入，不替代全量原始日志。

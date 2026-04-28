@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -15,6 +15,7 @@ Last Updated: 2026-04-27
 - 第一版必须同时满足：后台服务 + 后台方向盘按键 + 浮窗控制。
 - 接受前台服务常驻通知（稳定性优先）。
 - 命令执行策略固定为“失败即失败”：不记录待执行命令，不做延迟重放/重试。
+- 新增需求：每次冷启动自动检测更新；设置页支持手动检测更新；下载增加 GitHub 镜像加速。
 - 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
 
 ## Technical Strategy (Confirmed)
@@ -23,13 +24,14 @@ Last Updated: 2026-04-27
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：先验证 `eb10b46`（自动下一曲、Home 后音频连续性、后台命令矩阵）并回填。
-2. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：继续关键节点埋点并完成实机压测。
-3. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
-4. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
-5. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
-6. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
-7. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
+1. `T-S4-UPD-044`（In Progress）：先执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
+2. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续验证 `eb10b46` 并回填后台命令矩阵。
+3. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：补齐关键链路观测并完成实机压测。
+4. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
+5. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
+6. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
+7. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
+8. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
 
 ## WIP Code Delta (2026-04-26)
 - 已创建后台控制模块文件（service/receiver/overlay/state store/command bus）。
@@ -89,7 +91,19 @@ Last Updated: 2026-04-27
     - `host=https://us.i.posthog.com`
     - `project_id=399199`
     - `project_api_key=phc_wPMBC5C8pCscinCMjqbcFryREP5sKACufHzYiAWxtig6`
+- 本轮新增模块执行落地产物（Update, 2026-04-28）：
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/res/xml/file_paths.xml`
+  - `AndroidManifest.xml` 新增 `FileProvider`
+  - `activity_main.xml` 设置页新增 `btn_check_update` + `update_status_value`
+  - `strings.xml` 新增更新检测/下载/安装状态文案
+  - `MainActivity` 已接入：
+    - 冷启动自动检测与节流（成功 24h / 失败 30min）
+    - 设置页手动检查 + “有新版本时按钮变为下载并安装”
+    - 镜像优先下载与官方回退
+    - 安装触发与 `update_check_* / update_download_* / update_install_*` PostHog 事件
 - 待完成：
+  - 更新链路 CI 编译与 API17/车机实机验收（当前环境无 `gradle/adb`）；
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；
   - 车机实测确认浮窗策略与后台通知链路稳定性；

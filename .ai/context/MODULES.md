@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28
 
 ## M-S4-CORE-001
 - Module ID: `M-S4-CORE-001`
@@ -171,3 +171,41 @@ Last Updated: 2026-04-27
 - Risks:
   - 提前执行容易引发范围扩张并拖慢主链路。
 - Suitable For Module Execution?: No
+
+## M-S4-UPD-007
+- Module ID: `M-S4-UPD-007`
+- Name: 应用更新检测与镜像加速下载
+- Goal: 在 API17 下落地“冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载 + 安装触发”闭环。
+- Why It Matters: 车机设备升级频率低且网络环境复杂，缺少内置更新会显著增加维护与排障成本。
+- In Scope:
+  - 版本检测客户端（GitHub Releases 元数据读取 + 本地版本比较）。
+  - 冷启动自动检测（带周期节流，不阻断主流程）。
+  - 设置页“手动检查更新”入口与状态反馈。
+  - APK 下载器（官方链接 + 镜像候选 + 自动回退）。
+  - 下载完成后安装触发（系统安装器 Intent）。
+  - 更新链路关键事件埋点（检查结果、下载结果、安装触发结果）。
+- Out of Scope:
+  - 静默安装、root 安装、系统签名安装。
+  - 差分更新（bsdiff/patch）与自建 OTA 平台。
+  - 多渠道复杂灰度策略。
+- Dependencies:
+  - `M-S4-CORE-001`（确保冷启动流程稳定，不影响播放链路）。
+  - `M-S4-OBS-006`（复用观测与故障诊断口径）。
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/`（新增 `update/` 目录）
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+  - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
+- Milestone / Done Criteria:
+  - 冷启动按策略自动检测更新且不阻断主流程。
+  - 设置页可手动检测并明确展示“已最新/有新版本/检测失败”。
+  - APK 下载支持镜像优先 + 官方回退，完成后可触发安装。
+  - 失败路径可诊断（日志 + 结构化事件）。
+- Related Tasks: `T-S4-UPD-040`, `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-UPD-044`
+- Priority: P1
+- Status: In Progress（代码链路已落地：`040/041/042/043` 完成，`044` 已接线待 CI/实机验收）
+- Risks:
+  - GitHub API 限流与镜像可用性波动可能导致检测或下载失败。
+  - API17 设备对安装权限与文件 URI 处理差异较大。
+- Suitable For Module Execution?: Yes

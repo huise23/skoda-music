@@ -28,7 +28,8 @@ class PlaybackService : Service(), OverlayController.Listener {
         trackId = "",
         isPlaying = false,
         hasActiveTrack = false,
-        positionMs = 0L
+        positionMs = 0L,
+        durationMs = 0L
     )
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
@@ -76,7 +77,8 @@ class PlaybackService : Service(), OverlayController.Listener {
                     trackId = intent.getStringExtra(PlaybackActions.EXTRA_TRACK_ID).orEmpty(),
                     isPlaying = intent.getBooleanExtra(PlaybackActions.EXTRA_IS_PLAYING, false),
                     hasActiveTrack = intent.getBooleanExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, false),
-                    positionMs = intent.getLongExtra(PlaybackActions.EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
+                    positionMs = intent.getLongExtra(PlaybackActions.EXTRA_POSITION_MS, 0L).coerceAtLeast(0L),
+                    durationMs = intent.getLongExtra(PlaybackActions.EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
                 )
                 stateStore.saveSnapshot(snapshot)
                 updatePresentation()

@@ -178,6 +178,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastReportedServiceIsPlaying: Boolean = false
     private var lastReportedServiceHasTrack: Boolean = false
     private var lastReportedServicePositionMs: Long = -1L
+    private var lastReportedServiceDurationMs: Long = -1L
     private var lastReportedServiceAtMs: Long = 0L
     private var resumeRestoreAttempted: Boolean = false
     private var pendingAutoResumePlayback: Boolean = false
@@ -4033,11 +4034,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
         val isPlaying = uiState.isPlaying && hasTrack
         val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
+        val engineDurationMs = playbackEngine?.durationMs() ?: -1L
+        val durationMs = loadedTracks.getOrNull(currentTrackIndex)?.let {
+            resolveTrackDurationMs(it, engineDurationMs)
+        }?.coerceAtLeast(0L) ?: engineDurationMs.coerceAtLeast(0L)
         val nowMs = SystemClock.elapsedRealtime()
         val baseUnchanged = trackId == lastReportedServiceTrackId &&
             trackTitle == lastReportedServiceTrackTitle &&
             hasTrack == lastReportedServiceHasTrack &&
-            isPlaying == lastReportedServiceIsPlaying
+            isPlaying == lastReportedServiceIsPlaying &&
+            durationMs == lastReportedServiceDurationMs
         val positionDeltaMs = abs(positionMs - lastReportedServicePositionMs)
         val elapsedMs = nowMs - lastReportedServiceAtMs
         val shouldSend = force ||
@@ -4052,6 +4058,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lastReportedServiceHasTrack = hasTrack
         lastReportedServiceIsPlaying = isPlaying
         lastReportedServicePositionMs = positionMs
+        lastReportedServiceDurationMs = durationMs
         lastReportedServiceAtMs = nowMs
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
@@ -4059,6 +4066,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             putExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, hasTrack)
             putExtra(PlaybackActions.EXTRA_IS_PLAYING, isPlaying)
             putExtra(PlaybackActions.EXTRA_POSITION_MS, positionMs)
+            putExtra(PlaybackActions.EXTRA_DURATION_MS, durationMs)
         }
     }
 

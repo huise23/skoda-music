@@ -7,8 +7,11 @@ import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackStateStore
@@ -25,6 +28,7 @@ class OverlayController(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var rootView: LinearLayout? = null
     private var titleView: TextView? = null
+    private var progressBar: ProgressBar? = null
     private var playPauseButton: ImageButton? = null
 
     fun canDraw(): Boolean {
@@ -55,6 +59,10 @@ class OverlayController(
 
     fun update(snapshot: PlaybackStateStore.Snapshot) {
         titleView?.text = if (snapshot.trackTitle.isNotBlank()) snapshot.trackTitle else "未加载曲目"
+        val durationMs = snapshot.durationMs.coerceAtLeast(0L)
+        val positionMs = snapshot.positionMs.coerceAtLeast(0L)
+        val percent = if (durationMs <= 0L) 0 else ((positionMs * PROGRESS_MAX) / durationMs).toInt()
+        progressBar?.progress = percent.coerceIn(0, PROGRESS_MAX)
         playPauseButton?.setImageResource(
             if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         )
@@ -92,19 +100,47 @@ class OverlayController(
         title.textSize = 16f
         title.maxLines = 2
         title.gravity = Gravity.CENTER
-        val titleParams = LinearLayout.LayoutParams(
+        val header = FrameLayout(context)
+        val headerParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
+            bottomMargin = dp(6)
+        }
+        container.addView(header, headerParams)
+        header.addView(
+            title,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            ).apply {
+                marginStart = dp(28)
+                marginEnd = dp(28)
+            }
+        )
+        val close = createTopCloseButton {
+            hide()
+            listener.onDismissByUser()
+        }
+        header.addView(
+            close,
+            FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END)
+        )
+
+        val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = PROGRESS_MAX
+            progress = 0
+        }
+        val progressParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(3)
+        ).apply {
             bottomMargin = dp(10)
         }
-        container.addView(title, titleParams)
+        container.addView(progress, progressParams)
 
-        val firstRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        val secondRow = LinearLayout(context).apply {
+        val actionRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
@@ -112,14 +148,8 @@ class OverlayController(
         val rowParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            bottomMargin = dp(6)
-        }
-        container.addView(firstRow, rowParams)
-        container.addView(secondRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        )
+        container.addView(actionRow, rowParams)
 
         val prev = createControlButton(android.R.drawable.ic_media_previous) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PREV)
@@ -130,18 +160,13 @@ class OverlayController(
         val next = createControlButton(android.R.drawable.ic_media_next) {
             listener.onCommand(PlaybackActions.ACTION_CMD_NEXT)
         }
-        val close = createControlButton(android.R.drawable.ic_menu_close_clear_cancel) {
-            hide()
-            listener.onDismissByUser()
-        }
-
-        firstRow.addView(prev, buildControlButtonParams(rightMargin = dp(6)))
-        firstRow.addView(playPause, buildControlButtonParams())
-        secondRow.addView(next, buildControlButtonParams(rightMargin = dp(6)))
-        secondRow.addView(close, buildControlButtonParams())
+        actionRow.addView(prev, buildControlButtonParams(rightMargin = dp(4)))
+        actionRow.addView(playPause, buildControlButtonParams(rightMargin = dp(4)))
+        actionRow.addView(next, buildControlButtonParams())
 
         rootView = container
         titleView = title
+        progressBar = progress
         playPauseButton = playPause
     }
 
@@ -153,8 +178,17 @@ class OverlayController(
         }
     }
 
+    private fun createTopCloseButton(onClick: () -> Unit): ImageButton {
+        return ImageButton(context).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { onClick() }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }
+    }
+
     private fun buildControlButtonParams(rightMargin: Int = 0): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+        return LinearLayout.LayoutParams(0, dp(68), 1f).apply {
             this.rightMargin = rightMargin
         }
     }
@@ -181,5 +215,9 @@ class OverlayController(
 
     private fun dp(value: Int): Int {
         return (value * context.resources.displayMetrics.density).toInt()
+    }
+
+    private companion object {
+        const val PROGRESS_MAX = 1000
     }
 }

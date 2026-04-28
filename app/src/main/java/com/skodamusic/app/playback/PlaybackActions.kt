@@ -25,4 +25,5 @@ object PlaybackActions {
     const val EXTRA_IS_PLAYING = "extra_is_playing"
     const val EXTRA_HAS_ACTIVE_TRACK = "extra_has_active_track"
     const val EXTRA_POSITION_MS = "extra_position_ms"
+    const val EXTRA_DURATION_MS = "extra_duration_ms"
 }

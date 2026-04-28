@@ -8,7 +8,8 @@ class PlaybackStateStore(context: Context) {
         val trackId: String,
         val isPlaying: Boolean,
         val hasActiveTrack: Boolean,
-        val positionMs: Long
+        val positionMs: Long,
+        val durationMs: Long
     )
 
     data class CommandTrace(
@@ -28,6 +29,7 @@ class PlaybackStateStore(context: Context) {
             .putBoolean(KEY_IS_PLAYING, snapshot.isPlaying)
             .putBoolean(KEY_HAS_ACTIVE_TRACK, snapshot.hasActiveTrack)
             .putLong(KEY_POSITION_MS, snapshot.positionMs.coerceAtLeast(0L))
+            .putLong(KEY_DURATION_MS, snapshot.durationMs.coerceAtLeast(0L))
             .putLong(KEY_UPDATED_AT_MS, System.currentTimeMillis())
             .apply()
     }
@@ -38,7 +40,8 @@ class PlaybackStateStore(context: Context) {
             trackId = prefs.getString(KEY_TRACK_ID, "").orEmpty(),
             isPlaying = prefs.getBoolean(KEY_IS_PLAYING, false),
             hasActiveTrack = prefs.getBoolean(KEY_HAS_ACTIVE_TRACK, false),
-            positionMs = prefs.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L)
+            positionMs = prefs.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
+            durationMs = prefs.getLong(KEY_DURATION_MS, 0L).coerceAtLeast(0L)
         )
     }
 
@@ -77,6 +80,7 @@ class PlaybackStateStore(context: Context) {
         const val KEY_IS_PLAYING = "is_playing"
         const val KEY_HAS_ACTIVE_TRACK = "has_active_track"
         const val KEY_POSITION_MS = "position_ms"
+        const val KEY_DURATION_MS = "duration_ms"
         const val KEY_UPDATED_AT_MS = "updated_at_ms"
         const val KEY_OVERLAY_DISMISSED_BY_USER = "overlay_dismissed_by_user"
         const val KEY_LAST_CMD_ACTION = "last_cmd_action"

@@ -121,7 +121,7 @@ class AppUpdateCoordinator(
             }
             captureUpdateCheckResult(result)
             appendRuntimeLog(
-                "update check done trigger=$trigger status=${result.status.name} remoteTag=${result.remoteTag} code=${result.errorCode}"
+                "update check done trigger=$trigger status=${result.status.name} remoteTag=${result.remoteTag} code=${result.errorCode} stage=${result.failedStage} url=${result.failedUrl}"
             )
         }
     }
@@ -175,13 +175,19 @@ class AppUpdateCoordinator(
             "remote_version_code" to result.remoteVersionCode,
             "remote_version_name" to result.remoteVersionName,
             "remote_tag" to result.remoteTag,
-            "http_status" to result.httpStatus
+            "http_status" to result.httpStatus,
+            "failed_stage" to result.failedStage,
+            "failed_url" to result.failedUrl,
+            "attempt_count" to result.attemptedUrls.size
         )
+        if (result.attemptedUrls.isNotEmpty()) {
+            props["attempt_urls"] = result.attemptedUrls.joinToString(" -> ").take(220)
+        }
         if (result.errorCode.isNotBlank()) {
             props["error_code"] = result.errorCode
         }
         if (result.message.isNotBlank()) {
-            props["message"] = result.message.take(96)
+            props["message"] = result.message.take(220)
         }
         val eventName = when (result.status) {
             AppUpdateManager.UpdateCheckStatus.UPDATE_AVAILABLE -> "update_check_available"

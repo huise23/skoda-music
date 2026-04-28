@@ -74,6 +74,9 @@ class AppUpdateManager(
         val httpStatus: Int = -1,
         val errorCode: String = "",
         val message: String = "",
+        val failedStage: String = "",
+        val failedUrl: String = "",
+        val attemptedUrls: List<String> = emptyList(),
         val checkedAtMs: Long = System.currentTimeMillis(),
         val cooldownMs: Long = 0L
     )
@@ -103,7 +106,10 @@ class AppUpdateManager(
         val httpStatus: Int = -1,
         val errorCode: String = "",
         val message: String = "",
-        val hasStableReleaseWithoutApk: Boolean = false
+        val hasStableReleaseWithoutApk: Boolean = false,
+        val failedStage: String = "",
+        val failedUrl: String = "",
+        val attemptedUrls: List<String> = emptyList()
     )
 
     private data class DownloadResult(
@@ -175,6 +181,7 @@ class AppUpdateManager(
                     localVersion = localVersion,
                     errorCode = "CHECK_EXCEPTION",
                     message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
+                    failedStage = "check_for_updates",
                     checkedAtMs = System.currentTimeMillis()
                 )
             }
@@ -263,6 +270,9 @@ class AppUpdateManager(
                 httpStatus = fetchResult.httpStatus,
                 errorCode = fetchResult.errorCode,
                 message = fetchResult.message,
+                failedStage = fetchResult.failedStage,
+                failedUrl = fetchResult.failedUrl,
+                attemptedUrls = fetchResult.attemptedUrls,
                 checkedAtMs = nowMs
             )
         }
@@ -301,7 +311,9 @@ class AppUpdateManager(
 
         var lastFailure = ReleaseFetchResult(
             errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",
-            message = "no request executed"
+            message = "no request executed",
+            failedStage = "fetch_release_prepare",
+            attemptedUrls = requestUrls
         )
         for (url in requestUrls) {
             val request = Request.Builder()
@@ -315,14 +327,20 @@ class AppUpdateManager(
                         lastFailure = ReleaseFetchResult(
                             httpStatus = response.code(),
                             errorCode = "GITHUB_RELEASE_HTTP_${response.code()}",
-                            message = "github releases http ${response.code()} via ${shortenUrlForLog(url)}"
+                            message = "github releases http ${response.code()} via ${shortenUrlForLog(url)}",
+                            failedStage = "fetch_release_http",
+                            failedUrl = url,
+                            attemptedUrls = requestUrls
                         )
                     } else {
                         val body = response.body()?.string().orEmpty()
                         if (body.isBlank()) {
                             lastFailure = ReleaseFetchResult(
                                 errorCode = "GITHUB_RELEASE_EMPTY_BODY",
-                                message = "github releases empty body via ${shortenUrlForLog(url)}"
+                                message = "github releases empty body via ${shortenUrlForLog(url)}",
+                                failedStage = "fetch_release_empty_body",
+                                failedUrl = url,
+                                attemptedUrls = requestUrls
                             )
                         } else {
                             return parseReleasePayload(body)
@@ -332,7 +350,10 @@ class AppUpdateManager(
             } catch (e: Exception) {
                 lastFailure = ReleaseFetchResult(
                     errorCode = "GITHUB_RELEASE_EXCEPTION",
-                    message = "${e.javaClass.simpleName}: ${e.message.orEmpty()} via ${shortenUrlForLog(url)}"
+                    message = "${e.javaClass.simpleName}: ${e.message.orEmpty()} via ${shortenUrlForLog(url)}",
+                    failedStage = "fetch_release_exception",
+                    failedUrl = url,
+                    attemptedUrls = requestUrls
                 )
             }
         }
@@ -343,11 +364,13 @@ class AppUpdateManager(
         return try {
             val arr = JSONArray(payload)
             var hasStableNoApk = false
+            var fallbackPrerelease: ReleaseInfo? = null
+            var hasPrereleaseNoApk = false
             for (index in 0 until arr.length()) {
                 val item = arr.optJSONObject(index) ?: continue
                 val draft = item.optBoolean("draft", false)
                 val prerelease = item.optBoolean("prerelease", false)
-                if (draft || prerelease) {
+                if (draft) {
                     continue
                 }
                 val tagName = item.optString("tag_name").orEmpty().trim()
@@ -356,32 +379,55 @@ class AppUpdateManager(
                 val publishedAt = item.optString("published_at").orEmpty().trim()
                 val asset = pickPreferredApkAsset(item.optJSONArray("assets"))
                 if (asset == null) {
-                    hasStableNoApk = true
+                    if (prerelease) {
+                        hasPrereleaseNoApk = true
+                    } else {
+                        hasStableNoApk = true
+                    }
                     continue
                 }
                 val resolvedVersionCode = resolveRemoteVersionCode(tagName, asset.name)
                 val resolvedVersionName = resolveRemoteVersionName(tagName, releaseName, asset.name)
-                return ReleaseFetchResult(
-                    releaseInfo = ReleaseInfo(
-                        tagName = tagName,
-                        releaseName = releaseName,
-                        htmlUrl = htmlUrl,
-                        publishedAt = publishedAt,
-                        versionCode = resolvedVersionCode,
-                        versionName = resolvedVersionName,
-                        asset = asset
+                val releaseInfo = ReleaseInfo(
+                    tagName = tagName,
+                    releaseName = releaseName,
+                    htmlUrl = htmlUrl,
+                    publishedAt = publishedAt,
+                    versionCode = resolvedVersionCode,
+                    versionName = resolvedVersionName,
+                    asset = asset
+                )
+                if (prerelease) {
+                    if (fallbackPrerelease == null) {
+                        fallbackPrerelease = releaseInfo
+                    }
+                } else {
+                    return ReleaseFetchResult(
+                        releaseInfo = releaseInfo
                     )
+                }
+            }
+
+            if (fallbackPrerelease != null) {
+                return ReleaseFetchResult(
+                    releaseInfo = fallbackPrerelease
                 )
             }
 
             ReleaseFetchResult(
                 hasStableReleaseWithoutApk = hasStableNoApk,
-                errorCode = if (hasStableNoApk) "STABLE_RELEASE_NO_APK" else "NO_STABLE_RELEASE"
+                errorCode = when {
+                    hasStableNoApk -> "STABLE_RELEASE_NO_APK"
+                    hasPrereleaseNoApk -> "PRERELEASE_NO_APK"
+                    else -> "NO_STABLE_RELEASE"
+                },
+                failedStage = "parse_release_filter"
             )
         } catch (e: Exception) {
             ReleaseFetchResult(
                 errorCode = "PARSE_RELEASE_PAYLOAD",
-                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
+                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
+                failedStage = "parse_release_payload"
             )
         }
     }

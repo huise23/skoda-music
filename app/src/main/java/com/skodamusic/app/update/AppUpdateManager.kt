@@ -460,9 +460,12 @@ class AppUpdateManager(
             val contentType = item.optString("content_type").orEmpty().trim().lowercase(Locale.US)
             var score = 0
             val lowerName = name.lowercase(Locale.US)
+            // Never pick unsigned artifacts for in-app updates; they are not installable.
+            if (lowerName.contains("unsigned")) {
+                continue
+            }
             if (lowerName.contains("signed")) score += 100
             if (lowerName.contains("release")) score += 40
-            if (lowerName.contains("unsigned")) score -= 30
             if (lowerName.contains("debug")) score -= 80
             if (contentType.contains("android.package-archive")) score += 10
             if (downloadUrl.contains("/releases/download/")) score += 5

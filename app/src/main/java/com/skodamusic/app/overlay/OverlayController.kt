@@ -13,6 +13,7 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -206,12 +207,14 @@ class OverlayController(
         }
     }
 
-    private fun createTopCloseButton(onClick: () -> Unit): TextView {
-        return TextView(context).apply {
-            text = "X"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            gravity = Gravity.CENTER
+    private fun createTopCloseButton(onClick: () -> Unit): ImageButton {
+        return ImageButton(context).apply {
+            setImageResource(com.skodamusic.app.R.drawable.ic_overlay_close)
+            setColorFilter(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(0, 0, 0, 0)
+            minimumWidth = 0
+            minimumHeight = 0
             setBackgroundColor(Color.TRANSPARENT)
             setOnClickListener { onClick() }
         }

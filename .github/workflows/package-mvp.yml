@@ -289,14 +289,12 @@ jobs:
             TAG_NAME="mvp-r${GITHUB_RUN_NUMBER}"
           fi
 
-          APK_ASSET="dist/release/skoda-music-mvp-unsigned.apk"
-          AAB_ASSET="dist/release/skoda-music-mvp-unsigned.aab"
-          if [[ -f "dist/release/skoda-music-mvp-signed.apk" ]]; then
-            APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
+          APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
+          if [[ ! -f "${APK_ASSET}" ]]; then
+            echo "Signed APK missing. Configure signing secrets before publishing release."
+            exit 1
           fi
-          if [[ -f "dist/release/skoda-music-mvp-signed.aab" ]]; then
-            AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
-          fi
+          AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
           RELEASE_ASSETS=("${APK_ASSET}")
           if [[ -f "${AAB_ASSET}" ]]; then
             RELEASE_ASSETS+=("${AAB_ASSET}")
@@ -318,7 +316,7 @@ jobs:
           fi
 
       - name: Publish Fixed Latest Release
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && env.HAS_SIGNING_SECRETS == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -327,15 +325,8 @@ jobs:
           TAG_NAME="mvp-latest"
           NOTES="Latest automated build from ${GITHUB_SHA}"
 
-          APK_ASSET="dist/release/skoda-music-mvp-unsigned.apk"
-          AAB_ASSET="dist/release/skoda-music-mvp-unsigned.aab"
-          if [[ -f "dist/release/skoda-music-mvp-signed.apk" ]]; then
-            APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
-          fi
-          if [[ -f "dist/release/skoda-music-mvp-signed.aab" ]]; then
-            AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
-          fi
-
+          APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
+          AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
           RELEASE_ASSETS=("${APK_ASSET}")
           if [[ -f "${AAB_ASSET}" ]]; then
             RELEASE_ASSETS+=("${AAB_ASSET}")

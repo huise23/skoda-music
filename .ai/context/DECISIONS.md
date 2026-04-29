@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-27
+Last Updated: 2026-04-29
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -258,6 +258,17 @@ Last Updated: 2026-04-27
 ## 2026-04-27 - PostHog 接入参数内置（用户提供）
 - 决策: 默认启用 PostHog 上报（可通过运行时配置覆盖）。
 - 决策: 内置 Host 使用 US Cloud ingest：`https://us.i.posthog.com`。
+
+## 2026-04-29 - 浮窗交互增强决策（M-S4-CONTROL-002）
+- 决策: 浮窗歌名字号调整为中层级（15sp），保持在标题与副标题之间的视觉权重。
+- 决策: 点击浮窗歌名直接拉起应用前台（`MainActivity`）。
+- 决策: 浮窗支持拖动，并持久化 `x/y` 位置；下次显示时恢复上次位置。
+- 决策: 右上角关闭按钮行为保持不变，仍为“本次后台隐藏，进应用再切出重现”。
+
+## 2026-04-29 - 更新检测策略修正决策（M-S4-UPD-007）
+- 决策: 更新元数据检查链路改为 GitHub 直连，暂不再优先经 CF 代理。
+- 决策: 版本检测支持 pre-release；规则改为“非 draft 且存在 APK 资产即纳入比较”。
+- 决策: 更新失败事件新增结构化诊断字段：`failed_stage`、`failed_url`、`attempt_count`、`attempt_urls`。
 - 决策: 内置 `project_id=399199`。
 - 决策: 内置 `project_api_key=phc_wPMBC5C8pCscinCMjqbcFryREP5sKACufHzYiAWxtig6`。
 - 决策: 默认环境标识设为 `prod`，后续可按需增加 `dev` 项目隔离。

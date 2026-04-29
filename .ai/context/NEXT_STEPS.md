@@ -1,9 +1,10 @@
 # NEXT_STEPS
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-29
 
 ## Current Priority Module
 - `M-S4-CORE-001` 核心命令与状态链路收口
+- 并行优先模块: `M-S4-CONTROL-002` 后台控制面一致性（浮窗交互增强已落地待车机验收）
 - 并行优先模块: `M-S4-OBS-006` PostHog 关键事件观测链路
 - 新增并行模块: `M-S4-UPD-007` 更新检测与镜像加速下载
 
@@ -14,6 +15,7 @@ Last Updated: 2026-04-28
 - 微任务执行（`ai-execution`）并行处理 `T-S4-VAL-032`
 
 ## Immediate Start
+- [ ] 首选任务: `T-S4-CORE-026C-HF-20260429`（车机验证：浮窗歌名点击回应用、拖动后位置持久化、右上角关闭行为）
 - [ ] 首选任务: `T-S4-UPD-044`（执行更新链路 CI/实机验收：检查->下载->安装触发->PostHog 事件）
 - [ ] 首选任务: `T-S4-CORE-026A` 车机验收（验证 `eb10b46`：自动下一曲 + Home 后音频连续性 + 焦点冲突是否消失）
 - [ ] 并行任务: `T-S4-CORE-026B`（按 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 回填 notification/overlay/media_button/audio_focus 四来源结果）
@@ -39,6 +41,7 @@ Last Updated: 2026-04-28
 - `T-S4-OBS-036/037` 尚未完成实机压测（阻塞 `T-S4-OBS-038` 在线验收）。
 - 当前环境无 `adb` 与 `gradle/gradlew`，本地无法直接完成设备日志抓取与编译回归。
 - GitHub 镜像域名可用性存在波动，需要在 `T-S4-UPD-044` 中做失败样本留证。
+- 低版本车机（Android 4.2.2）对 GitHub TLS 证书链兼容性差，更新检测可能持续失败；需在 `T-S4-UPD-044` 验证并评估元数据中转方案。
 
 ## Need Confirmation
 - PostHog 事件保留策略与环境隔离口径（当前内置为 `prod`，是否需额外 `dev` 项目）。

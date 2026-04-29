@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-29
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@eb10b46`
+- 当前主干: `master@6ed0fca`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -26,6 +26,17 @@ Last Updated: 2026-04-28
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
 - 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
+
+## Module Execution Progress (Control + Update Hotfix, 2026-04-29)
+- 已按 `M-S4-CONTROL-002` 落地浮窗交互增强（代码完成，待车机验收）：
+  - 浮窗歌名字号调整为中层级（`16sp -> 15sp`）。
+  - 点击浮窗歌名可拉起应用前台（`MainActivity`，`NEW_TASK + SINGLE_TOP + CLEAR_TOP`）。
+  - 浮窗支持拖动，拖动后位置写入本地并在下次显示时恢复（`x/y` 持久化）。
+- 已按 `M-S4-UPD-007` 完成更新链路热修：
+  - 更新元数据检查改为 GitHub 直连（排除代理链路干扰）。
+  - 版本检测支持 pre-release（只要 `non-draft + 有 APK` 即纳入比较）。
+  - 更新失败埋点增加结构化字段：`failed_stage/failed_url/attempt_count/attempt_urls`。
+- 已从 PostHog 验证到车机失败主因：低版本系统 TLS 证书链信任问题（`GITHUB_RELEASE_EXCEPTION + CertPathValidatorException`）。
 
 ## Planning Refresh (2026-04-27)
 - 已按 `ai-planning` 重排为模块化执行：`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`。

@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-29
 
 ## M-S4-CORE-001
 - Module ID: `M-S4-CORE-001`
@@ -54,7 +54,7 @@ Last Updated: 2026-04-28
   - 浮窗显示策略符合用户确认口径并可复现验证。
 - Related Tasks: `T-S4-CORE-026C`
 - Priority: P0
-- Status: Pending
+- Status: In Progress（2026-04-29 已落地浮窗交互增强：歌名字号下调、点击歌名回应用、拖动并记忆位置；待车机验收）
 - Risks:
   - 不同车机对媒体键广播优先级处理差异较大。
 - Suitable For Module Execution?: Yes

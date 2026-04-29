@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-29
 
 ## Ready
 - [ ] `T-S4-VAL-032` 升级 API17 回归清单并补齐 Section 4 验收模板（不依赖车机窗口，可立即执行）
@@ -8,6 +8,7 @@ Last Updated: 2026-04-28
 ## In Progress
 - [ ] `T-S4-CORE-026A` 核心命令链路收口（已完成 `eb10b46` 热修：service focus-neutral + cache fallback 失败自动下一曲，待车机验收）
 - [ ] `T-S4-CORE-026B` 后台命令矩阵自测（已落地 command trace 与矩阵模板，待设备执行并回填结果）
+- [ ] `T-S4-CORE-026C-HF-20260429` 浮窗交互增强（歌名字号中层级 + 点击歌名回应用 + 拖动持久化，代码已落地待车机验收）
 - [ ] `T-S4-OBS-035` API17 兼容 PostHog 上报客户端（已落地 fail-open 基线，待实机补充验证）
 - [ ] `T-S4-OBS-036` 关键节点埋点接线（已补 `capture ok` 成功日志与 cache 回退失败事件，待在线联调）
 - [ ] `T-S4-OBS-037` 上报门禁与隐私策略（已落地敏感字段黑名单 + 字符串截断 + 节流预算，待实机压测）
@@ -27,6 +28,7 @@ Last Updated: 2026-04-28
 
 ## Done
 - [x] `T-S4-UPD-040` 更新源与版本比较规则落地：新增 `AppUpdateManager`（GitHub Releases 解析 + draft/prerelease 过滤 + APK 资产选择 + 版本比较）
+- [x] `T-S4-UPD-040-HF-20260429` 更新检测策略修正：检查元数据改为 GitHub 直连，并支持 pre-release 版本检测
 - [x] `T-S4-UPD-041` 冷启动自动检测与节流：`MainActivity` 启动后自动检测 + 24h/30min 冷却
 - [x] `T-S4-UPD-042` 设置页手动检查入口与状态展示：新增按钮/状态文本/交互反馈
 - [x] `T-S4-UPD-043` 镜像加速下载与官方回退：内置镜像候选（`ghfast.top/mirror.ghproxy.com/ghproxy.net`）+ 官方 URL 回退
@@ -62,4 +64,4 @@ Last Updated: 2026-04-28
 - 更新链路现状：代码已接通（含安装触发），待 CI 编译与 API17/车机实机验证后再从 In Progress 移出。
 - 技术红线保持：`minSdk=17`、Emby-only、IPv4-only、业务 Host 不替换。
 - 推荐执行模式：核心模块用模块推进，文档与清单类任务用微任务并行推进。
-- 最新待验构建：`master@eb10b46`（已推送）。
+- 最新待验构建：`master@6ed0fca`（已推送，含 GitHub 直连 + pre-release 检测）。

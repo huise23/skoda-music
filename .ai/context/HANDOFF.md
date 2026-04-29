@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-29
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@eb10b46`
+- 当前主干: `master@6ed0fca`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -24,14 +24,26 @@ Last Updated: 2026-04-28
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-UPD-044`（In Progress）：先执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
-2. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续验证 `eb10b46` 并回填后台命令矩阵。
-3. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：补齐关键链路观测并完成实机压测。
-4. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
-5. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
-6. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
-7. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
-8. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
+1. `T-S4-CORE-026C-HF-20260429`：车机验证浮窗增强（歌名点击回应用、拖动持久化、关闭后再显示策略不回归）。
+2. `T-S4-UPD-044`（In Progress）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
+3. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续验证 `eb10b46` 并回填后台命令矩阵。
+4. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：补齐关键链路观测并完成实机压测。
+5. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
+6. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
+7. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
+8. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
+9. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
+
+## Latest Delta (2026-04-29)
+- 浮窗交互增强已落地（待车机验收）：
+  - 歌名字号调整为中层级（15sp）。
+  - 点击歌名拉起应用前台。
+  - 拖动位置持久化，重进后台后恢复。
+- 更新链路诊断能力增强：
+  - `update_check_failed` 现可回传 `failed_stage/failed_url/attempt_urls`。
+  - 更新元数据检查已切换为 GitHub 直连；版本比较已支持 pre-release。
+- 现场问题结论：
+  - 最近失败主因集中在低版本车机 TLS 信任链不兼容（`GITHUB_RELEASE_EXCEPTION`）。
 
 ## WIP Code Delta (2026-04-26)
 - 已创建后台控制模块文件（service/receiver/overlay/state store/command bus）。

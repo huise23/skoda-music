@@ -311,6 +311,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             },
             appendRuntimeLog = { message ->
                 appendRuntimeLog(message)
+            },
+            pauseTrackDownloadController = {
+                appendRuntimeLog("update flow pause track download controller")
+                stopDownloadController()
+            },
+            resumeTrackDownloadControllerIfNeeded = {
+                resumeDownloadControllerIfNeeded()
             }
         )
         buildIdBadge.text = resolveBuildVersionTag()
@@ -2590,6 +2597,32 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         downloadControllerRequestId = -1
         downloadControllerThread?.interrupt()
         downloadControllerThread = null
+    }
+
+    private fun resumeDownloadControllerIfNeeded() {
+        if (!uiState.isPlaying) {
+            return
+        }
+        if (downloadControllerThread != null) {
+            return
+        }
+        val base = embySessionBaseUrl ?: return
+        val token = embyAccessToken ?: return
+        val current = loadedTracks.getOrNull(currentTrackIndex) ?: return
+        val next = loadedTracks.getOrNull(currentTrackIndex + 1)
+        val requestId = playbackRequestId
+        if (requestId <= 0) {
+            return
+        }
+        appendRuntimeLog("resume track download controller requestId=$requestId track=${current.title}")
+        startDownloadController(
+            requestId = requestId,
+            embyBase = base,
+            token = token,
+            currentTrack = current,
+            nextTrack = next,
+            httpClient = embyApi.buildHttpClient(base, resolveCfReferenceDomain())
+        )
     }
 
     private fun runDownloadController(

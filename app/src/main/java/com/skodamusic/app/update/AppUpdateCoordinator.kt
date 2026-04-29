@@ -1,9 +1,11 @@
 package com.skodamusic.app.update
 
 import android.os.Handler
+import android.text.format.Formatter
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import com.skodamusic.app.R
 import com.skodamusic.app.observability.PostHogTracker
 import java.util.Locale
@@ -16,7 +18,9 @@ class AppUpdateCoordinator(
     private val ensureWifiConnectedForNetworkRequest: (requestTag: String, promptUser: Boolean) -> Boolean,
     private val setFeedbackText: (String) -> Unit,
     private val showToast: (Int) -> Unit,
-    private val appendRuntimeLog: (String) -> Unit
+    private val appendRuntimeLog: (String) -> Unit,
+    private val pauseTrackDownloadController: () -> Unit,
+    private val resumeTrackDownloadControllerIfNeeded: () -> Unit
 ) {
     @Volatile
     private var updateCheckInFlight: Boolean = false
@@ -25,6 +29,8 @@ class AppUpdateCoordinator(
     private var updateInstallInFlight: Boolean = false
 
     private var latestReleaseInfo: AppUpdateManager.ReleaseInfo? = null
+    private var updateProgressDialog: AlertDialog? = null
+    private var updateProgressTextView: TextView? = null
 
     fun restoreLastUpdateState() {
         val cached = appUpdateManager.readCachedState()
@@ -137,6 +143,10 @@ class AppUpdateCoordinator(
                 updateStatusValue.text = activity.getString(R.string.update_status_available, versionLabel, tagLabel)
                 setFeedbackText(activity.getString(R.string.feedback_update_available, versionLabel))
                 showToast(R.string.toast_update_available)
+                val release = result.releaseInfo
+                if (release != null) {
+                    startUpdateDownloadAndInstall(releaseInfo = release, trigger = "${result.trigger}_auto")
+                }
             }
             AppUpdateManager.UpdateCheckStatus.UP_TO_DATE -> {
                 latestReleaseInfo = null
@@ -217,10 +227,12 @@ class AppUpdateCoordinator(
         }
 
         updateInstallInFlight = true
+        pauseTrackDownloadController()
         checkUpdateButton.isEnabled = false
         checkUpdateButton.text = activity.getString(R.string.action_install_update)
         val versionLabel = releaseInfo.versionName.ifBlank { releaseInfo.tagName.ifBlank { "unknown" } }
         updateStatusValue.text = activity.getString(R.string.update_status_downloading, versionLabel)
+        showUpdateProgressDialog(versionLabel)
         setFeedbackText(activity.getString(R.string.feedback_update_downloading, versionLabel))
         appendRuntimeLog("update download start tag=${releaseInfo.tagName} trigger=$trigger")
         PostHogTracker.capture(
@@ -234,10 +246,19 @@ class AppUpdateCoordinator(
             )
         )
 
-        appUpdateManager.downloadAndInstall(releaseInfo = releaseInfo, trigger = trigger) { result ->
+        appUpdateManager.downloadAndInstall(
+            releaseInfo = releaseInfo,
+            trigger = trigger,
+            onProgress = { progress ->
+                activity.runOnUiThread {
+                    renderDownloadProgress(versionLabel, progress)
+                }
+            }
+        ) { result ->
             activity.runOnUiThread {
                 updateInstallInFlight = false
                 checkUpdateButton.isEnabled = true
+                dismissUpdateProgressDialog()
                 when (result.status) {
                     AppUpdateManager.UpdateInstallStatus.INSTALL_LAUNCHED -> {
                         latestReleaseInfo = null
@@ -253,6 +274,7 @@ class AppUpdateCoordinator(
                         updateStatusValue.text = activity.getString(R.string.update_status_download_failed, code)
                         setFeedbackText(activity.getString(R.string.feedback_update_download_failed, code))
                         showToast(R.string.toast_update_download_failed)
+                        resumeTrackDownloadControllerIfNeeded()
                     }
                     AppUpdateManager.UpdateInstallStatus.INSTALL_FAILED -> {
                         checkUpdateButton.text = activity.getString(R.string.action_install_update)
@@ -260,6 +282,7 @@ class AppUpdateCoordinator(
                         updateStatusValue.text = activity.getString(R.string.update_status_install_failed, code)
                         setFeedbackText(activity.getString(R.string.feedback_update_install_failed, code))
                         showToast(R.string.toast_update_install_failed)
+                        resumeTrackDownloadControllerIfNeeded()
                     }
                 }
             }
@@ -301,5 +324,59 @@ class AppUpdateCoordinator(
                 PostHogTracker.Priority.HIGH
             }
         )
+    }
+
+    private fun showUpdateProgressDialog(versionLabel: String) {
+        dismissUpdateProgressDialog()
+        val view = TextView(activity).apply {
+            setPadding(dp(24), dp(18), dp(24), dp(10))
+            textSize = 16f
+            text = activity.getString(R.string.update_progress_pending, versionLabel)
+        }
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(activity.getString(R.string.update_progress_title))
+            .setView(view)
+            .setCancelable(false)
+            .create()
+        dialog.show()
+        updateProgressDialog = dialog
+        updateProgressTextView = view
+    }
+
+    private fun dismissUpdateProgressDialog() {
+        updateProgressDialog?.dismiss()
+        updateProgressDialog = null
+        updateProgressTextView = null
+    }
+
+    private fun renderDownloadProgress(versionLabel: String, progress: AppUpdateManager.DownloadProgress) {
+        val downloadedText = Formatter.formatShortFileSize(activity, progress.downloadedBytes.coerceAtLeast(0L))
+        val totalText = if (progress.totalBytes > 0L) {
+            Formatter.formatShortFileSize(activity, progress.totalBytes)
+        } else {
+            "?"
+        }
+        val progressText = if (progress.percent >= 0) {
+            activity.getString(
+                R.string.update_progress_with_percent,
+                versionLabel,
+                progress.percent,
+                downloadedText,
+                totalText
+            )
+        } else {
+            activity.getString(
+                R.string.update_progress_without_percent,
+                versionLabel,
+                downloadedText,
+                totalText
+            )
+        }
+        updateStatusValue.text = progressText
+        updateProgressTextView?.text = progressText
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * activity.resources.displayMetrics.density).toInt()
     }
 }

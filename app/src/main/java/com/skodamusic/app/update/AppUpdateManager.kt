@@ -2,6 +2,7 @@ package com.skodamusic.app.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -104,6 +105,13 @@ class AppUpdateManager(
         val message: String = ""
     )
 
+    data class DownloadProgress(
+        val attemptedUrl: String,
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val percent: Int
+    )
+
     private data class ReleaseFetchResult(
         val releaseInfo: ReleaseInfo? = null,
         val httpStatus: Int = -1,
@@ -197,10 +205,11 @@ class AppUpdateManager(
     fun downloadAndInstall(
         releaseInfo: ReleaseInfo,
         trigger: String,
+        onProgress: (DownloadProgress) -> Unit = {},
         callback: (UpdateInstallResult) -> Unit
     ) {
         worker.execute {
-            val downloadResult = downloadReleaseApk(releaseInfo)
+            val downloadResult = downloadReleaseApk(releaseInfo, onProgress)
             if (!downloadResult.success || downloadResult.file == null) {
                 callback(
                     UpdateInstallResult(
@@ -556,7 +565,10 @@ class AppUpdateManager(
         return Triple(major, minor, patch)
     }
 
-    private fun downloadReleaseApk(releaseInfo: ReleaseInfo): DownloadResult {
+    private fun downloadReleaseApk(
+        releaseInfo: ReleaseInfo,
+        onProgress: (DownloadProgress) -> Unit
+    ): DownloadResult {
         val officialUrl = releaseInfo.asset.downloadUrl
         val candidates = buildMirrorCandidates(officialUrl)
         val updatesDir = File(appContext.cacheDir, UPDATE_CACHE_DIR_NAME)
@@ -572,6 +584,8 @@ class AppUpdateManager(
         val finalName = sanitizeApkFileName(releaseInfo.asset.name)
         val finalFile = File(updatesDir, finalName)
         val tmpFile = File(updatesDir, "$finalName.download")
+        var lastFailureCode = "UPDATE_DOWNLOAD_ALL_FAILED"
+        var lastFailureMessage = "all mirrors and official url failed"
 
         for (candidate in candidates) {
             runCatching {
@@ -588,6 +602,9 @@ class AppUpdateManager(
                         throw IllegalStateException("http ${response.code()}")
                     }
                     val body = response.body() ?: throw IllegalStateException("empty body")
+                    val totalBytes = body.contentLength().coerceAtLeast(-1L)
+                    var downloadedBytes = 0L
+                    var lastProgressEmitMs = 0L
                     FileOutputStream(tmpFile, false).use { output ->
                         body.byteStream().use { input ->
                             val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
@@ -597,6 +614,21 @@ class AppUpdateManager(
                                     break
                                 }
                                 output.write(buffer, 0, read)
+                                downloadedBytes += read.toLong()
+                                val now = System.currentTimeMillis()
+                                if (now - lastProgressEmitMs >= DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS ||
+                                    (totalBytes > 0 && downloadedBytes >= totalBytes)
+                                ) {
+                                    onProgress(
+                                        DownloadProgress(
+                                            attemptedUrl = candidate,
+                                            downloadedBytes = downloadedBytes,
+                                            totalBytes = totalBytes,
+                                            percent = computePercent(downloadedBytes, totalBytes)
+                                        )
+                                    )
+                                    lastProgressEmitMs = now
+                                }
                             }
                             output.flush()
                         }
@@ -615,6 +647,12 @@ class AppUpdateManager(
                     tmpFile.copyTo(finalFile, overwrite = true)
                     tmpFile.delete()
                 }
+
+                val validation = validateDownloadedApkFile(finalFile)
+                if (validation != null) {
+                    finalFile.delete()
+                    throw IllegalStateException("${validation.errorCode}:${validation.message}")
+                }
                 log("update download success url=$candidate bytes=${finalFile.length()}")
                 return DownloadResult(
                     success = true,
@@ -623,6 +661,12 @@ class AppUpdateManager(
                     usedUrl = candidate
                 )
             }.onFailure { e ->
+                val text = e.message.orEmpty()
+                if (text.startsWith("UPDATE_")) {
+                    val split = text.split(":", limit = 2)
+                    lastFailureCode = split.getOrNull(0).orEmpty().ifBlank { "UPDATE_DOWNLOAD_FAILED" }
+                    lastFailureMessage = split.getOrNull(1).orEmpty().ifBlank { text }
+                }
                 log("update download fail url=$candidate reason=${e.javaClass.simpleName}:${e.message.orEmpty()}")
             }
         }
@@ -630,9 +674,17 @@ class AppUpdateManager(
         return DownloadResult(
             success = false,
             attemptedUrls = candidates,
-            errorCode = "UPDATE_DOWNLOAD_ALL_FAILED",
-            message = "all mirrors and official url failed"
+            errorCode = lastFailureCode,
+            message = lastFailureMessage
         )
+    }
+
+    private fun computePercent(downloadedBytes: Long, totalBytes: Long): Int {
+        if (totalBytes <= 0L) {
+            return -1
+        }
+        val pct = ((downloadedBytes * 100L) / totalBytes).toInt()
+        return pct.coerceIn(0, 100)
     }
 
     private fun dispatchInstallIntent(apkFile: File): InstallDispatchResult {
@@ -743,8 +795,20 @@ class AppUpdateManager(
     }
 
     private fun verifyDownloadedApkCompatibility(apkFile: File): InstallDispatchResult {
+        val parsedInfo = resolveArchivePackageInfo(apkFile) ?: return InstallDispatchResult(
+            success = false,
+            errorCode = "UPDATE_APK_PARSE_FAILED",
+            message = "cannot parse archive package info"
+        )
+        if (!parsedInfo.packageName.equals(appContext.packageName, ignoreCase = false)) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_PACKAGE_NAME_MISMATCH",
+                message = "archive package=${parsedInfo.packageName} local=${appContext.packageName}"
+            )
+        }
         val localVersion = resolveLocalVersion()
-        val apkVersion = resolveArchiveVersionCode(apkFile)
+        val apkVersion = resolveArchiveVersionCode(parsedInfo)
         if (localVersion.versionCode > 0L && apkVersion > 0L && apkVersion <= localVersion.versionCode) {
             return InstallDispatchResult(
                 success = false,
@@ -754,7 +818,7 @@ class AppUpdateManager(
         }
 
         val installedSigner = resolveInstalledSignerDigest()
-        val apkSigner = resolveArchiveSignerDigest(apkFile)
+        val apkSigner = resolveArchiveSignerDigest(parsedInfo)
         if (installedSigner.isNotBlank() && apkSigner.isNotBlank() &&
             !installedSigner.equals(apkSigner, ignoreCase = true)
         ) {
@@ -767,9 +831,40 @@ class AppUpdateManager(
         return InstallDispatchResult(success = true)
     }
 
-    private fun resolveArchiveVersionCode(apkFile: File): Long {
+    private fun validateDownloadedApkFile(apkFile: File): InstallDispatchResult? {
+        if (!apkFile.exists() || apkFile.length() <= 0L) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_APK_FILE_EMPTY",
+                message = "downloaded apk is empty"
+            )
+        }
+        val parsedInfo = resolveArchivePackageInfo(apkFile) ?: return InstallDispatchResult(
+            success = false,
+            errorCode = "UPDATE_APK_PARSE_FAILED",
+            message = "cannot parse archive package info"
+        )
+        if (!parsedInfo.packageName.equals(appContext.packageName, ignoreCase = false)) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_PACKAGE_NAME_MISMATCH",
+                message = "archive package=${parsedInfo.packageName} local=${appContext.packageName}"
+            )
+        }
+        return null
+    }
+
+    private fun resolveArchivePackageInfo(apkFile: File): PackageInfo? {
         return try {
-            val pkg = appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0) ?: return -1L
+            @Suppress("DEPRECATION")
+            appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun resolveArchiveVersionCode(pkg: PackageInfo): Long {
+        return try {
             if (Build.VERSION.SDK_INT >= 28) {
                 val field = pkg.javaClass.getField("longVersionCode")
                 field.getLong(pkg)
@@ -794,11 +889,8 @@ class AppUpdateManager(
         }
     }
 
-    private fun resolveArchiveSignerDigest(apkFile: File): String {
+    private fun resolveArchiveSignerDigest(pkg: PackageInfo): String {
         return try {
-            @Suppress("DEPRECATION")
-            val pkg = appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
-                ?: return ""
             @Suppress("DEPRECATION")
             val sig = pkg.signatures?.firstOrNull()?.toByteArray() ?: return ""
             sha256Hex(sig)
@@ -906,6 +998,7 @@ class AppUpdateManager(
 
         const val UPDATE_CACHE_DIR_NAME = "updates"
         const val DOWNLOAD_BUFFER_BYTES = 8 * 1024
+        const val DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS = 350L
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
 
         val RUN_NUMBER_REGEX = Regex("(?:^|\\D)r(\\d{1,10})(?:\\D|$)", RegexOption.IGNORE_CASE)

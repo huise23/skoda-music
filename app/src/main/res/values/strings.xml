@@ -140,6 +140,10 @@
     <string name="update_status_throttled">更新状态：已命中冷却，跳过自动检查</string>
     <string name="update_status_failed">更新状态：检查失败（%1$s）</string>
     <string name="update_status_downloading">更新状态：正在下载更新 %1$s…</string>
+    <string name="update_progress_title">更新下载中</string>
+    <string name="update_progress_pending">更新状态：正在准备下载 %1$s…</string>
+    <string name="update_progress_with_percent">更新状态：正在下载更新 %1$s\n进度：%2$d%%（%3$s / %4$s）</string>
+    <string name="update_progress_without_percent">更新状态：正在下载更新 %1$s\n进度：%2$s / %3$s</string>
     <string name="update_status_installing">更新状态：已打开安装器（%1$s）</string>
     <string name="update_status_download_failed">更新状态：下载失败（%1$s）</string>
     <string name="update_status_install_failed">更新状态：安装触发失败（%1$s）</string>

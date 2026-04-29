@@ -3,6 +3,7 @@ package com.skodamusic.app.overlay
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.os.Build
 import android.provider.Settings
 import android.util.TypedValue
@@ -12,7 +13,6 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -121,24 +121,39 @@ class OverlayController(
         val title = TextView(context)
         title.setTextColor(Color.WHITE)
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+        title.setTypeface(Typeface.DEFAULT_BOLD)
         title.maxLines = 2
         title.gravity = Gravity.CENTER
-        title.setPadding(dp(8), 0, dp(44), 0)
         bindTitleTouch(title)
-        val titleParams = LinearLayout.LayoutParams(
+
+        val header = FrameLayout(context)
+        val headerParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             bottomMargin = dp(8)
         }
-        content.addView(title, titleParams)
+        content.addView(header, headerParams)
+
+        header.addView(
+            title,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            ).apply {
+                marginStart = dp(32)
+                marginEnd = dp(32)
+            }
+        )
+
         val close = createTopCloseButton {
             hide()
             listener.onDismissByUser()
         }
-        container.addView(
+        header.addView(
             close,
-            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END)
+            FrameLayout.LayoutParams(dp(32), dp(32), Gravity.END or Gravity.CENTER_VERTICAL)
         )
 
         val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -191,12 +206,14 @@ class OverlayController(
         }
     }
 
-    private fun createTopCloseButton(onClick: () -> Unit): ImageButton {
-        return ImageButton(context).apply {
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+    private fun createTopCloseButton(onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = "X"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            gravity = Gravity.CENTER
             setBackgroundColor(Color.TRANSPARENT)
             setOnClickListener { onClick() }
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
     }
 

@@ -33,6 +33,7 @@ Last Updated: 2026-04-29
   - 浮窗歌名字号疑似未生效；
   - 关闭按钮过小，且需要固定在右上角而非“歌名后”。
 - 用户要求 `T-S4-OBS-035/036/037` 进入“调用 API 自行检验”模式，而非仅本地日志判断。
+- 用户进一步确认 OBS 验收口径：先查 PostHog 已上报事件流，查不到再回查客户端上报链路。
 - 已执行首轮 API 自检探针（CLI 直连 `https://us.i.posthog.com/capture/`），当前环境返回 TLS 握手失败（`SSL_ERROR_SYSCALL`），需在车机或可用网络环境复测确认。
 
 ## Module Execution Progress (Validation, 2026-04-29)

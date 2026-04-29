@@ -25,7 +25,7 @@ Last Updated: 2026-04-29
 
 ## Execution Entry
 1. `T-S4-CORE-026C-HF-20260429`：复测浮窗 UI 修正（歌名字号、关闭按钮右上角与触控区）。
-2. `T-S4-OBS-035/036/037`（In Progress）：按用户要求调用 API 自检上报链路（不只看本地日志）。
+2. `T-S4-OBS-035/036/037`（In Progress）：按用户确认口径先查 PostHog 事件流，异常时再回查客户端上报链路。
 3. `T-S4-UPD-044`（In Progress）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
 4. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
 5. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
@@ -46,7 +46,7 @@ Last Updated: 2026-04-29
   - 更新元数据检查已切换为 GitHub 直连；版本比较已支持 pre-release。
 - OBS API 自检现状：
   - CLI 首轮直连 `https://us.i.posthog.com/capture/` 失败（`SSL_ERROR_SYSCALL`）。
-  - 需在车机或可用网络环境继续做 `T-S4-OBS-035/036/037` 在线自检。
+  - OBS 验收口径已调整为“PostHog 查询优先”；仅在查询异常时才回查客户端与网络链路。
 - 验收入口补齐：
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已升级为 S4 版本。
   - 新增 `Section 4`：`Risk Gates + Evidence Minimum + Acceptance Decision`。

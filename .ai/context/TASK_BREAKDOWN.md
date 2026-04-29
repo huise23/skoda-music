@@ -1,15 +1,18 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-27
+Last Updated: 2026-04-29
 
-## Active Stage: S4 车机后台控制落地（方案1 / Legacy 稳态）
+## Active Stage
+- S4 本地收口（车机验收前）
+- 说明: 保持任务 ID/依赖不变，补充白话说明，便于非开发同事快速理解。
 
 ## T-S4-CORE-026A
 - Task ID: `T-S4-CORE-026A`
 - Title: 核心命令链路收口（Service/Activity 职责边界）
 - Module ID: `M-S4-CORE-001`
-- Goal: 明确并固化命令执行真源与状态上报边界，降低前后台行为不一致。
-- Why: 当前仍处于“稳定补丁 + 迁移并行”状态，不先收口会持续回归。
+- 这任务在做什么（白话）: 把“命令谁来执行、失败怎么反馈、状态谁来记”统一下来。
+- Goal: 固化命令执行真源与状态上报边界，降低前后台行为不一致。
+- Why: 不先收口，后续媒体键/浮窗/恢复会持续回归。
 - Dependencies: 无
 - Inputs:
   - `MainActivity.kt`
@@ -17,13 +20,13 @@ Last Updated: 2026-04-27
   - `PlaybackControlBus.kt`
   - `PlaybackStateStore.kt`
 - Expected Outputs:
-  - 命令入口行为一致，执行失败可被真实感知（无假成功）。
-  - 状态快照字段可稳定驱动通知/浮窗展示。
+  - 命令结果真实可感知（无假成功）。
+  - 状态快照可稳定驱动通知/浮窗。
 - Done Criteria:
-  - 前后台控制不再出现“命令已收但未执行”分叉。
-  - 链路日志可定位 command source 与执行结果。
+  - 前后台不再出现“收到命令但没执行”的分叉。
+  - 日志可定位 source 与执行结果。
 - Risks:
-  - 与前台稳定性热修存在策略冲突，需以实机表现裁决。
+  - 与既有稳定补丁可能冲突，需实机裁决。
 - Size: M
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -32,22 +35,21 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-CORE-026B`
 - Title: 后台命令矩阵自测（notification/overlay/media_button/audio_focus）
 - Module ID: `M-S4-CORE-001`
-- Goal: 对四类来源命令做统一回归，确认行为和日志口径一致。
-- Why: 后台入口多源，单点验证不足以证明链路稳定。
-- Dependencies: 无（基于当前已接线链路可并行执行）
+- 这任务在做什么（白话）: 把四类命令来源逐项测一遍，确认行为和日志都一致。
+- Goal: 对多来源命令做统一回归，形成可复盘矩阵。
+- Why: 单点验证不足以证明后台链路稳定。
+- Dependencies: 无
 - Inputs:
-  - 后台命令来源日志（`source`）
-  - Service 命令执行结果
   - `docs/S4_BACKGROUND_COMMAND_MATRIX.md`
+  - Service 命令执行结果日志
+  - `source/handled/detail` 字段
 - Expected Outputs:
-  - 一份后台命令矩阵（来源 x 命令 x 结果）。
-  - 命令结果可观测字段（`handled/detail`）在运行日志可见。
-  - 失败路径复现步骤与初步修复点。
+  - 来源 x 命令 x 结果的矩阵。
+  - 失败样本及复现步骤（若存在失败）。
 - Done Criteria:
-  - 四类来源均完成 `prev/play_pause/next` 验证。
-  - 至少形成一次失败样本的可复现定位记录（若存在失败）。
+  - 四类来源都完成 `prev/play_pause/next` 验证。
 - Risks:
-  - 仅本地模拟仍可能与车机实机行为不一致。
+  - 本地模拟与车机实机仍可能有差异。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -56,21 +58,22 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-CORE-026C`
 - Title: 浮窗与通知策略闭环
 - Module ID: `M-S4-CONTROL-002`
-- Goal: 固化“播放/暂停显示 + 手动关闭后进应用再切出重显”策略，并验证通知兜底可用。
-- Why: 浮窗策略是用户明确验收项，且最易在生命周期切换中回归。
+- 这任务在做什么（白话）: 验证浮窗显示规则是否按约定执行，并确认通知可兜底控制。
+- Goal: 固化“播放/暂停显示 + 手动关闭后进应用再切出重显”策略。
+- Why: 这是明确验收项，生命周期切换最容易出回归。
 - Dependencies: `T-S4-CORE-026A`
 - Inputs:
   - `OverlayController.kt`
   - `PlaybackService.kt`
   - `AndroidManifest.xml`
 - Expected Outputs:
-  - 浮窗显示状态机验证结论。
-  - 通知控制条与浮窗控制一致性结论。
+  - 浮窗显示状态机验证结果。
+  - 通知与浮窗控制一致性结论。
 - Done Criteria:
   - 手动关闭后仅在“进应用再切出”路径重显。
-  - 通知控制在浮窗不可用场景下可稳定兜底。
+  - 浮窗不可用时通知可稳定兜底。
 - Risks:
-  - 部分车机 ROM 的悬浮窗权限行为不稳定。
+  - 部分 ROM 悬浮窗权限行为不稳定。
 - Size: M
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -79,21 +82,22 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-RESUME-020B`
 - Title: 服务侧自动续播二阶段闭环
 - Module ID: `M-S4-RESUME-003`
-- Goal: 将恢复逻辑从“可恢复”推进到“可车机验收”的服务侧闭环。
-- Why: 熄火/休眠自动续播是 S4 强需求，当前仍待实机闭环。
+- 这任务在做什么（白话）: 车机休眠回来后，尽量自动续播并回到上次进度。
+- Goal: 将恢复逻辑推进到“可车机验收”的服务侧闭环。
+- Why: 自动续播是 S4 强需求。
 - Dependencies: `T-S4-CORE-026A`
 - Inputs:
   - `PlaybackResumeStore.kt`
   - `PlaybackService.kt`
-  - 当前恢复策略决策（12 小时窗口/同曲 seek）
+  - 当前恢复策略（12h 窗口/同曲 seek）
 - Expected Outputs:
   - 服务重建后的恢复触发与降级策略稳定。
-  - 恢复失败时可直接定位的日志与状态码。
+  - 失败场景有可定位日志和状态。
 - Done Criteria:
-  - 恢复成功场景可自动续播并恢复进度。
-  - 失败场景不崩溃，且降级路径符合预期。
+  - 成功场景可自动续播并恢复进度。
+  - 失败场景不崩溃且降级符合预期。
 - Risks:
-  - 账号会话失效和网络波动会干扰稳定复现。
+  - 会话失效和网络波动影响复现稳定性。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -102,21 +106,21 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-VAL-032`
 - Title: 升级 API17 回归清单并补齐 Section 4 验收模板
 - Module ID: `M-S4-VALID-004`
-- Goal: 将 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 从 S1 口径升级到 S4 验收口径。
-- Why: 当前清单停留在 S1，无法覆盖后台控制/浮窗/恢复关键场景。
+- 这任务在做什么（白话）: 把旧清单升级成 S4 可直接执行的验收清单。
+- Goal: 将 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 升级到 S4 口径。
+- Why: 旧清单覆盖不到后台控制/浮窗/恢复场景。
 - Dependencies: 无
 - Inputs:
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
   - `.ai/context/SCOPE.md`
   - `.ai/context/CURRENT_STATUS.md`
 - Expected Outputs:
-  - 覆盖 S4 场景的实机清单。
-  - Section 4（风险控制与验收清单）模板。
+  - S4 场景回归清单。
+  - Section 4 风险控制与验收模板。
 - Done Criteria:
   - 非开发同事可按步骤执行并输出 PASS/FAIL。
-  - 清单字段可直接用于 `T-S4-REG-022` 结果回传。
 - Risks:
-  - 条目过细会降低现场执行效率。
+  - 条目过细会降低执行效率。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -125,22 +129,22 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-REG-022`
 - Title: 车机实机回归执行（S4）
 - Module ID: `M-S4-VALID-004`
-- Goal: 在 API17 目标车机执行 S4 全量回归并产出证据。
-- Why: S4 完成标准是实机可验证，不是代码层推断。
+- 这任务在做什么（白话）: 在真实 API17 车机上按清单完整跑一遍并留证据。
+- Goal: 执行 S4 全量回归并产出 PASS/FAIL/Blocker。
+- Why: S4 完成标准是实机可验证。
 - Dependencies: `T-S4-CORE-026B`, `T-S4-CORE-026C`, `T-S4-RESUME-020B`, `T-S4-VAL-032`, `T-S4-OBS-036`, `T-S4-OBS-037`
 - Inputs:
-  - 升级后的 S4 回归清单
+  - S4 回归清单
   - 目标构建包与构建号
-  - 车机设备窗口
+  - 车机测试窗口
 - Expected Outputs:
-  - 按分组的 PASS/FAIL/Blocker 结果。
-  - 失败项复现步骤 + 日志/截图/视频证据。
+  - 分组 PASS/FAIL/Blocker 结果。
+  - 失败复现步骤 + 日志/截图/视频。
 - Done Criteria:
   - 覆盖后台按键、浮窗策略、通知兜底、自动续播。
-  - 至少 1 台 API17 设备完成完整执行。
-  - PostHog 中可查询到对应 session 的关键事件链路。
+  - 至少 1 台 API17 设备执行完成。
 - Risks:
-  - 车机窗口不可控，可能导致执行中断。
+  - 车机窗口不可控。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -149,8 +153,9 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-VAL-033`
 - Title: 实机证据回写与阶段收口
 - Module ID: `M-S4-VALID-004`
-- Goal: 将 `T-S4-REG-022` 结果结构化回填到 context 文件。
-- Why: 无回写就无法形成下一轮可持续执行入口。
+- 这任务在做什么（白话）: 把实机结果写回 context，明确下一步要修什么。
+- Goal: 将 `T-S4-REG-022` 结果结构化回填。
+- Why: 不回写就无法形成下一轮可执行入口。
 - Dependencies: `T-S4-REG-022`
 - Inputs:
   - Device Report
@@ -160,9 +165,8 @@ Last Updated: 2026-04-27
   - 阶段结论（继续修复 or 进入下一阶段）。
 - Done Criteria:
   - 文档状态与实机结论一致。
-  - 下一轮 Ready 任务明确且可执行。
 - Risks:
-  - 证据不完整时结论不稳，可能需要补测。
+  - 证据不完整会导致结论不稳。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -171,22 +175,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-034`
 - Title: PostHog 事件模型与字段规范落地
 - Module ID: `M-S4-OBS-006`
-- Goal: 定义播放器关键节点事件、公共属性、错误码规范与命名规则。
-- Why: 不先固化 schema，后续埋点会碎片化，查询与 AI 分析成本高。
+- 这任务在做什么（白话）: 先定义“哪些事件要上报、字段怎么命名”，避免后面乱。
+- Goal: 定义关键事件、公共属性、错误码与命名规范。
+- Why: 不先定 schema，后续查询和分析会很乱。
 - Dependencies: 无
 - Inputs:
-  - 用户确认的 PostHog 使用目标（关键节点观测 + 排障 + AI 分析）
-  - 现有 `S4_BACKGROUND_COMMAND_MATRIX` 与 runtime log 字段
   - `docs/POSTHOG_INSTRUMENTATION_PLAN.md`
+  - `docs/S4_BACKGROUND_COMMAND_MATRIX.md`
 - Expected Outputs:
-  - 事件字典文档（10~20 核心事件 + 公共属性 + stage/error_code 口径）。
-  - “上报什么/不上报什么”边界清单（避免高频噪音）。
+  - 事件字典（10~20 核心事件 + 公共属性）。
+  - 禁报清单（高频噪音/敏感信息）。
 - Done Criteria:
-  - 事件名与属性命名稳定（snake_case），覆盖 S4 主链路。
-  - 字段满足 session 追踪与失败聚合分析。
-  - 明确“禁止上报清单”（高频进度/频繁 buffer 状态/UI redraw/HTTP headers）。
+  - 命名稳定（snake_case）且覆盖 S4 主链路。
 - Risks:
-  - 事件定义过细会导致埋点噪音和执行负担。
+  - 定义过细会抬高埋点成本。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -195,21 +197,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-035`
 - Title: API17 兼容 PostHog 上报客户端（fail-open）
 - Module ID: `M-S4-OBS-006`
-- Goal: 基于现有网络栈实现轻量上报层，确保上报失败不影响播放链路。
-- Why: 直接引入重 SDK 有 API17 风险，需先保证可控与兼容。
+- 这任务在做什么（白话）: 做一个轻量上报层，失败时不影响播放。
+- Goal: 基于现有网络栈实现异步上报、节流与开关控制。
+- Why: 重 SDK 在 API17 风险高，需先可控可兼容。
 - Dependencies: `T-S4-OBS-034`
 - Inputs:
-  - `OkHttp 3.12.13` 现有依赖
+  - `OkHttp 3.12.13`
   - 事件模型文档
 - Expected Outputs:
-  - `PostHogReporter`（或同等组件）支持异步上报、节流、超时与开关控制。
-  - 本地缓冲/丢弃策略（有界队列，避免内存膨胀）。
-  - 事件去重/合并策略（同事件短窗口 coalesce）。
+  - 轻量上报组件（异步、超时、节流、开关）。
+  - 有界队列与去重策略。
 - Done Criteria:
-  - 上报异常不会阻断 UI/Service 业务流程。
-  - 上报 payload 包含公共属性与事件属性。
+  - 上报异常不阻断 UI/Service 主流程。
 - Risks:
-  - endpoint/key 未配置时仅可本地验证链路，无法真实入库。
+  - 参数未确认时只能做本地假联调。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -218,20 +219,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-036`
 - Title: 关键节点埋点接线（启动/播放/后台命令/错误）
 - Module ID: `M-S4-OBS-006`
-- Goal: 将 PostHog 上报接入 S4 关键路径，形成可查询事件链。
-- Why: 只有客户端存在不足以排障，必须在关键节点真实触发。
+- 这任务在做什么（白话）: 把定义好的事件真正接到关键代码路径上。
+- Goal: 让关键路径事件可查询、可定位失败 stage。
+- Why: 只有上报组件还不够，必须有真实触发点。
 - Dependencies: `T-S4-OBS-035`, `T-S4-CORE-026A`
 - Inputs:
-  - `MainActivity.kt`, `PlaybackService.kt`, `PlaybackStateStore.kt`
-  - 事件模型文档
+  - `MainActivity.kt`
+  - `PlaybackService.kt`
+  - `PlaybackStateStore.kt`
 - Expected Outputs:
-  - 启动、播放成功/失败、后台命令结果、恢复失败等事件可上报。
-  - 每条事件含 `session_id/device_id/app_version/build_number` 等公共属性。
+  - 启动、播放成功/失败、后台命令结果等事件可上报。
 - Done Criteria:
-  - 关键路径事件能在调试日志中看到发送记录并可定位失败原因。
-  - 高频路径具备去抖/采样，避免事件洪泛。
+  - 调试日志可见发送记录，失败原因可定位。
 - Risks:
-  - 埋点点位过多会引入维护成本与性能噪音。
+  - 点位过多会带来维护与性能噪音。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -240,20 +241,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-037`
 - Title: 上报门禁与隐私策略（PII Guard + Config）
 - Module ID: `M-S4-OBS-006`
-- Goal: 明确并落地“可上报字段”和“敏感字段脱敏/禁止上报”规则。
-- Why: 防止把密码/token/完整响应体等敏感内容带入事件平台。
+- 这任务在做什么（白话）: 规定哪些能上报，哪些必须过滤，防止敏感数据泄露。
+- Goal: 落地敏感字段黑名单、脱敏与总开关策略。
+- Why: 不设门禁会有隐私与合规风险。
 - Dependencies: `T-S4-OBS-034`, `T-S4-OBS-035`
 - Inputs:
-  - 当前日志口径（已限制敏感/冗余日志）
-  - 配置入口（Settings / BuildConfig / 本地开关）
+  - 当前日志口径
+  - 配置入口（Settings / BuildConfig）
 - Expected Outputs:
-  - PostHog 开关策略（默认值、调试启用方式、失效回退）。
-  - 敏感字段黑名单与脱敏策略文档。
+  - 上报开关策略与脱敏文档。
 - Done Criteria:
-  - 默认配置下不会上报敏感凭据与大体积原文。
-  - 具备快速总开关（线上故障时可一键关闭上报）。
+  - 默认不上传凭据与大体积原文。
+  - 支持快速全局关闭上报。
 - Risks:
-  - 规则遗漏会引发隐私风险或无效数据污染。
+  - 规则遗漏会引发风险。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -262,21 +263,19 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-038`
 - Title: PostHog 查询验证与 AI 导出模板
 - Module ID: `M-S4-OBS-006`
-- Goal: 固化查询与导出流程，确保事件可用于实际排障和 AI 分析。
-- Why: 若只接线不验证查询，埋点价值无法闭环。
+- 这任务在做什么（白话）: 验证数据能查出来，并整理给 AI 分析用的导出格式。
+- Goal: 固化查询与导出流程，形成可复用排障模板。
+- Why: 不验证查询，埋点价值无法闭环。
 - Dependencies: `T-S4-OBS-036`, `T-S4-OBS-037`
 - Inputs:
   - PostHog 事件数据
-  - 典型故障场景（播放失败、后台命令失败、恢复失败）
+  - 典型故障场景
 - Expected Outputs:
-  - 查询清单（最近失败分布、单 session 事件流、版本对比）。
-  - AI 输入模板（JSON/CSV 导出字段建议）。
-  - 噪音审计结果（确认禁用高频低价值事件）。
+  - 查询清单 + 导出模板 + 噪音审计。
 - Done Criteria:
-  - 至少 1 条完整 session 事件流可导出并复盘。
-  - 可回答“失败在哪个 stage、错误码分布、版本差异”。
+  - 至少可导出 1 条完整 session 事件流。
 - Risks:
-  - 无真实 endpoint/project key 时无法完成最终在线验证。
+  - 无真实参数时无法在线完成。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -285,103 +284,40 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-OBS-039`
 - Title: PostHog 接入参数确认（Host/Project Key/环境口径）
 - Module ID: `M-S4-OBS-006`
-- Goal: 明确云版或自建 endpoint、project key、环境隔离与保留策略。
-- Why: 未确认接入参数会阻塞真实上报验证。
+- 这任务在做什么（白话）: 确认连哪个项目、哪个环境，避免测试数据污染生产。
+- Goal: 明确 endpoint、project key、环境隔离和保留策略。
+- Why: 参数不清会阻塞真实联调。
 - Dependencies: 无
 - Inputs:
-  - 用户环境选择（Cloud / Self-host）
-  - 数据保留与访问口径
   - `docs/POSTHOG_CONFIG_CHECKLIST.md`
+  - 环境选择（Cloud/Self-host）
 - Expected Outputs:
-  - 可执行的接入参数清单（dev/prod）。
-  - 环境隔离规则（避免测试数据污染生产）。
+  - 可执行参数清单（dev/prod）。
 - Done Criteria:
-  - `T-S4-OBS-035/036/038` 可使用真实参数完成联调。
+  - `OBS-035/036/038` 能用真实参数联调。
 - Risks:
-  - 参数长期缺失会使埋点仅停留在本地假联调。
+  - 参数长期缺失会停留在本地假联调。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
-
-## T-S4-UI-023
-- Task ID: `T-S4-UI-023`
-- Title: 长标题滚动异常修复
-- Module ID: `M-S4-UX-005`
-- Goal: 修复车机上长标题不可读问题并形成可验证策略。
-- Why: 用户已明确反馈，但当前口径细节未确认。
-- Dependencies: 需求口径确认
-- Inputs:
-  - `activity_main.xml`
-  - 文案长度样本
-- Expected Outputs:
-  - 可配置的滚动/截断方案与验收标准。
-- Done Criteria:
-  - 标题可读性明显提升且不引入抖动回归。
-- Risks:
-  - 不同分辨率/字体缩放下表现不一致。
-- Size: S
-- Suitable For Micro Execution?: Yes
-- Suitable For Module Execution?: No
-
-## T-S4-UI-024
-- Task ID: `T-S4-UI-024`
-- Title: 删除入口迁移到主屏
-- Module ID: `M-S4-UX-005`
-- Goal: 在主屏提供“不好听立即删”的安全入口（含防误触）。
-- Why: 用户明确要求，但交互口径尚未最终确认。
-- Dependencies: 交互方案确认
-- Inputs:
-  - 主屏布局与队列行为
-- Expected Outputs:
-  - 删除入口位置与交互规则。
-- Done Criteria:
-  - 删除动作可用且不会误触破坏当前播放链路。
-- Risks:
-  - 误触与撤销策略不清会导致体验风险。
-- Size: M
-- Suitable For Micro Execution?: No
-- Suitable For Module Execution?: No
-
-## T-S4-AUDIO-025
-- Task ID: `T-S4-AUDIO-025`
-- Title: 均衡器/音效优化
-- Module ID: `M-S4-UX-005`
-- Goal: 形成 API17 可行的听感优化基线与默认参数。
-- Why: 用户有明确优化诉求，但不应阻塞 S4 主验收。
-- Dependencies: `T-S4-REG-022`
-- Inputs:
-  - 车机音频栈能力
-  - 听感对比样本
-- Expected Outputs:
-  - 可执行的优化方案或不可行结论。
-- Done Criteria:
-  - 至少 1 组参数在目标车机有正向听感反馈。
-- Risks:
-  - 车机音频栈差异导致结论不可迁移。
-- Size: M
-- Suitable For Micro Execution?: No
-- Suitable For Module Execution?: No
 
 ## T-S4-UPD-040
 - Task ID: `T-S4-UPD-040`
 - Title: 更新源与版本比较规则落地（GitHub Releases）
 - Module ID: `M-S4-UPD-007`
-- Goal: 定义并实现版本元数据读取、tag 解析、版本比较与稳定版本过滤规则。
-- Why: 无稳定规则会导致误报更新或漏检，后续下载链路不可控。
+- 这任务在做什么（白话）: 先把“怎么判断有新版本”这件事定准。
+- Goal: 实现版本元数据读取、tag 解析与比较规则。
+- Why: 规则不稳会误报更新或漏检。
 - Dependencies: 无
 - Inputs:
   - `.github/workflows/package-mvp.yml`
   - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
-  - 当前版本号来源（`versionName/versionCode`）
 - Expected Outputs:
-  - 更新元数据模型（tag/versionName/versionCode/apk asset/url）。
-  - 版本比较策略（优先 `versionCode`，兼容 tag 解析）。
-  - prerelease/draft 过滤策略与失败回退行为。
+  - 元数据模型 + 比较策略 + 过滤策略。
 - Done Criteria:
-  - 可稳定得到“是否有更新 + 目标下载链接 + 展示文案”。
-  - 解析失败不会影响主流程（fail-open）。
+  - 稳定得出“是否有更新 + 下载链接”。
 - Risks:
-  - release 资产命名不一致导致匹配失败。
+  - 资产命名不一致会匹配失败。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -390,21 +326,19 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-UPD-041`
 - Title: 冷启动自动检测与节流策略
 - Module ID: `M-S4-UPD-007`
-- Goal: 在冷启动流程接入自动检测，并加入检测周期节流与网络失败回退。
-- Why: 自动检测是核心诉求，但必须避免每次冷启动都触发重网络请求。
+- 这任务在做什么（白话）: 应用启动后自动查更新，但别每次都查。
+- Goal: 接入自动检测并加节流/失败回退。
+- Why: 自动检测要有，但不能影响启动体验。
 - Dependencies: `T-S4-UPD-040`
 - Inputs:
-  - `MainActivity.kt` 启动链路
-  - 本地持久化策略（SharedPreferences）
+  - `MainActivity.kt`
+  - 本地持久化策略
 - Expected Outputs:
-  - 冷启动检测触发点（不阻断播放初始化）。
-  - 检测节流参数（建议 24h，可配置）。
-  - 失败回退与状态缓存（避免频繁重试）。
+  - 自动检测触发点 + 24h 节流（可配置）。
 - Done Criteria:
-  - 冷启动可自动触发检测，且命中节流时不重复请求。
-  - 检测失败仅记录状态，不影响播放功能。
+  - 命中节流时不重复请求；失败不影响播放。
 - Risks:
-  - 与现有启动优化链路冲突，影响首帧体验。
+  - 与启动优化链路冲突。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -413,21 +347,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-UPD-042`
 - Title: 设置页手动检查更新入口与结果展示
 - Module ID: `M-S4-UPD-007`
-- Goal: 在 Settings 页面增加“检查更新”入口，并展示明确状态。
-- Why: 自动检测需要手动兜底入口，便于现场排障与用户主动升级。
+- 这任务在做什么（白话）: 在设置页给一个“立即检查更新”按钮，结果看得懂。
+- Goal: 增加手动检查入口与状态反馈。
+- Why: 自动检测需要手动兜底。
 - Dependencies: `T-S4-UPD-040`
 - Inputs:
-  - `activity_main.xml`（Settings 区域）
-  - `MainActivity.kt` 设置页事件绑定
+  - `activity_main.xml`
+  - `MainActivity.kt`
   - `strings.xml`
 - Expected Outputs:
-  - 设置页按钮与状态文本（检测中/已最新/发现更新/失败）。
-  - 手动检查触发逻辑（可绕过冷启动节流）。
+  - 按钮与状态文案（检测中/已最新/发现更新/失败）。
 - Done Criteria:
-  - 设置页可重复手动检查并得到可理解反馈。
-  - UI 状态变化与日志一致。
+  - 可重复手动检测并得到清晰反馈。
 - Risks:
-  - 状态文案不清晰会误导用户。
+  - 文案不清会误导用户。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
@@ -436,22 +369,20 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-UPD-043`
 - Title: GitHub 镜像加速下载与官方回退链路
 - Module ID: `M-S4-UPD-007`
-- Goal: 对更新 APK 下载实现“镜像优先 + 官方回退”的容错下载链路。
-- Why: 车机网络环境复杂，单一路径下载失败率高。
+- 这任务在做什么（白话）: 下载先走镜像，失败再自动切官方，减少下载失败率。
+- Goal: 实现“镜像优先 + 官方回退”的容错下载链路。
+- Why: 车机网络复杂，单链路失败率高。
 - Dependencies: `T-S4-UPD-040`
 - Inputs:
-  - GitHub release 资产链接
-  - 镜像域名策略（默认内置，可后续配置化）
-  - 下载与文件落地路径策略
+  - release 资产链接
+  - 镜像策略
+  - 下载路径策略
 - Expected Outputs:
-  - 镜像 URL 构造与优先级策略（例如 `ghproxy` / `github.moeyy` 等）。
-  - 下载失败自动回退到下一镜像或官方链接。
-  - 下载进度/结果记录（日志 + 事件）。
+  - 镜像优先级 + 自动回退 + 下载日志/事件。
 - Done Criteria:
-  - 至少 1 条镜像链路与官方链路可完成下载。
-  - 任一镜像失败不导致整体更新流程中断。
+  - 镜像或官方至少一条链路可完成下载。
 - Risks:
-  - 镜像服务可用性与合规性存在波动。
+  - 镜像可用性波动。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
@@ -460,49 +391,64 @@ Last Updated: 2026-04-27
 - Task ID: `T-S4-UPD-044`
 - Title: 安装触发与更新链路观测闭环
 - Module ID: `M-S4-UPD-007`
-- Goal: 下载完成后触发系统安装，并补齐更新链路关键观测事件。
-- Why: 没有安装触发和观测，更新能力无法形成可验证闭环。
+- 这任务在做什么（白话）: 下载好 APK 后，真正拉起系统安装器，并把关键节点打点补全。
+- Goal: 形成更新链路可验证闭环。
+- Why: 不触发安装就不算更新闭环完成。
 - Dependencies: `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-OBS-036`
 - Inputs:
-  - 下载完成的 APK 文件
-  - 安装触发 Intent/FileProvider 配置
-  - PostHog 事件上报组件
+  - 下载完成 APK
+  - 安装触发配置（Intent/FileProvider）
+  - PostHog 事件组件
 - Expected Outputs:
-  - 安装触发逻辑（兼容 API17 文件 URI 约束）。
-  - 关键事件：`update_check_*`, `update_download_*`, `update_install_triggered/failed`。
-  - 最小验收文档（手动回归步骤与故障排查指引）。
+  - API17 可用的安装触发逻辑。
+  - `update_check_* / update_download_* / update_install_*` 事件。
 - Done Criteria:
-  - 下载完成后可触发系统安装器。
-  - 链路关键节点均可在日志/事件中看到。
+  - 下载后可拉起系统安装器，且关键节点可观测。
 - Risks:
-  - 不同 ROM 对安装权限和未知来源策略差异较大。
+  - ROM 对安装权限策略差异较大。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
 
-## Blocked Candidates (Carry Forward)
-
-### T-BLK-001
-- Task ID: `T-BLK-001`
-- Title: 系统首页音乐卡片第三方入口能力确认
+## T-S4-UI-023
+- Task ID: `T-S4-UI-023`
+- Title: 长标题滚动异常修复
 - Module ID: `M-S4-UX-005`
-- Goal: 明确系统首页音乐卡片是否支持第三方播放器入口。
-- Dependencies: 车机系统能力确认
-- Size: M
-
-### B-LRC-001
-- Task ID: `B-LRC-001`
-- Title: 歌词失败回退策略口径确认
-- Module ID: `M-S4-UX-005`
-- Goal: 明确远程歌词失败时提示/重试/缓存回退规则。
-- Dependencies: 产品口径确认
+- 这任务在做什么（白话）: 让歌名太长时也能看清，不抖动。
+- Goal: 修复长标题可读性问题并形成可验证策略。
+- Why: 用户有反馈，但口径未最终确认。
+- Dependencies: 需求口径确认
 - Size: S
 
+## T-S4-UI-024
+- Task ID: `T-S4-UI-024`
+- Title: 删除入口迁移到主屏
+- Module ID: `M-S4-UX-005`
+- 这任务在做什么（白话）: 在主屏提供“马上删歌”入口，但避免误触。
+- Goal: 提供安全删除入口（含防误触）。
+- Why: 用户明确要求，交互细节待定。
+- Dependencies: 交互方案确认
+- Size: M
+
+## T-S4-AUDIO-025
+- Task ID: `T-S4-AUDIO-025`
+- Title: 均衡器/音效优化
+- Module ID: `M-S4-UX-005`
+- 这任务在做什么（白话）: 找到 API17 上听感更好的默认参数。
+- Goal: 形成可行听感优化基线。
+- Why: 是明确诉求，但不阻塞 S4 主验收。
+- Dependencies: `T-S4-REG-022`
+- Size: M
+
+## Blocked Candidates
+- `T-BLK-001`: 系统首页音乐卡片第三方入口能力确认（依赖车机系统能力确认）。
+- `B-LRC-001`: 歌词失败回退策略口径确认（依赖产品口径确认）。
+
 ## Done (History Snapshot)
-- [x] `T-S4-ARCH-017H` 前台停播热修（前台禁用 Service 焦点干预 + 构建号徽标优化）
-- [x] `T-S4-ARCH-017A` 移除命令持久化重试（失败即失败）
-- [x] `T-S3-UI-013` Home 播放模块重排 + 可拖动进度 + 解码失败自动切歌
-- [x] `T-S3-RB-008` 回滚错误实现并恢复基线
-- [x] `T-S3-NET-009` CF 优选 IPv4 解析链路接线（Emby 域名保持不变）
-- [x] `T-S3-DL-010` 30s 下载窗口状态机
-- [x] `T-S3-LOG-011` 下载调度与优选 IP 诊断日志补齐
+- [x] `T-S4-ARCH-017H`
+- [x] `T-S4-ARCH-017A`
+- [x] `T-S3-UI-013`
+- [x] `T-S3-RB-008`
+- [x] `T-S3-NET-009`
+- [x] `T-S3-DL-010`
+- [x] `T-S3-LOG-011`

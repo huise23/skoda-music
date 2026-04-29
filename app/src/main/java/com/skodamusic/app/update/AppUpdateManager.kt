@@ -2,6 +2,7 @@ package com.skodamusic.app.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -13,6 +14,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -31,7 +33,8 @@ class AppUpdateManager(
     data class ReleaseAsset(
         val name: String,
         val downloadUrl: String,
-        val sizeBytes: Long
+        val sizeBytes: Long,
+        val sha256Digest: String = ""
     )
 
     data class ReleaseInfo(
@@ -215,6 +218,26 @@ class AppUpdateManager(
                 return@execute
             }
 
+            val verifyResult = verifyDownloadedApkCompatibility(downloadResult.file)
+            if (!verifyResult.success) {
+                callback(
+                    UpdateInstallResult(
+                        status = UpdateInstallStatus.INSTALL_FAILED,
+                        trigger = trigger,
+                        releaseTag = releaseInfo.tagName,
+                        remoteVersionCode = releaseInfo.versionCode,
+                        remoteVersionName = releaseInfo.versionName,
+                        attemptedUrls = downloadResult.attemptedUrls,
+                        usedUrl = downloadResult.usedUrl,
+                        apkPath = downloadResult.file.absolutePath,
+                        apkBytes = downloadResult.file.length(),
+                        errorCode = verifyResult.errorCode,
+                        message = verifyResult.message
+                    )
+                )
+                return@execute
+            }
+
             val dispatchResult = dispatchInstallIntent(downloadResult.file)
             if (!dispatchResult.success) {
                 callback(
@@ -303,7 +326,8 @@ class AppUpdateManager(
     }
 
     private fun fetchLatestRelease(): ReleaseFetchResult {
-        val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
+        val cacheBuster = System.currentTimeMillis() / 60000L
+        val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8&_ts=$cacheBuster"
         // Force CF proxy only for metadata check (no direct GitHub fallback).
         val requestUrls = listOf(buildCfProxyUrl(apiUrl))
 
@@ -438,7 +462,8 @@ class AppUpdateManager(
                 bestAsset = ReleaseAsset(
                     name = name,
                     downloadUrl = downloadUrl,
-                    sizeBytes = item.optLong("size", -1L)
+                    sizeBytes = item.optLong("size", -1L),
+                    sha256Digest = normalizeSha256Digest(item.optString("digest").orEmpty())
                 )
             }
         }
@@ -490,6 +515,15 @@ class AppUpdateManager(
     }
 
     private fun isRemoteNewer(localVersion: LocalVersion, release: ReleaseInfo): Boolean {
+        val remoteDigest = release.asset.sha256Digest
+        val localDigest = resolveInstalledApkSha256()
+        if (remoteDigest.isNotBlank() && localDigest.isNotBlank()) {
+            if (remoteDigest.equals(localDigest, ignoreCase = true)) {
+                return false
+            }
+            return true
+        }
+
         if (release.versionCode > 0L && localVersion.versionCode > 0L) {
             return release.versionCode > localVersion.versionCode
         }
@@ -506,7 +540,12 @@ class AppUpdateManager(
             return remoteSemver.third > localSemver.third
         }
 
-        return release.tagName.isNotBlank() && !release.tagName.equals(localVersion.versionName, ignoreCase = true)
+        val tagHasComparableVersion = RUN_NUMBER_REGEX.containsMatchIn(release.tagName) ||
+            parseSemver(release.tagName) != null
+        if (tagHasComparableVersion) {
+            return release.tagName.isNotBlank() && !release.tagName.equals(localVersion.versionName, ignoreCase = true)
+        }
+        return false
     }
 
     private fun parseSemver(input: String): Triple<Long, Long, Long>? {
@@ -701,6 +740,129 @@ class AppUpdateManager(
         val source = raw.ifBlank { "skoda-music-update.apk" }
         val safe = source.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         return if (safe.lowercase(Locale.US).endsWith(".apk")) safe else "$safe.apk"
+    }
+
+    private fun verifyDownloadedApkCompatibility(apkFile: File): InstallDispatchResult {
+        val localVersion = resolveLocalVersion()
+        val apkVersion = resolveArchiveVersionCode(apkFile)
+        if (localVersion.versionCode > 0L && apkVersion > 0L && apkVersion <= localVersion.versionCode) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_APK_NOT_NEWER",
+                message = "apk versionCode=$apkVersion <= local versionCode=${localVersion.versionCode}"
+            )
+        }
+
+        val installedSigner = resolveInstalledSignerDigest()
+        val apkSigner = resolveArchiveSignerDigest(apkFile)
+        if (installedSigner.isNotBlank() && apkSigner.isNotBlank() &&
+            !installedSigner.equals(apkSigner, ignoreCase = true)
+        ) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_SIGNATURE_MISMATCH",
+                message = "installed/apk signer mismatch installed=$installedSigner apk=$apkSigner"
+            )
+        }
+        return InstallDispatchResult(success = true)
+    }
+
+    private fun resolveArchiveVersionCode(apkFile: File): Long {
+        return try {
+            val pkg = appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0) ?: return -1L
+            if (Build.VERSION.SDK_INT >= 28) {
+                val field = pkg.javaClass.getField("longVersionCode")
+                field.getLong(pkg)
+            } else {
+                @Suppress("DEPRECATION")
+                pkg.versionCode.toLong()
+            }
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+
+    private fun resolveInstalledSignerDigest(): String {
+        return try {
+            @Suppress("DEPRECATION")
+            val pkg = appContext.packageManager.getPackageInfo(appContext.packageName, PackageManager.GET_SIGNATURES)
+            @Suppress("DEPRECATION")
+            val sig = pkg.signatures?.firstOrNull()?.toByteArray() ?: return ""
+            sha256Hex(sig)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun resolveArchiveSignerDigest(apkFile: File): String {
+        return try {
+            @Suppress("DEPRECATION")
+            val pkg = appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+                ?: return ""
+            @Suppress("DEPRECATION")
+            val sig = pkg.signatures?.firstOrNull()?.toByteArray() ?: return ""
+            sha256Hex(sig)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun resolveInstalledApkSha256(): String {
+        return try {
+            val path = appContext.applicationInfo?.sourceDir.orEmpty()
+            if (path.isBlank()) {
+                return ""
+            }
+            val file = File(path)
+            if (!file.exists() || !file.isFile) {
+                return ""
+            }
+            sha256File(file)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun normalizeSha256Digest(raw: String): String {
+        val text = raw.trim().lowercase(Locale.US)
+        if (text.isBlank()) {
+            return ""
+        }
+        val cleaned = if (text.startsWith("sha256:")) text.removePrefix("sha256:") else text
+        return if (cleaned.matches(Regex("[0-9a-f]{64}"))) cleaned else ""
+    }
+
+    private fun sha256File(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) {
+                    break
+                }
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().toHex()
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(bytes)
+        return digest.digest().toHex()
+    }
+
+    private fun ByteArray.toHex(): String {
+        val out = StringBuilder(size * 2)
+        for (b in this) {
+            val value = b.toInt() and 0xff
+            if (value < 16) {
+                out.append('0')
+            }
+            out.append(value.toString(16))
+        }
+        return out.toString()
     }
 
     private fun persistCheckResult(result: UpdateCheckResult) {

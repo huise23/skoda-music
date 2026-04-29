@@ -304,11 +304,8 @@ class AppUpdateManager(
 
     private fun fetchLatestRelease(): ReleaseFetchResult {
         val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
-        // Use CF proxy first for old Android TLS compatibility, keep direct GitHub as fallback.
-        val requestUrls = listOf(
-            buildCfProxyUrl(apiUrl),
-            apiUrl
-        ).distinct()
+        // Force CF proxy only for metadata check (no direct GitHub fallback).
+        val requestUrls = listOf(buildCfProxyUrl(apiUrl))
 
         var lastFailure = ReleaseFetchResult(
             errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",
@@ -682,8 +679,8 @@ class AppUpdateManager(
             "https://ghproxy.net/$normalized",
             normalized
         ).distinct()
-        val cfCandidates = directCandidates.map { buildCfProxyUrl(it) }
-        return (cfCandidates + directCandidates).distinct()
+        // Force CF proxy only for APK download candidates (no direct fallback).
+        return directCandidates.map { buildCfProxyUrl(it) }.distinct()
     }
 
     private fun buildCfProxyUrl(rawUrl: String): String {

@@ -304,10 +304,8 @@ class AppUpdateManager(
 
     private fun fetchLatestRelease(): ReleaseFetchResult {
         val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
-        val requestUrls = listOf(
-            buildCfProxyUrl(apiUrl),
-            apiUrl
-        ).distinct()
+        // For stability troubleshooting, release metadata check now uses GitHub API directly.
+        val requestUrls = listOf(apiUrl)
 
         var lastFailure = ReleaseFetchResult(
             errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",
@@ -363,13 +361,10 @@ class AppUpdateManager(
     private fun parseReleasePayload(payload: String): ReleaseFetchResult {
         return try {
             val arr = JSONArray(payload)
-            var hasStableNoApk = false
-            var fallbackPrerelease: ReleaseInfo? = null
-            var hasPrereleaseNoApk = false
+            var hasReleaseWithoutApk = false
             for (index in 0 until arr.length()) {
                 val item = arr.optJSONObject(index) ?: continue
                 val draft = item.optBoolean("draft", false)
-                val prerelease = item.optBoolean("prerelease", false)
                 if (draft) {
                     continue
                 }
@@ -379,11 +374,7 @@ class AppUpdateManager(
                 val publishedAt = item.optString("published_at").orEmpty().trim()
                 val asset = pickPreferredApkAsset(item.optJSONArray("assets"))
                 if (asset == null) {
-                    if (prerelease) {
-                        hasPrereleaseNoApk = true
-                    } else {
-                        hasStableNoApk = true
-                    }
+                    hasReleaseWithoutApk = true
                     continue
                 }
                 val resolvedVersionCode = resolveRemoteVersionCode(tagName, asset.name)
@@ -397,30 +388,14 @@ class AppUpdateManager(
                     versionName = resolvedVersionName,
                     asset = asset
                 )
-                if (prerelease) {
-                    if (fallbackPrerelease == null) {
-                        fallbackPrerelease = releaseInfo
-                    }
-                } else {
-                    return ReleaseFetchResult(
-                        releaseInfo = releaseInfo
-                    )
-                }
-            }
-
-            if (fallbackPrerelease != null) {
                 return ReleaseFetchResult(
-                    releaseInfo = fallbackPrerelease
+                    releaseInfo = releaseInfo
                 )
             }
 
             ReleaseFetchResult(
-                hasStableReleaseWithoutApk = hasStableNoApk,
-                errorCode = when {
-                    hasStableNoApk -> "STABLE_RELEASE_NO_APK"
-                    hasPrereleaseNoApk -> "PRERELEASE_NO_APK"
-                    else -> "NO_STABLE_RELEASE"
-                },
+                hasStableReleaseWithoutApk = hasReleaseWithoutApk,
+                errorCode = if (hasReleaseWithoutApk) "RELEASE_NO_APK" else "NO_RELEASE",
                 failedStage = "parse_release_filter"
             )
         } catch (e: Exception) {

@@ -120,6 +120,17 @@ class PlaybackService : Service(), OverlayController.Listener {
         stateStore.setOverlayDismissedByUser(true)
     }
 
+    override fun onTrackTitleClicked() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        runCatching {
+            startActivity(intent)
+        }
+    }
+
     private fun updatePresentation() {
         remoteControlBridge.updatePlaybackState(snapshot.isPlaying)
         remoteControlBridge.updateMetadata(snapshot.trackTitle)

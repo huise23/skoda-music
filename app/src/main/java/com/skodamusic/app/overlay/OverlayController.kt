@@ -6,6 +6,8 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -15,6 +17,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackStateStore
+import kotlin.math.abs
 
 class OverlayController(
     private val context: Context,
@@ -23,13 +26,21 @@ class OverlayController(
     interface Listener {
         fun onCommand(action: String)
         fun onDismissByUser()
+        fun onTrackTitleClicked()
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val prefs = context.getSharedPreferences(PREFS_OVERLAY, Context.MODE_PRIVATE)
     private var rootView: LinearLayout? = null
     private var titleView: TextView? = null
     private var progressBar: ProgressBar? = null
     private var playPauseButton: ImageButton? = null
+    private var currentLayoutParams: WindowManager.LayoutParams? = null
+    private var dragDownRawX: Float = 0f
+    private var dragDownRawY: Float = 0f
+    private var dragStartX: Int = 0
+    private var dragStartY: Int = 0
+    private var titleDragging: Boolean = false
 
     fun canDraw(): Boolean {
         return if (Build.VERSION.SDK_INT >= 23) {
@@ -50,7 +61,9 @@ class OverlayController(
             return true
         }
         return try {
-            windowManager.addView(view, buildLayoutParams())
+            val params = buildLayoutParams()
+            currentLayoutParams = params
+            windowManager.addView(view, params)
             true
         } catch (_: Exception) {
             false
@@ -97,9 +110,10 @@ class OverlayController(
 
         val title = TextView(context)
         title.setTextColor(Color.WHITE)
-        title.textSize = 16f
+        title.textSize = 15f
         title.maxLines = 2
         title.gravity = Gravity.CENTER
+        bindTitleTouch(title)
         val header = FrameLayout(context)
         val headerParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -208,9 +222,65 @@ class OverlayController(
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = dp(8)
-            y = dp(44)
+            x = prefs.getInt(KEY_POS_X, dp(8))
+            y = prefs.getInt(KEY_POS_Y, dp(44))
         }
+    }
+
+    private fun bindTitleTouch(title: TextView) {
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        title.setOnTouchListener { _, event ->
+            val params = currentLayoutParams ?: return@setOnTouchListener false
+            val view = rootView ?: return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragDownRawX = event.rawX
+                    dragDownRawY = event.rawY
+                    dragStartX = params.x
+                    dragStartY = params.y
+                    titleDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - dragDownRawX).toInt()
+                    val dy = (event.rawY - dragDownRawY).toInt()
+                    if (!titleDragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        titleDragging = true
+                    }
+                    if (!titleDragging) {
+                        return@setOnTouchListener true
+                    }
+                    params.x = dragStartX - dx
+                    params.y = (dragStartY + dy).coerceAtLeast(0)
+                    runCatching {
+                        windowManager.updateViewLayout(view, params)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (titleDragging) {
+                        persistOverlayPosition(params.x, params.y)
+                    } else {
+                        listener.onTrackTitleClicked()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (titleDragging) {
+                        persistOverlayPosition(params.x, params.y)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun persistOverlayPosition(x: Int, y: Int) {
+        prefs.edit()
+            .putInt(KEY_POS_X, x)
+            .putInt(KEY_POS_Y, y.coerceAtLeast(0))
+            .apply()
     }
 
     private fun dp(value: Int): Int {
@@ -219,5 +289,8 @@ class OverlayController(
 
     private companion object {
         const val PROGRESS_MAX = 1000
+        const val PREFS_OVERLAY = "overlay_ui_state"
+        const val KEY_POS_X = "pos_x"
+        const val KEY_POS_Y = "pos_y"
     }
 }

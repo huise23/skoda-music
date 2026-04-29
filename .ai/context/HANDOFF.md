@@ -24,24 +24,29 @@ Last Updated: 2026-04-29
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CORE-026C-HF-20260429`：车机验证浮窗增强（歌名点击回应用、拖动持久化、关闭后再显示策略不回归）。
-2. `T-S4-UPD-044`（In Progress）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
-3. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续验证 `eb10b46` 并回填后台命令矩阵。
-4. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：补齐关键链路观测并完成实机压测。
+1. `T-S4-CORE-026C-HF-20260429`：复测浮窗 UI 修正（歌名字号、关闭按钮右上角与触控区）。
+2. `T-S4-OBS-035/036/037`（In Progress）：按用户要求调用 API 自检上报链路（不只看本地日志）。
+3. `T-S4-UPD-044`（In Progress）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
+4. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
 5. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
-6. `T-S4-VAL-032`（Done）：API17 清单已升级到 S4 口径，已补齐 Section 4 风险控制与验收模板。
-7. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
-8. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
-9. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
+6. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
+7. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
 
 ## Latest Delta (2026-04-29)
+- 用户验证状态更新：
+  - `T-S4-CORE-026A/026B` 已车机验证通过。
+  - `T-S4-CORE-026C-HF-20260429` 主流程通过，但新增 UI 问题反馈（字号体感与关闭按钮位置/大小）。
 - 浮窗交互增强已落地（待车机验收）：
-  - 歌名字号调整为中层级（15sp）。
+  - 歌名字号已上调为 `17sp`（本轮代码修正，待复测）。
   - 点击歌名拉起应用前台。
   - 拖动位置持久化，重进后台后恢复。
+  - 关闭按钮改为右上角独立锚点，触控区放大到 `40dp`（本轮代码修正，待复测）。
 - 更新链路诊断能力增强：
   - `update_check_failed` 现可回传 `failed_stage/failed_url/attempt_urls`。
   - 更新元数据检查已切换为 GitHub 直连；版本比较已支持 pre-release。
+- OBS API 自检现状：
+  - CLI 首轮直连 `https://us.i.posthog.com/capture/` 失败（`SSL_ERROR_SYSCALL`）。
+  - 需在车机或可用网络环境继续做 `T-S4-OBS-035/036/037` 在线自检。
 - 验收入口补齐：
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已升级为 S4 版本。
   - 新增 `Section 4`：`Risk Gates + Evidence Minimum + Acceptance Decision`。

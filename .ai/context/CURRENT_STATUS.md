@@ -27,6 +27,14 @@ Last Updated: 2026-04-29
 - 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
 - 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
 
+## User Verification Update (2026-04-29)
+- 用户已确认 `T-S4-CORE-026A/026B` 车机验证通过。
+- 用户已确认 `T-S4-CORE-026C-HF-20260429` 主流程通过，但新增 UI 反馈：
+  - 浮窗歌名字号疑似未生效；
+  - 关闭按钮过小，且需要固定在右上角而非“歌名后”。
+- 用户要求 `T-S4-OBS-035/036/037` 进入“调用 API 自行检验”模式，而非仅本地日志判断。
+- 已执行首轮 API 自检探针（CLI 直连 `https://us.i.posthog.com/capture/`），当前环境返回 TLS 握手失败（`SSL_ERROR_SYSCALL`），需在车机或可用网络环境复测确认。
+
 ## Module Execution Progress (Validation, 2026-04-29)
 - 已完成 `T-S4-VAL-032`（`M-S4-VALID-004`）：
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已从 S1 升级到 S4 验收口径。
@@ -38,9 +46,10 @@ Last Updated: 2026-04-29
 
 ## Module Execution Progress (Control + Update Hotfix, 2026-04-29)
 - 已按 `M-S4-CONTROL-002` 落地浮窗交互增强（代码完成，待车机验收）：
-  - 浮窗歌名字号调整为中层级（`16sp -> 15sp`）。
+  - 浮窗歌名字号改为更大层级（当前代码 `17sp`，待车机复测确认体感）。
   - 点击浮窗歌名可拉起应用前台（`MainActivity`，`NEW_TASK + SINGLE_TOP + CLEAR_TOP`）。
   - 浮窗支持拖动，拖动后位置写入本地并在下次显示时恢复（`x/y` 持久化）。
+  - 关闭按钮已改为右上角独立锚点并放大触控区（`40dp`），待车机复测确认。
 - 已按 `M-S4-UPD-007` 完成更新链路热修：
   - 更新元数据检查改为 GitHub 直连（排除代理链路干扰）。
   - 版本检测支持 pre-release（只要 `non-draft + 有 APK` 即纳入比较）。

@@ -5,15 +5,16 @@ Last Updated: 2026-04-29
 ## M-S4-CORE-001
 - Module ID: `M-S4-CORE-001`
 - Name: 核心命令与状态链路收口
-- Goal: 在 API17 下收敛 `MainActivity` 与 `PlaybackService` 的职责边界，确保后台控制链路稳定且可诊断。
-- Why It Matters: 不先收口链路，后续媒体键/浮窗/恢复会持续出现“路径不一致”回归。
+- Goal: 统一 `MainActivity` 和 `PlaybackService` 的职责，确保命令执行结果真实可追踪。
+- Why It Matters: 这是所有后台能力的地基；地基不稳，后面会反复回归。
+- 这模块在做什么（白话）: 把“谁发命令、谁执行、谁记录结果”彻底理顺。
 - In Scope:
-  - `PlaybackService` 命令分发与状态快照更新。
-  - `PlaybackControlBus` 执行结果一致性（失败即失败）。
-  - 前后台切换状态同步与焦点策略冲突消减。
+  - `PlaybackService` 命令分发与状态快照。
+  - `PlaybackControlBus` 结果口径统一（失败即失败）。
+  - 前后台切换时状态同步与焦点冲突收敛。
 - Out of Scope:
-  - UI 视觉重构。
-  - 引入 MediaSession 新分支。
+  - UI 大改。
+  - 切换到 MediaSession 主链路。
 - Dependencies: 无
 - Related Files / Areas:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
@@ -21,28 +22,28 @@ Last Updated: 2026-04-29
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackControlBus.kt`
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
 - Milestone / Done Criteria:
-  - 前台/后台命令入口行为一致，无“执行成功但无动作”假阳性。
-  - 状态快照（`trackId/position/isPlaying`）可稳定驱动通知与浮窗展示。
+  - 前后台命令结果一致，不再出现“假成功”。
+  - `trackId/position/isPlaying` 可稳定驱动通知与浮窗。
 - Related Tasks: `T-S4-CORE-026A`, `T-S4-CORE-026B`
 - Priority: P0
-- Status: In Progress（子阶段2完成：`eb10b46` 已修复 cache fallback 失败不跳歌 + Home 后服务焦点冲突，待车机验收）
+- Status: In Progress（`T-S4-CORE-026A/026B` 已用户车机验证通过，待与 CONTROL/RESUME 链路一起收口）
 - Risks:
-  - 当前 focus-neutral 为稳态补丁，后续若迁移播放真源到 Service 需重新定义焦点策略。
-  - 前台稳定性补丁与真源迁移目标存在冲突，需要以实机结果裁决。
+  - 当前焦点策略是稳态补丁，后续迁移真源时可能需重调。
 - Suitable For Module Execution?: Yes
 
 ## M-S4-CONTROL-002
 - Module ID: `M-S4-CONTROL-002`
 - Name: 后台控制面一致性（媒体键/通知/浮窗）
-- Goal: 建立三条后台控制面一致的命令分发与反馈行为。
-- Why It Matters: 车机场景的可用性取决于后台入口是否一致，而非单一 UI 点击链路。
+- Goal: 三条后台入口的控制行为保持一致。
+- Why It Matters: 车机使用场景主要靠后台入口，不靠前台点击。
+- 这模块在做什么（白话）: 保证从方向盘、通知栏、浮窗按键操作，效果都一样。
 - In Scope:
-  - `ACTION_MEDIA_BUTTON` -> Service 命令路径验证。
-  - 通知控制条与浮窗三键控制一致性。
-  - 浮窗手动关闭后“进应用再切出”再显示策略。
+  - `ACTION_MEDIA_BUTTON` 到 Service 的命令路径。
+  - 通知三键与浮窗三键的一致性。
+  - 浮窗关闭后“进应用再切出”重显策略。
 - Out of Scope:
-  - 新浮窗样式设计。
-  - 非车机输入设备适配。
+  - 浮窗视觉改版。
+  - 非车机输入设备特殊适配。
 - Dependencies: `M-S4-CORE-001`
 - Related Files / Areas:
   - `app/src/main/java/com/skodamusic/app/playback/MediaButtonReceiver.kt`
@@ -50,53 +51,55 @@ Last Updated: 2026-04-29
   - `app/src/main/java/com/skodamusic/app/overlay/OverlayController.kt`
   - `app/src/main/AndroidManifest.xml`
 - Milestone / Done Criteria:
-  - 三个后台入口均可稳定触发上一曲/播放暂停/下一曲。
-  - 浮窗显示策略符合用户确认口径并可复现验证。
+  - 三个入口都能稳定触发 `prev/play_pause/next`。
+  - 浮窗策略和用户确认口径一致。
 - Related Tasks: `T-S4-CORE-026C`
 - Priority: P0
-- Status: In Progress（2026-04-29 已落地浮窗交互增强：歌名字号下调、点击歌名回应用、拖动并记忆位置；待车机验收）
+- Status: In Progress（浮窗点击回应用+拖动记忆已落地；新增 UI 修正：歌名字号上调 + 关闭按钮右上角放大，待车机复测）
 - Risks:
-  - 不同车机对媒体键广播优先级处理差异较大。
+  - 不同 ROM 对媒体键广播优先级处理不同。
 - Suitable For Module Execution?: Yes
 
 ## M-S4-RESUME-003
 - Module ID: `M-S4-RESUME-003`
 - Name: 熄火/休眠恢复闭环
-- Goal: 完成服务侧自动续播二阶段闭环（恢复队列/索引/进度/播放态 + 降级）。
-- Why It Matters: 自动续播是用户强需求，也是 S4 验收硬指标。
+- Goal: 完成服务侧自动续播与进度恢复闭环。
+- Why It Matters: 自动续播是明确硬需求，必须实机可复现。
+- 这模块在做什么（白话）: 车机休眠回来后，尽量继续从上次位置播放。
 - In Scope:
-  - `PlaybackResumeStore` 与 Service 状态恢复逻辑打通。
-  - 新鲜度窗口、账号恢复、进度恢复策略稳定化。
-  - 失败降级日志可用于实机排障。
+  - `PlaybackResumeStore` 与 Service 恢复逻辑打通。
+  - 新鲜度窗口、账号恢复、进度 seek 策略。
+  - 失败降级日志可直接排障。
 - Out of Scope:
-  - 跨账号复杂恢复策略重构。
-  - 长期离线缓存恢复。
+  - 跨账号复杂恢复重构。
+  - 长期离线场景恢复。
 - Dependencies: `M-S4-CORE-001`
 - Related Files / Areas:
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackResumeStore.kt`
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
-  - 熄火/休眠恢复后满足条件可自动续播并恢复进度。
-  - 缺失会话或恢复失败时降级路径明确且不崩溃。
+  - 满足条件可自动续播并恢复进度。
+  - 失败时不崩溃且有明确降级路径。
 - Related Tasks: `T-S4-RESUME-020B`
 - Priority: P0
 - Status: Pending
 - Risks:
-  - 会话失效与网络波动可能导致恢复结果不稳定。
+  - 会话失效和弱网会让恢复结果不稳定。
 - Suitable For Module Execution?: Yes
 
 ## M-S4-VALID-004
 - Module ID: `M-S4-VALID-004`
 - Name: API17 实机回归与证据回填
-- Goal: 标准化 S4 回归入口并完成实机执行、证据沉淀和 context 回写。
-- Why It Matters: S4 是否完成必须由实机证据判定，不能仅靠代码推断。
+- Goal: 用统一清单做实机回归，并把结果结构化回填。
+- Why It Matters: S4 是否完成，要靠证据，不靠感觉。
+- 这模块在做什么（白话）: 按清单测一遍，把结果写回文档，形成下一轮入口。
 - In Scope:
-  - 升级 API17 回归清单（覆盖 S4 后台控制能力）。
-  - 补齐“风险控制与验收清单（Section 4）”模板。
-  - 车机实机执行结果回填 `CURRENT_STATUS/HANDOFF/TASK_QUEUE`。
+  - S4 回归清单与 Section 4 验收模板。
+  - 实机执行 PASS/FAIL/Blocker 回传。
+  - 回写 `CURRENT_STATUS/HANDOFF/TASK_QUEUE`。
 - Out of Scope:
-  - 纯实验性优化项验证。
+  - 纯体验优化项的扩展验证。
 - Dependencies: `M-S4-CORE-001`, `M-S4-CONTROL-002`, `M-S4-RESUME-003`, `M-S4-OBS-006`
 - Related Files / Areas:
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
@@ -104,108 +107,99 @@ Last Updated: 2026-04-29
   - `.ai/context/HANDOFF.md`
   - `.ai/context/TASK_QUEUE.md`
 - Milestone / Done Criteria:
-  - 至少 1 台 API17 设备完成 S4 清单并给出 PASS/FAIL/Blocker。
-  - 证据已结构化回写到 `.ai/context`。
+  - 至少 1 台 API17 设备完成回归并形成证据。
+  - 结论回写完毕，下一步 Ready 清晰。
 - Related Tasks: `T-S4-VAL-032`, `T-S4-REG-022`, `T-S4-VAL-033`
 - Priority: P0
-- Status: In Progress（`T-S4-VAL-032` 已完成：S4 清单升级 + Section 4 风险控制模板；待车机窗口执行 `T-S4-REG-022`）
+- Status: In Progress（`T-S4-VAL-032` 已完成，等待车机窗口执行 `REG-022`）
 - Risks:
-  - 设备窗口不可控，可能导致阶段收尾延后。
+  - 设备窗口不可控，可能拖慢收尾。
 - Suitable For Module Execution?: Yes
 
 ## M-S4-OBS-006
 - Module ID: `M-S4-OBS-006`
 - Name: PostHog 关键事件观测链路
-- Goal: 在不影响播放稳定性的前提下，建立 API17 可用的 PostHog 结构化事件上报链路。
-- Why It Matters: S4 验收不仅要“能复现”，还要“可聚合诊断”；结构化事件可直接用于问题定位与 AI 分析。
+- Goal: 建立 API17 可用的结构化事件链路，且失败不影响播放。
+- Why It Matters: 现场问题需要“可查证据”，不是只看零散日志。
+- 这模块在做什么（白话）: 给关键动作打点，出问题时能快速定位哪一步失败。
 - In Scope:
-  - 事件模型（event name + properties + error_code）与命名规范。
-  - API17 兼容的轻量上报客户端（优先复用现有 OkHttp，不强依赖重 SDK）。
-  - 关键节点埋点（启动/播放链路/后台命令/错误与恢复）。
-  - 失败不阻断业务（fail-open）、节流与最小隐私策略。
-  - 数据导出与 AI 分析输入模板。
+  - 事件模型与命名规范。
+  - 轻量上报客户端（API17 兼容，fail-open）。
+  - 关键节点埋点、节流、隐私门禁。
+  - 查询与导出模板。
 - Out of Scope:
-  - 将 PostHog 作为全量原始日志仓库。
-  - 上报高频播放进度与大体积 payload。
-  - 自托管 PostHog 基础设施搭建（本阶段默认云版或已提供 endpoint）。
-- Dependencies: `M-S4-CORE-001`（部分事件依赖命令链路收口）
+  - 把 PostHog 当全量日志仓库。
+  - 高频进度全量上报。
+  - 自托管基础设施建设。
+- Dependencies: `M-S4-CORE-001`
 - Related Files / Areas:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackActions.kt`
-  - `docs/`（新增事件字典与上报策略文档）
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/POSTHOG_INSTRUMENTATION_PLAN.md`
 - Milestone / Done Criteria:
-  - 10~20 个核心事件定义稳定，命名与属性统一。
-  - 关键路径事件可在 PostHog 查询（启动、播放成功/失败、后台命令、恢复失败）。
-  - 上报失败不影响播放主链路，具备节流与禁用开关。
-  - 可导出单 session 事件流用于 AI 排障。
+  - 关键事件可查（启动、播放成功/失败、后台命令、恢复失败）。
+  - 上报失败不影响主链路，且可通过开关控制。
 - Related Tasks: `T-S4-OBS-034`, `T-S4-OBS-035`, `T-S4-OBS-036`, `T-S4-OBS-037`, `T-S4-OBS-038`
 - Priority: P1
-- Status: In Progress（已完成 schema + fail-open reporter + 隐私门禁 + `capture ok` 成功日志，待真实参数联调与在线查询验收）
+- Status: In Progress（schema+上报基线+门禁已落地，待联调验收）
 - Risks:
-  - 采集过多会稀释信号并增加车机网络负担。
-  - 若字段设计不稳定，后续跨版本分析成本上升。
+  - 埋点过多会增加噪音与网络开销。
+- Suitable For Module Execution?: Yes
+
+## M-S4-UPD-007
+- Module ID: `M-S4-UPD-007`
+- Name: 应用更新检测与镜像加速下载
+- Goal: 实现“检测更新 -> 下载 APK -> 触发安装”的可用闭环。
+- Why It Matters: 车机更新成本高，必须有可靠升级通道。
+- 这模块在做什么（白话）: 让用户能在应用里检查更新并下载安装新版本。
+- In Scope:
+  - GitHub Releases 元数据读取与版本比较。
+  - 冷启动自动检测（节流）与设置页手动检测。
+  - 镜像优先下载 + 官方回退。
+  - 下载完成安装触发与事件观测。
+- Out of Scope:
+  - 静默安装、root 安装。
+  - 差分更新和 OTA 平台。
+- Dependencies: `M-S4-CORE-001`, `M-S4-OBS-006`
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+- Milestone / Done Criteria:
+  - 自动/手动检测都可用且不影响播放。
+  - 下载失败可回退，成功后可触发系统安装器。
+  - 关键节点有日志和事件可查。
+- Related Tasks: `T-S4-UPD-040`, `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-UPD-044`
+- Priority: P1
+- Status: In Progress（`040/041/042/043` 已完成，`044` 待 CI/实机验收）
+- Risks:
+  - 镜像可用性波动、API17 安装限制与 TLS 问题。
 - Suitable For Module Execution?: Yes
 
 ## M-S4-UX-005
 - Module ID: `M-S4-UX-005`
 - Name: 并行体验改进池（暂缓）
-- Goal: 管理已确认但不应阻塞 S4 主链路的体验改进项。
-- Why It Matters: 需求有效，但当前推进会稀释后台控制闭环目标。
+- Goal: 记录重要但不阻塞 S4 验收的体验需求。
+- Why It Matters: 需求有效，但现在做会打断主线收口。
+- 这模块在做什么（白话）: 把“该做但不急”的体验项先排队，不混进当前执行。
 - In Scope:
-  - 长标题滚动异常修复任务预案。
-  - 主屏删除入口迁移方案预案。
-  - 均衡器/音效优化验证预案。
+  - 长标题滚动修复方案预案。
+  - 主屏删除入口迁移预案。
+  - 音效优化预案。
 - Out of Scope:
-  - 在 S4 主链路未验收前进入 Ready 开发。
-- Dependencies: `M-S4-VALID-004`（建议在 S4 主验收后启动）
+  - 在 S4 主验收前进入 Ready。
+- Dependencies: `M-S4-VALID-004`
 - Related Files / Areas:
   - `app/src/main/res/layout/activity_main.xml`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
-  - 三项需求均有明确口径与验收标准，且不影响 S4 主验收节奏。
+  - 三项需求都有明确口径和验收标准。
 - Related Tasks: `T-S4-UI-023`, `T-S4-UI-024`, `T-S4-AUDIO-025`
 - Priority: P2
 - Status: Deferred
 - Risks:
-  - 提前执行容易引发范围扩张并拖慢主链路。
+  - 提前开做会造成范围扩张。
 - Suitable For Module Execution?: No
-
-## M-S4-UPD-007
-- Module ID: `M-S4-UPD-007`
-- Name: 应用更新检测与镜像加速下载
-- Goal: 在 API17 下落地“冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载 + 安装触发”闭环。
-- Why It Matters: 车机设备升级频率低且网络环境复杂，缺少内置更新会显著增加维护与排障成本。
-- In Scope:
-  - 版本检测客户端（GitHub Releases 元数据读取 + 本地版本比较）。
-  - 冷启动自动检测（带周期节流，不阻断主流程）。
-  - 设置页“手动检查更新”入口与状态反馈。
-  - APK 下载器（官方链接 + 镜像候选 + 自动回退）。
-  - 下载完成后安装触发（系统安装器 Intent）。
-  - 更新链路关键事件埋点（检查结果、下载结果、安装触发结果）。
-- Out of Scope:
-  - 静默安装、root 安装、系统签名安装。
-  - 差分更新（bsdiff/patch）与自建 OTA 平台。
-  - 多渠道复杂灰度策略。
-- Dependencies:
-  - `M-S4-CORE-001`（确保冷启动流程稳定，不影响播放链路）。
-  - `M-S4-OBS-006`（复用观测与故障诊断口径）。
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/java/com/skodamusic/app/`（新增 `update/` 目录）
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/values/strings.xml`
-  - `docs/CI_SIGNING_RELEASE_RUNBOOK.md`
-- Milestone / Done Criteria:
-  - 冷启动按策略自动检测更新且不阻断主流程。
-  - 设置页可手动检测并明确展示“已最新/有新版本/检测失败”。
-  - APK 下载支持镜像优先 + 官方回退，完成后可触发安装。
-  - 失败路径可诊断（日志 + 结构化事件）。
-- Related Tasks: `T-S4-UPD-040`, `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-UPD-044`
-- Priority: P1
-- Status: In Progress（代码链路已落地：`040/041/042/043` 完成，`044` 已接线待 CI/实机验收）
-- Risks:
-  - GitHub API 限流与镜像可用性波动可能导致检测或下载失败。
-  - API17 设备对安装权限与文件 URI 处理差异较大。
-- Suitable For Module Execution?: Yes

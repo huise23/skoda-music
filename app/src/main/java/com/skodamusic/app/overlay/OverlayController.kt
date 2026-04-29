@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -31,7 +32,7 @@ class OverlayController(
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = context.getSharedPreferences(PREFS_OVERLAY, Context.MODE_PRIVATE)
-    private var rootView: LinearLayout? = null
+    private var rootView: FrameLayout? = null
     private var titleView: TextView? = null
     private var progressBar: ProgressBar? = null
     private var playPauseButton: ImageButton? = null
@@ -101,45 +102,43 @@ class OverlayController(
             return
         }
 
-        val container = LinearLayout(context)
-        container.orientation = LinearLayout.VERTICAL
-        container.gravity = Gravity.CENTER_HORIZONTAL
+        val container = FrameLayout(context)
         container.setBackgroundColor(Color.parseColor("#CC162431"))
         val padding = dp(12)
         container.setPadding(padding, padding, padding, padding)
 
+        val content = LinearLayout(context)
+        content.orientation = LinearLayout.VERTICAL
+        content.gravity = Gravity.CENTER_HORIZONTAL
+        container.addView(
+            content,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         val title = TextView(context)
         title.setTextColor(Color.WHITE)
-        title.textSize = 15f
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         title.maxLines = 2
         title.gravity = Gravity.CENTER
+        title.setPadding(dp(8), 0, dp(44), 0)
         bindTitleTouch(title)
-        val header = FrameLayout(context)
-        val headerParams = LinearLayout.LayoutParams(
+        val titleParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            bottomMargin = dp(6)
+            bottomMargin = dp(8)
         }
-        container.addView(header, headerParams)
-        header.addView(
-            title,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            ).apply {
-                marginStart = dp(28)
-                marginEnd = dp(28)
-            }
-        )
+        content.addView(title, titleParams)
         val close = createTopCloseButton {
             hide()
             listener.onDismissByUser()
         }
-        header.addView(
+        container.addView(
             close,
-            FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END)
+            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END)
         )
 
         val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -152,7 +151,7 @@ class OverlayController(
         ).apply {
             bottomMargin = dp(10)
         }
-        container.addView(progress, progressParams)
+        content.addView(progress, progressParams)
 
         val actionRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -163,7 +162,7 @@ class OverlayController(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        container.addView(actionRow, rowParams)
+        content.addView(actionRow, rowParams)
 
         val prev = createControlButton(android.R.drawable.ic_media_previous) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PREV)

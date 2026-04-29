@@ -1,3 +1,4 @@
 .gradle/
 app/.cxx/
 app/build/
+dist/

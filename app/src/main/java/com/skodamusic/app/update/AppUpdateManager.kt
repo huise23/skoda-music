@@ -651,7 +651,7 @@ class AppUpdateManager(
                     tmpFile.delete()
                 }
 
-                val validation = validateDownloadedApkFile(finalFile)
+                val validation = validateDownloadedApkFile(finalFile, releaseInfo)
                 if (validation != null) {
                     finalFile.delete()
                     throw IllegalStateException("${validation.errorCode}:${validation.message}")
@@ -773,7 +773,7 @@ class AppUpdateManager(
             "https://ghproxy.net/$normalized",
             normalized
         ).distinct()
-        // Force CF proxy only for APK download candidates (no direct fallback).
+        // Keep proxy-only policy for environments where direct GitHub TLS is blocked.
         return directCandidates.map { buildCfProxyUrl(it) }.distinct()
     }
 
@@ -834,12 +834,21 @@ class AppUpdateManager(
         return InstallDispatchResult(success = true)
     }
 
-    private fun validateDownloadedApkFile(apkFile: File): InstallDispatchResult? {
+    private fun validateDownloadedApkFile(apkFile: File, releaseInfo: ReleaseInfo): InstallDispatchResult? {
         if (!apkFile.exists() || apkFile.length() <= 0L) {
             return InstallDispatchResult(
                 success = false,
                 errorCode = "UPDATE_APK_FILE_EMPTY",
                 message = "downloaded apk is empty"
+            )
+        }
+        // Strict file-length check if release metadata provides asset size.
+        val expectedSize = releaseInfo.asset.sizeBytes
+        if (expectedSize > 0L && apkFile.length() != expectedSize) {
+            return InstallDispatchResult(
+                success = false,
+                errorCode = "UPDATE_APK_SIZE_MISMATCH",
+                message = "downloaded apk size=${apkFile.length()} expected=$expectedSize"
             )
         }
         val parsedInfo = resolveArchivePackageInfo(apkFile) ?: return InstallDispatchResult(
@@ -853,6 +862,17 @@ class AppUpdateManager(
                 errorCode = "UPDATE_PACKAGE_NAME_MISMATCH",
                 message = "archive package=${parsedInfo.packageName} local=${appContext.packageName}"
             )
+        }
+        val expectedDigest = releaseInfo.asset.sha256Digest
+        if (expectedDigest.isNotBlank()) {
+            val actualDigest = runCatching { sha256File(apkFile) }.getOrDefault("")
+            if (actualDigest.isBlank() || !actualDigest.equals(expectedDigest, ignoreCase = true)) {
+                return InstallDispatchResult(
+                    success = false,
+                    errorCode = "UPDATE_APK_DIGEST_MISMATCH",
+                    message = "downloaded apk digest mismatch"
+                )
+            }
         }
         return null
     }

@@ -12,7 +12,7 @@ Last Updated: 2026-04-29
 - 模块推进执行（`ai-module-execution`）用于 `M-S4-CORE-001`
 - 模块推进执行（`ai-module-execution`）用于 `M-S4-OBS-006`
 - 模块推进执行（`ai-module-execution`）用于 `M-S4-UPD-007`
-- 微任务执行（`ai-execution`）并行处理 `T-S4-VAL-032`
+- 模块推进执行（`ai-module-execution`）用于 `M-S4-VALID-004`（进入车机窗口后执行 `REG-022/VAL-033`）
 
 ## Immediate Start
 - [ ] 首选任务: `T-S4-CORE-026C-HF-20260429`（车机验证：浮窗歌名点击回应用、拖动后位置持久化、右上角关闭行为）
@@ -20,7 +20,7 @@ Last Updated: 2026-04-29
 - [ ] 首选任务: `T-S4-CORE-026A` 车机验收（验证 `eb10b46`：自动下一曲 + Home 后音频连续性 + 焦点冲突是否消失）
 - [ ] 并行任务: `T-S4-CORE-026B`（按 `docs/S4_BACKGROUND_COMMAND_MATRIX.md` 回填 notification/overlay/media_button/audio_focus 四来源结果）
 - [ ] 并行任务: `T-S4-OBS-036`（检查 `SkodaPostHog` 的 `capture ok` 是否稳定出现，并补齐失败样本）
-- [ ] 并行任务: `T-S4-VAL-032`
+- [ ] 并行任务: `T-S4-REG-022` 执行准备（已具备 S4 清单模板，等待车机窗口）
 - [ ] 跟进任务: `T-S4-CORE-026C`、`T-S4-RESUME-020B`
 
 ## Why This Order
@@ -32,7 +32,7 @@ Last Updated: 2026-04-29
 - `T-S4-CORE-026B` 已完成观测能力与矩阵模板准备，当前投入设备执行可直接产出可复盘证据。
 - `T-S4-OBS-034/039` 已完成；当前瓶颈转为 `T-S4-OBS-036/037` 的补齐与实机压测。
 - 先冻结“禁报清单”可防止高频低价值事件污染数据并抬高网络开销。
-- `T-S4-VAL-032` 不依赖车机窗口，先完成可减少 `T-S4-REG-022` 现场返工。
+- `T-S4-VAL-032` 已完成，`T-S4-REG-022` 可直接复用新清单执行并减少现场返工。
 - UI/音效项虽重要，但当前不影响 S4 主验收闭环，应保持 Deferred。
 
 ## Main Blockers

@@ -108,7 +108,7 @@ Last Updated: 2026-04-29
   - 证据已结构化回写到 `.ai/context`。
 - Related Tasks: `T-S4-VAL-032`, `T-S4-REG-022`, `T-S4-VAL-033`
 - Priority: P0
-- Status: Pending
+- Status: In Progress（`T-S4-VAL-032` 已完成：S4 清单升级 + Section 4 风险控制模板；待车机窗口执行 `T-S4-REG-022`）
 - Risks:
   - 设备窗口不可控，可能导致阶段收尾延后。
 - Suitable For Module Execution?: Yes

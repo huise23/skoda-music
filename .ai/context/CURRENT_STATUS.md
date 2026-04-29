@@ -27,6 +27,15 @@ Last Updated: 2026-04-29
 - 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
 - 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
 
+## Module Execution Progress (Validation, 2026-04-29)
+- 已完成 `T-S4-VAL-032`（`M-S4-VALID-004`）：
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已从 S1 升级到 S4 验收口径。
+  - 已补齐 `Section 4` 风险控制与验收模板（Risk Gates + Evidence Minimum + Final Decision）。
+  - 清单已覆盖后台命令矩阵、浮窗策略、熄火/休眠恢复、更新链路、PostHog 关键证据字段。
+- 当前影响：
+  - `T-S4-REG-022` 的执行入口已标准化，现场可直接按模板回传 PASS/FAIL/Blocker。
+  - 当前阶段“本地可直接完成项”已收口，后续主要依赖车机窗口与 CI/实机环境。
+
 ## Module Execution Progress (Control + Update Hotfix, 2026-04-29)
 - 已按 `M-S4-CONTROL-002` 落地浮窗交互增强（代码完成，待车机验收）：
   - 浮窗歌名字号调整为中层级（`16sp -> 15sp`）。
@@ -41,7 +50,7 @@ Last Updated: 2026-04-29
 ## Planning Refresh (2026-04-27)
 - 已按 `ai-planning` 重排为模块化执行：`M-S4-CORE-001/CONTROL-002/RESUME-003/VALID-004`。
 - 任务粒度从单个 `T-S4-CORE-026` 调整为 `026A/026B/026C + 020B + 032/022/033`，用于区分可代码推进与实机阻塞任务。
-- 当前状态：`T-S4-CORE-026A` In Progress，`T-S4-VAL-032` Ready。
+- 当前状态：`T-S4-CORE-026A` In Progress，`T-S4-VAL-032` Done。
 
 ## Planning Refresh (Update, 2026-04-27)
 - 已将“自动检测并更新”纳入当前阶段范围，新增模块 `M-S4-UPD-007`。

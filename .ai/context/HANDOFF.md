@@ -29,7 +29,7 @@ Last Updated: 2026-04-29
 3. `T-S4-CORE-026A`（In Progress）+ `T-S4-CORE-026B`（In Progress）：继续验证 `eb10b46` 并回填后台命令矩阵。
 4. `T-S4-OBS-036`（In Progress）+ `T-S4-OBS-037`（In Progress）：补齐关键链路观测并完成实机压测。
 5. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
-6. `T-S4-VAL-032`（Ready）：升级 API17 回归清单并补齐 Section 4 风险控制与验收模板。
+6. `T-S4-VAL-032`（Done）：API17 清单已升级到 S4 口径，已补齐 Section 4 风险控制与验收模板。
 7. `T-S4-CORE-026C` + `T-S4-RESUME-020B`：完成浮窗/通知策略与恢复链路闭环。
 8. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
 9. `T-S4-UI-023/024 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
@@ -42,6 +42,9 @@ Last Updated: 2026-04-29
 - 更新链路诊断能力增强：
   - `update_check_failed` 现可回传 `failed_stage/failed_url/attempt_urls`。
   - 更新元数据检查已切换为 GitHub 直连；版本比较已支持 pre-release。
+- 验收入口补齐：
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已升级为 S4 版本。
+  - 新增 `Section 4`：`Risk Gates + Evidence Minimum + Acceptance Decision`。
 - 现场问题结论：
   - 最近失败主因集中在低版本车机 TLS 信任链不兼容（`GITHUB_RELEASE_EXCEPTION`）。
 
@@ -119,7 +122,6 @@ Last Updated: 2026-04-29
   - 服务内自动续播恢复完善（`T-S4-RESUME-020` 二阶段）；
   - 车机实测确认后台方向盘按键是否恢复；
   - 车机实测确认浮窗策略与后台通知链路稳定性；
-  - 补写 `Section 4：风险控制与验收清单`（用户已明确要该章节）。
   - PostHog 关键事件观测链路落地（schema -> client -> instrumentation -> verification）。
 
 ## Environment Notes

@@ -304,8 +304,11 @@ class AppUpdateManager(
 
     private fun fetchLatestRelease(): ReleaseFetchResult {
         val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8"
-        // For stability troubleshooting, release metadata check now uses GitHub API directly.
-        val requestUrls = listOf(apiUrl)
+        // Use CF proxy first for old Android TLS compatibility, keep direct GitHub as fallback.
+        val requestUrls = listOf(
+            buildCfProxyUrl(apiUrl),
+            apiUrl
+        ).distinct()
 
         var lastFailure = ReleaseFetchResult(
             errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",

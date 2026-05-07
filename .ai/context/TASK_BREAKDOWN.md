@@ -420,15 +420,25 @@ Last Updated: 2026-04-29
 - Dependencies: 需求口径确认
 - Size: S
 
-## T-S4-UI-024
-- Task ID: `T-S4-UI-024`
-- Title: 删除入口迁移到主屏
+## T-S4-UI-024A
+- Task ID: `T-S4-UI-024A`
+- Title: 删除入口迁移到主屏队列预览
 - Module ID: `M-S4-UX-005`
-- 这任务在做什么（白话）: 在主屏提供“马上删歌”入口，但避免误触。
-- Goal: 提供安全删除入口（含防误触）。
-- Why: 用户明确要求，交互细节待定。
-- Dependencies: 交互方案确认
+- 这任务在做什么（白话）: 把删除按钮放到主屏队列里，听歌时就能直接删。
+- Goal: 在主屏队列预览中提供安全删除入口（含双确认）。
+- Why: 用户明确要求“不要再藏在库页里”，减少操作路径。
+- Dependencies: 无
 - Size: M
+
+## T-S4-RESUME-020C
+- Task ID: `T-S4-RESUME-020C`
+- Title: 移除自动续播
+- Module ID: `M-S4-RESUME-003`
+- 这任务在做什么（白话）: 关闭启动后的自动恢复和自动续播，只保留手动播放。
+- Goal: 去掉体感差的续播逻辑，避免用户不想听时自动播。
+- Why: 用户明确要求“先移除续播，再继续删除功能”。
+- Dependencies: 无
+- Size: S
 
 ## T-S4-AUDIO-025
 - Task ID: `T-S4-AUDIO-025`

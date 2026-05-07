@@ -143,6 +143,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var currentTrackIndex: Int = 0
     private var playbackEngine: PlaybackEngine? = null
     private var playbackRequestId: Int = 0
+    private var pauseRequestedRequestId: Int = -1
     private val runtimeLogLines = mutableListOf<String>()
     private val runtimeLogLock = Any()
     private var runtimeLogDialog: Dialog? = null
@@ -157,6 +158,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var homeLyricsTrackKey: String = ""
     private var homeLyricsRequestTrackKey: String? = null
     private val homeLyricsCache = LinkedHashMap<String, List<LyricLine>>()
+    private var resumeFeatureDisabledLogged: Boolean = false
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -385,7 +387,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             eventName = "app_foreground"
         )
         reportPlaybackStateToService(force = true)
-        maybeStartPendingAutoResume("activity-onStart")
     }
 
     override fun onStop() {
@@ -924,14 +925,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
             return
         }
-        val fallbackServerArtist = getString(R.string.track_artist_server)
-        val recommendations: List<Pair<String, String>> =
-            loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE).map { it.title to it.artist.ifBlank { fallbackServerArtist } }
-
-        recommendations.forEachIndexed { index, item ->
+        val recommendations: List<EmbyTrack> = loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE)
+        recommendations.forEachIndexed { index, track ->
             val isCurrent = index == currentTrackIndex
             val row = LinearLayout(this)
-            row.orientation = LinearLayout.VERTICAL
+            row.orientation = LinearLayout.HORIZONTAL
             row.gravity = Gravity.CENTER_VERTICAL
             row.minimumHeight = dpToPx(70)
             row.setBackgroundResource(
@@ -939,19 +937,30 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
             row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
 
+            val textBlock = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+
             val title = TextView(this)
-            title.text = item.first
+            title.text = if (isCurrent) "\u25B6 ${track.title}" else track.title
             title.setTextColor(resources.getColor(R.color.text_primary))
             title.textSize = 17f
             title.setTypeface(null, if (isCurrent) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
 
             val artist = TextView(this)
-            artist.text = item.second
+            artist.text = track.artist.ifBlank { getString(R.string.track_artist_server) }
             artist.setTextColor(resources.getColor(R.color.text_secondary))
             artist.textSize = 14f
 
-            row.addView(title)
-            row.addView(artist)
+            textBlock.addView(title)
+            textBlock.addView(artist)
+            row.addView(textBlock)
+            row.addView(buildDeleteButton(track))
             row.setOnClickListener {
                 playFromList(index, ListSource.QUEUE)
             }
@@ -1331,22 +1340,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             textBlock.addView(artist)
             row.addView(textBlock)
             if (source == ListSource.LIBRARY) {
-                val deleteButton = ImageButton(this)
-                deleteButton.setImageResource(android.R.drawable.ic_menu_delete)
-                deleteButton.setBackgroundResource(R.drawable.button_nav_icon_inactive)
-                deleteButton.setColorFilter(resources.getColor(R.color.text_secondary))
-                deleteButton.contentDescription = getString(R.string.action_delete_source)
-                deleteButton.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                deleteButton.adjustViewBounds = true
-                deleteButton.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
-                deleteButton.isFocusable = false
-                deleteButton.isFocusableInTouchMode = false
-                deleteButton.setOnClickListener {
-                    promptDeleteSourceTrack(track)
-                }
-                val deleteParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
-                deleteParams.leftMargin = dpToPx(10)
-                row.addView(deleteButton, deleteParams)
+                row.addView(buildDeleteButton(track))
             }
             row.setOnClickListener {
                 playFromList(index, source)
@@ -1359,6 +1353,26 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 params.topMargin = dpToPx(8)
             }
             container.addView(row, params)
+        }
+    }
+
+    private fun buildDeleteButton(track: EmbyTrack): ImageButton {
+        return ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_delete)
+            setBackgroundResource(R.drawable.button_nav_icon_inactive)
+            setColorFilter(resources.getColor(R.color.text_secondary))
+            contentDescription = getString(R.string.action_delete_source)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            adjustViewBounds = true
+            setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+            isFocusable = false
+            isFocusableInTouchMode = false
+            setOnClickListener {
+                promptDeleteSourceTrack(track)
+            }
+            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                leftMargin = dpToPx(10)
+            }
         }
     }
 
@@ -2227,6 +2241,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val existing = playbackEngine
         if (existing != null) {
             if (existing.play()) {
+                pauseRequestedRequestId = -1
                 val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
                 PostHogTracker.capture(
                     context = applicationContext,
@@ -2252,7 +2267,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun pausePlayback(source: String) {
-        playbackRequestId += 1
+        pauseRequestedRequestId = playbackRequestId
         stopDownloadController()
         playbackEngine?.pause()
         val trackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
@@ -2313,6 +2328,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val downloadUrl = embyApi.buildDownloadUrl(base, track.id, token)
         val embyClient = embyApi.buildHttpClient(base, resolveCfReferenceDomain())
         val requestId = ++playbackRequestId
+        pauseRequestedRequestId = -1
         val streamPrepared = AtomicBoolean(false)
         val fallbackTriggered = AtomicBoolean(false)
         val prepareStartMs = SystemClock.elapsedRealtime()
@@ -2377,6 +2393,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             return
                         }
                         streamPrepared.set(true)
+                        if (pauseRequestedRequestId == requestId) {
+                            appendRuntimeLog("play prepared requestId=$requestId skipped reason=pause-requested")
+                            return
+                        }
                         PostHogTracker.capture(
                             context = applicationContext,
                             eventName = "play_success",
@@ -2432,6 +2452,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
                     override fun onError(code: Int, detail: String) {
                         if (requestId != playbackRequestId) {
+                            return
+                        }
+                        if (pauseRequestedRequestId == requestId) {
+                            appendRuntimeLog("play error ignored requestId=$requestId reason=pause-requested code=$code")
                             return
                         }
                         val category = categorizePlaybackError(code, detail)
@@ -2530,8 +2554,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (requestId != playbackRequestId || streamPrepared.get()) {
                     return@Thread
                 }
+                if (pauseRequestedRequestId == requestId) {
+                    return@Thread
+                }
                 runOnUiThread {
                     if (requestId != playbackRequestId || streamPrepared.get()) {
+                        return@runOnUiThread
+                    }
+                    if (pauseRequestedRequestId == requestId) {
                         return@runOnUiThread
                     }
                     val active = playbackEngine
@@ -3034,6 +3064,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        if (pauseRequestedRequestId == requestId) {
+                            appendRuntimeLog("cache playback prepared requestId=$requestId skipped reason=pause-requested")
+                            return
+                        }
                         PostHogTracker.capture(
                             context = applicationContext,
                             eventName = "play_success",
@@ -3089,6 +3123,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
                             override fun onError(code: Int, detail: String) {
                                 if (requestId != playbackRequestId) {
+                                    return
+                                }
+                                if (pauseRequestedRequestId == requestId) {
+                                    appendRuntimeLog("cache playback error ignored requestId=$requestId reason=pause-requested code=$code")
                                     return
                                 }
                                 val category = categorizePlaybackError(code, detail)
@@ -3473,6 +3511,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun restorePlaybackResumeStateIfNeeded() {
+        if (!ENABLE_RESUME_FEATURE) {
+            if (!resumeFeatureDisabledLogged) {
+                resumeFeatureDisabledLogged = true
+                appendRuntimeLog("resume feature disabled: skip restore and clear snapshot")
+            }
+            if (playbackResumeStore.read() != null) {
+                clearPersistedPlaybackResumeState()
+            }
+            resumeRestoreAttempted = true
+            pendingAutoResumePlayback = false
+            pendingResumeSeekMs = -1L
+            pendingResumeSeekTrackId = ""
+            return
+        }
         if (resumeRestoreAttempted) {
             return
         }
@@ -3523,7 +3575,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         val savedAtMs = snapshot.savedAtMs
         val wasPlaying = snapshot.wasPlaying
-        pendingAutoResumePlayback = wasPlaying && isResumeAutoplayFresh(savedAtMs)
+        val serviceSnapshot = playbackStateStore.readSnapshot()
+        val currentTrackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
+        val serviceIndicatesPlaying = serviceSnapshot.isPlaying &&
+            serviceSnapshot.trackId.isNotBlank() &&
+            serviceSnapshot.trackId == currentTrackId
+        pendingAutoResumePlayback = (wasPlaying || serviceIndicatesPlaying) && isResumeAutoplayFresh(savedAtMs)
+        appendRuntimeLog(
+            "resume restore autoplay-check wasPlaying=$wasPlaying servicePlaying=$serviceIndicatesPlaying pending=$pendingAutoResumePlayback"
+        )
         if (pendingAutoResumePlayback && !hasPlaybackSession()) {
             appendRuntimeLog("resume restore pending reason=missing-session")
             PostHogTracker.capture(
@@ -3583,6 +3643,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybeStartPendingAutoResume(trigger: String) {
+        if (!ENABLE_RESUME_FEATURE) {
+            pendingAutoResumePlayback = false
+            return
+        }
         if (!pendingAutoResumePlayback) {
             return
         }
@@ -3620,6 +3684,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybeApplyPendingResumeSeek(durationMs: Long) {
+        if (!ENABLE_RESUME_FEATURE) {
+            pendingResumeSeekMs = -1L
+            pendingResumeSeekTrackId = ""
+            return
+        }
         if (pendingResumeSeekMs < 0L) {
             return
         }
@@ -3650,6 +3719,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybePersistPlaybackResumeState(positionMs: Long = -1L, force: Boolean = false) {
+        if (!ENABLE_RESUME_FEATURE) {
+            return
+        }
         if (!resumeRestoreAttempted) {
             return
         }
@@ -4270,6 +4342,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val EXTERNAL_COMMAND_WAIT_MS = 800L
         const val SERVICE_REPORT_POSITION_DELTA_MS = 2_000L
         const val SERVICE_REPORT_HEARTBEAT_MS = 10_000L
+        const val ENABLE_RESUME_FEATURE = false
         const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
         const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
         const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L

@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-04-29
+Last Updated: 2026-05-06
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -10,7 +10,7 @@ Last Updated: 2026-04-29
 - 路线锁定为“方案1（Legacy 稳态）”。
 - 第一版必须同轮达成：后台服务 + 后台方向盘按键 + 全局浮窗。
 - 浮窗策略锁定：播放/暂停均显示；手动关闭后“进应用再切出”再次显示。
-- 熄火/休眠恢复后自动续播为强需求。
+- 自动续播体验差，当前口径改为“先移除自动续播”。
 - 接受前台服务常驻通知。
 
 ## Already Completed (Baseline)
@@ -24,8 +24,19 @@ Last Updated: 2026-04-29
 
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
-- 推进播放真源迁移与恢复闭环：`MainActivity -> PlaybackService`，并完成熄火/休眠自动续播二阶段验证。
+- 维持播放主链路稳定，并按新口径保持“无自动续播”。
 - 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
+
+## Module Execution Progress (Resume + Delete, 2026-05-06)
+- 已完成 `T-S4-RESUME-020C`（移除自动续播）：
+  - 关闭 `onStart` 自动续播触发入口。
+  - 关闭恢复链路的自动起播/自动 seek/续播快照持久化。
+  - 启动时发现历史续播快照则清理，避免旧行为残留。
+- 已完成 `T-S4-UI-024A`（删除入口迁移到主屏队列预览）：
+  - Home 队列行新增删除按钮，点击后复用现有双确认删除弹窗与删除执行逻辑。
+  - Library 删除按钮改为复用统一构建函数，确保主屏与库页交互一致。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
 
 ## User Verification Update (2026-04-29)
 - 用户已确认 `T-S4-CORE-026A/026B` 车机验证通过。
@@ -81,7 +92,7 @@ Last Updated: 2026-04-29
   - 观测接线：新增 `update_check_* / update_download_* / update_install_*` 事件与 runtime log。
 - 当前验证状态：
   - `scripts/check_api17_guardrails.sh` 已通过。
-  - 当前环境无 `gradle/gradlew`，尚未完成本地编译与车机实机验收。
+  - 本地可使用系统 `gradle` 编译；车机实机验收仍待外部窗口。
 
 ## Planning Refresh (PostHog, 2026-04-27)
 - 已新增观测模块 `M-S4-OBS-006`：将 PostHog 作为“结构化事件链路”并行接入，不替代全量原始日志。
@@ -174,7 +185,7 @@ Last Updated: 2026-04-29
 ## Known Constraints
 - `minSdk=17` 不可突破。
 - 车机环境窗口有限，回归必须可中断续跑。
-- 本地无 `gradle/gradlew`，编译型验证需依赖 CI/外部构建环境。
+- 仓库无 `gradlew`，需依赖系统 `gradle` 或 CI 进行编译验证。
 
 ## Follow-up Backlog (Confirmed)
 - 长标题滚动异常修复。

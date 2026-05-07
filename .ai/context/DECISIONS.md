@@ -1,6 +1,6 @@
 # DECISIONS
 
-Last Updated: 2026-04-29
+Last Updated: 2026-05-06
 
 ## Confirmed Collaboration Decisions
 - 决策: AI 协作上下文统一写入 `.ai/context/`。
@@ -13,6 +13,11 @@ Last Updated: 2026-04-29
 - 决策: 播放策略固定为 URL-only stream + download fallback。
 - 决策: 推荐接口固定为 `Users/{id}/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=Random&Limit=20&api_key=...`。
 - 决策: 列表解析仅接收 `Type=Audio`。
+
+## 2026-05-06 - 续播与删除入口口径调整（用户确认）
+- 决策: 自动续播能力先下线（关闭启动恢复自动起播与续播快照持续写入）。
+- 决策: 主屏删除入口立即落地，不再继续挂在 Deferred（复用现有双确认删除链路）。
+- 决策: 旧“自动续播为强需求”口径保留为历史记录，但当前执行以本条为准。
 
 ## 2026-04-29 - OBS 验收口径调整（用户确认）
 - 决策: `T-S4-OBS-035/036/037` 采用“PostHog 查询驱动验收”为主口径。

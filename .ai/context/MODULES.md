@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-04-29
+Last Updated: 2026-05-06
 
 ## M-S4-CORE-001
 - Module ID: `M-S4-CORE-001`
@@ -63,9 +63,9 @@ Last Updated: 2026-04-29
 ## M-S4-RESUME-003
 - Module ID: `M-S4-RESUME-003`
 - Name: 熄火/休眠恢复闭环
-- Goal: 完成服务侧自动续播与进度恢复闭环。
-- Why It Matters: 自动续播是明确硬需求，必须实机可复现。
-- 这模块在做什么（白话）: 车机休眠回来后，尽量继续从上次位置播放。
+- Goal: 按最新用户口径管理续播能力（当前为关闭自动续播）。
+- Why It Matters: 当前体验反馈明确“自动续播体感差”，需要先保证可控。
+- 这模块在做什么（白话）: 先停用自动续播，后续若恢复再走单独验收。
 - In Scope:
   - `PlaybackResumeStore` 与 Service 恢复逻辑打通。
   - 新鲜度窗口、账号恢复、进度 seek 策略。
@@ -79,11 +79,11 @@ Last Updated: 2026-04-29
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
-  - 满足条件可自动续播并恢复进度。
-  - 失败时不崩溃且有明确降级路径。
-- Related Tasks: `T-S4-RESUME-020B`
+  - 自动续播入口关闭（无启动恢复自动起播）。
+  - 不再持久化新的续播快照，并清理历史快照。
+- Related Tasks: `T-S4-RESUME-020C`
 - Priority: P0
-- Status: Pending
+- Status: Done（2026-05-06：用户要求移除自动续播，代码已落地）
 - Risks:
   - 会话失效和弱网会让恢复结果不稳定。
 - Suitable For Module Execution?: Yes
@@ -181,25 +181,25 @@ Last Updated: 2026-04-29
 
 ## M-S4-UX-005
 - Module ID: `M-S4-UX-005`
-- Name: 并行体验改进池（暂缓）
-- Goal: 记录重要但不阻塞 S4 验收的体验需求。
-- Why It Matters: 需求有效，但现在做会打断主线收口。
-- 这模块在做什么（白话）: 把“该做但不急”的体验项先排队，不混进当前执行。
+- Name: 并行体验改进池
+- Goal: 管理不阻塞主线但已获用户确认的体验改动。
+- Why It Matters: 体验需求会直接影响可用性，需按口径快修而非长期挂起。
+- 这模块在做什么（白话）: 对已确认体验项快速落地，其它继续排队。
 - In Scope:
   - 长标题滚动修复方案预案。
-  - 主屏删除入口迁移预案。
+  - 主屏删除入口迁移与交互落地。
   - 音效优化预案。
 - Out of Scope:
-  - 在 S4 主验收前进入 Ready。
+  - 未经确认的额外视觉重构与大交互改版。
 - Dependencies: `M-S4-VALID-004`
 - Related Files / Areas:
   - `app/src/main/res/layout/activity_main.xml`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
-  - 三项需求都有明确口径和验收标准。
-- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024`, `T-S4-AUDIO-025`
+  - 已确认体验项具备可验证实现与回归入口。
+- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024A`, `T-S4-AUDIO-025`
 - Priority: P2
-- Status: Deferred
+- Status: In Progress（`T-S4-UI-024A` 已完成，剩余 `UI-023/AUDIO-025` 继续排队）
 - Risks:
   - 提前开做会造成范围扩张。
-- Suitable For Module Execution?: No
+- Suitable For Module Execution?: Yes

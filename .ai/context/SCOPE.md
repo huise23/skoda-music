@@ -1,6 +1,6 @@
 # SCOPE
 
-Last Updated: 2026-04-29
+Last Updated: 2026-05-06
 
 ## Project
 - 名称: `skoda-music`
@@ -16,6 +16,8 @@ Last Updated: 2026-04-29
 ## In Scope
 - 本地实现收口与缺口补齐：
   - `T-S4-VAL-032`：升级 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 到 S4 口径，并补齐 Section 4 风险控制与验收模板。
+  - `T-S4-RESUME-020C`：按用户最新反馈移除自动续播能力（关闭恢复与自动起播入口）。
+  - `T-S4-UI-024A`：将删除入口落实到主屏队列预览（复用双确认删除链路）。
   - 对当前 WIP 任务给出“本地已完成 / 待外部验收”边界：
     - `T-S4-CORE-026A/026B/026C-HF-20260429`
     - `T-S4-OBS-035/036/037`
@@ -28,27 +30,26 @@ Last Updated: 2026-04-29
   - `T-S4-VAL-033` 实机证据回写收口
   - `T-S4-OBS-038` 在线查询验证（依赖真实数据）
 - 新需求扩展与未来优化项：
-  - `T-S4-UI-023/024`、`T-S4-AUDIO-025`
+  - `T-S4-UI-023`、`T-S4-AUDIO-025`
   - 新协议/新后端接入、MediaSession 主链路切换、自建 OTA/静默安装
 
 ## Success Criteria
 - 产出一个可执行、可验证的“本地收口清单”，明确以下未完成项：
   - 本地可直接完成：`T-S4-VAL-032`（当前唯一 Ready 且不依赖车机窗口）。
   - 代码已落地但待外部验收：`T-S4-CORE-026A/026B/026C-HF-20260429`、`T-S4-UPD-044`、`T-S4-OBS-035/036/037`。
-  - 外部依赖阻塞：`T-S4-REG-022`、`T-S4-VAL-033`、`T-S4-OBS-038`、`T-S4-RESUME-020B`、`T-S4-CORE-026C`。
+  - 外部依赖阻塞：`T-S4-REG-022`、`T-S4-VAL-033`、`T-S4-OBS-038`、`T-S4-CORE-026C`。
 - `SCOPE` 内容与当前上下文口径一致（不再包含已确认但仍写为 open 的事项）。
 
 ## Constraints
 - 平台红线: Android `4.2.2` / API `17`，`minSdk=17` 不可变。
 - 网络口径: Emby-only、IPv4-only、业务 Host 保持 Emby 域名。
 - 稳定性口径: 允许前台服务常驻通知。
-- 本地环境: 缺少 `gradle/gradlew`，编译验证依赖 CI 或外部设备。
+- 本地环境: 仓库缺少 `gradlew`，可使用系统 `gradle` 做本地编译；车机验收仍依赖外部设备。
 - 更新源口径: 版本元数据与安装包来源于 GitHub Releases；镜像仅做加速与回退，不改版本真源。
 - 风险口径: 更新检测与下载必须 fail-open，失败不得影响播放主链路。
 
 ## Open Questions
 - 长标题滚动异常修复具体策略（Marquee/Fade/滚动速度）。
-- 主屏删除入口的具体交互位置与防误触细节。
 - 均衡器/音效优化路径（系统 EQ / Exo 音频处理 / 预设策略）。
 - 系统首页音乐卡片第三方入口能力确认（`T-BLK-001`）。
 - 更新检测策略细节：冷启动检查周期（建议 12h/24h）与是否仅 Wi-Fi 检测。

@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var homeLyricsTrackKey: String = ""
     private var homeLyricsRequestTrackKey: String? = null
     private val homeLyricsCache = LinkedHashMap<String, List<LyricLine>>()
-    private var resumeFeatureDisabledLogged: Boolean = false
+    private var resumeAutoplayDisabledLogged: Boolean = false
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -387,6 +387,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             eventName = "app_foreground"
         )
         reportPlaybackStateToService(force = true)
+        maybeStartPendingAutoResume("activity-onStart")
     }
 
     override fun onStop() {
@@ -3511,12 +3512,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun restorePlaybackResumeStateIfNeeded() {
-        if (!ENABLE_RESUME_FEATURE) {
-            if (!resumeFeatureDisabledLogged) {
-                resumeFeatureDisabledLogged = true
-                appendRuntimeLog("resume feature disabled: skip restore and clear snapshot")
-            }
+        if (!ENABLE_RESUME_STATE_RESTORE) {
             if (playbackResumeStore.read() != null) {
+                appendRuntimeLog("resume restore disabled: clear snapshot")
                 clearPersistedPlaybackResumeState()
             }
             resumeRestoreAttempted = true
@@ -3580,10 +3578,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val serviceIndicatesPlaying = serviceSnapshot.isPlaying &&
             serviceSnapshot.trackId.isNotBlank() &&
             serviceSnapshot.trackId == currentTrackId
-        pendingAutoResumePlayback = (wasPlaying || serviceIndicatesPlaying) && isResumeAutoplayFresh(savedAtMs)
+        pendingAutoResumePlayback = ENABLE_AUTO_RESUME_PLAYBACK &&
+            (wasPlaying || serviceIndicatesPlaying) &&
+            isResumeAutoplayFresh(savedAtMs)
         appendRuntimeLog(
             "resume restore autoplay-check wasPlaying=$wasPlaying servicePlaying=$serviceIndicatesPlaying pending=$pendingAutoResumePlayback"
         )
+        if (!ENABLE_AUTO_RESUME_PLAYBACK && !resumeAutoplayDisabledLogged) {
+            resumeAutoplayDisabledLogged = true
+            appendRuntimeLog("resume autoplay disabled by config")
+        }
         if (pendingAutoResumePlayback && !hasPlaybackSession()) {
             appendRuntimeLog("resume restore pending reason=missing-session")
             PostHogTracker.capture(
@@ -3643,7 +3647,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybeStartPendingAutoResume(trigger: String) {
-        if (!ENABLE_RESUME_FEATURE) {
+        if (!ENABLE_AUTO_RESUME_PLAYBACK) {
             pendingAutoResumePlayback = false
             return
         }
@@ -3684,11 +3688,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybeApplyPendingResumeSeek(durationMs: Long) {
-        if (!ENABLE_RESUME_FEATURE) {
-            pendingResumeSeekMs = -1L
-            pendingResumeSeekTrackId = ""
-            return
-        }
         if (pendingResumeSeekMs < 0L) {
             return
         }
@@ -3719,7 +3718,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybePersistPlaybackResumeState(positionMs: Long = -1L, force: Boolean = false) {
-        if (!ENABLE_RESUME_FEATURE) {
+        if (!ENABLE_RESUME_STATE_RESTORE) {
             return
         }
         if (!resumeRestoreAttempted) {
@@ -4267,6 +4266,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onBackPressed() {
+        if (selectedPage != PAGE_HOME) {
+            switchPage(PAGE_HOME)
+            updateState { it.copy(feedbackText = "动作反馈：已返回首页") }
+            return
+        }
+        appendRuntimeLog("back pressed -> move task to background")
+        moveTaskToBack(true)
+    }
+
     private fun resolveBuildVersionTag(): String {
         return try {
             val info = packageManager.getPackageInfo(packageName, 0)
@@ -4342,7 +4351,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val EXTERNAL_COMMAND_WAIT_MS = 800L
         const val SERVICE_REPORT_POSITION_DELTA_MS = 2_000L
         const val SERVICE_REPORT_HEARTBEAT_MS = 10_000L
-        const val ENABLE_RESUME_FEATURE = false
+        const val ENABLE_RESUME_STATE_RESTORE = true
+        const val ENABLE_AUTO_RESUME_PLAYBACK = false
         const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
         const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
         const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L

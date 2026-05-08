@@ -166,6 +166,44 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private val downloadStateLock = Any()
     private val trackDownloadStates = LinkedHashMap<String, TrackDownloadState>()
     private val uiProgressHandler = Handler(Looper.getMainLooper())
+    private var networkRecoveryRetryScheduled: Boolean = false
+    private var networkRecoveryRetryTrackId: String = ""
+    private val networkRecoveryRetryRunnable = object : Runnable {
+        override fun run() {
+            if (!networkRecoveryRetryScheduled) {
+                return
+            }
+            val expectedTrackId = networkRecoveryRetryTrackId
+            if (expectedTrackId.isEmpty()) {
+                cancelNetworkRecoveryRetry()
+                return
+            }
+            val current = loadedTracks.getOrNull(currentTrackIndex)
+            if (current == null || current.id != expectedTrackId) {
+                cancelNetworkRecoveryRetry()
+                return
+            }
+            if (!hasPlaybackSession()) {
+                uiProgressHandler.postDelayed(this, NETWORK_RECOVERY_RETRY_INTERVAL_MS)
+                return
+            }
+            if (!ensureWifiConnectedForNetworkRequest(requestTag = "playback_network_retry", promptUser = false)) {
+                uiProgressHandler.postDelayed(this, NETWORK_RECOVERY_RETRY_INTERVAL_MS)
+                return
+            }
+            networkRecoveryRetryScheduled = false
+            appendRuntimeLog("network retry start track=${current.title}")
+            updateState {
+                it.copy(
+                    isPlaying = true,
+                    playbackStatusRes = R.string.status_playing,
+                    playPauseLabelRes = R.string.action_pause,
+                    feedbackText = "动作反馈：网络恢复，重试当前歌曲"
+                )
+            }
+            playTrackAtCurrentIndex("network_retry")
+        }
+    }
     private val uiProgressTicker = object : Runnable {
         override fun run() {
             refreshProgressMetrics()
@@ -404,6 +442,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     override fun onDestroy() {
         appendRuntimeLog("activity destroyed")
         stopUiProgressTicker()
+        cancelNetworkRecoveryRetry()
         runtimeLogDialog?.dismiss()
         PlaybackControlBus.detach(this)
         maybePersistPlaybackResumeState(force = true)
@@ -1627,6 +1666,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return currentTrackIndex < loadedTracks.lastIndex
     }
 
+    private fun autoCleanupDownloadCacheAfterTrackCompletion(completedTrackId: String) {
+        if (completedTrackId.isBlank()) {
+            return
+        }
+        val keepTrackId = loadedTracks.getOrNull(currentTrackIndex + 1)?.id
+            ?.takeIf { it.isNotBlank() && it != completedTrackId }
+        val cleared = clearDownloadCacheFiles(
+            reason = "track-complete",
+            keepTrackId = keepTrackId
+        )
+        appendRuntimeLog(
+            "download-cache auto-cleanup completedTrackId=$completedTrackId keepTrackId=${keepTrackId.orEmpty()} success=$cleared"
+        )
+        refreshDownloadCacheInfoUi()
+    }
+
     private fun moveToNextTrack(): String? {
         if (!hasNextTrack()) {
             return null
@@ -1934,6 +1989,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         appendRuntimeLog(
             "playback error source=$source requestId=$requestId category=$category code=$code detail=$detail track=${track?.title ?: "<unknown>"}"
         )
+        if (category == PlaybackFailureCategory.NETWORK_FAILURE) {
+            runOnUiThread {
+                if (requestId != playbackRequestId) {
+                    return@runOnUiThread
+                }
+                val activeTrack = loadedTracks.getOrNull(currentTrackIndex)
+                if (activeTrack == null) {
+                    return@runOnUiThread
+                }
+                cancelNetworkRecoveryRetry()
+                scheduleNetworkRecoveryRetry(activeTrack.id, source)
+            }
+            return
+        }
         runOnUiThread {
             if (requestId != playbackRequestId) {
                 return@runOnUiThread
@@ -1965,6 +2034,35 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 rebuildTrackLists()
             }
         }
+    }
+
+    private fun scheduleNetworkRecoveryRetry(trackId: String, source: String) {
+        if (trackId.isBlank()) {
+            return
+        }
+        val track = loadedTracks.getOrNull(currentTrackIndex)
+        val trackTitle = track?.title ?: getString(R.string.track_not_loaded)
+        if (!networkRecoveryRetryScheduled || networkRecoveryRetryTrackId != trackId) {
+            appendRuntimeLog("network retry schedule source=$source track=$trackTitle")
+        }
+        networkRecoveryRetryScheduled = true
+        networkRecoveryRetryTrackId = trackId
+        updateState {
+            it.copy(
+                isPlaying = false,
+                playbackStatusRes = R.string.status_paused,
+                playPauseLabelRes = R.string.action_play,
+                feedbackText = "动作反馈：网络中断，等待恢复后重试当前歌曲"
+            )
+        }
+        uiProgressHandler.removeCallbacks(networkRecoveryRetryRunnable)
+        uiProgressHandler.postDelayed(networkRecoveryRetryRunnable, NETWORK_RECOVERY_RETRY_INTERVAL_MS)
+    }
+
+    private fun cancelNetworkRecoveryRetry() {
+        networkRecoveryRetryScheduled = false
+        networkRecoveryRetryTrackId = ""
+        uiProgressHandler.removeCallbacks(networkRecoveryRetryRunnable)
     }
 
     private fun resolveTrackDurationMs(track: EmbyTrack, durationMsHint: Long): Long {
@@ -2239,6 +2337,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun startOrResumePlayback(source: String) {
+        cancelNetworkRecoveryRetry()
         val existing = playbackEngine
         if (existing != null) {
             if (existing.play()) {
@@ -2268,6 +2367,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun pausePlayback(source: String) {
+        cancelNetworkRecoveryRetry()
         pauseRequestedRequestId = playbackRequestId
         stopDownloadController()
         playbackEngine?.pause()
@@ -2291,6 +2391,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun playTrackAtCurrentIndex(source: String = "system") {
+        cancelNetworkRecoveryRetry()
         if (loadedTracks.isEmpty()) {
             return
         }
@@ -2425,7 +2526,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        val completedTrackId = track.id
                         runOnUiThread {
+                            autoCleanupDownloadCacheAfterTrackCompletion(completedTrackId)
                             val nextTitle = moveToNextTrack()
                             if (nextTitle != null) {
                                 updateState { s ->
@@ -3096,7 +3199,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        val completedTrackId = track.id
                         runOnUiThread {
+                            autoCleanupDownloadCacheAfterTrackCompletion(completedTrackId)
                             val nextTitle = moveToNextTrack()
                             if (nextTitle != null) {
                                 updateState { s ->
@@ -4359,6 +4464,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
+        const val NETWORK_RECOVERY_RETRY_INTERVAL_MS = 4_000L
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2

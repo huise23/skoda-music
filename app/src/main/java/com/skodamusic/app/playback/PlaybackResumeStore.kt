@@ -6,8 +6,6 @@ class PlaybackResumeStore(context: Context) {
     data class Snapshot(
         val queueJson: String,
         val index: Int,
-        val positionMs: Long,
-        val wasPlaying: Boolean,
         val savedAtMs: Long,
         val baseUrl: String,
         val username: String
@@ -22,8 +20,6 @@ class PlaybackResumeStore(context: Context) {
             return Snapshot(
                 queueJson = currentQueue,
                 index = prefs.getInt(KEY_INDEX, 0),
-                positionMs = prefs.getLong(KEY_POSITION_MS, 0L),
-                wasPlaying = prefs.getBoolean(KEY_WAS_PLAYING, false),
                 savedAtMs = prefs.getLong(KEY_SAVED_AT_MS, 0L),
                 baseUrl = prefs.getString(KEY_BASE_URL, "").orEmpty(),
                 username = prefs.getString(KEY_USERNAME, "").orEmpty()
@@ -38,8 +34,6 @@ class PlaybackResumeStore(context: Context) {
         val snapshot = Snapshot(
             queueJson = legacyQueue,
             index = legacyPrefs.getInt(KEY_INDEX, 0),
-            positionMs = legacyPrefs.getLong(KEY_POSITION_MS, 0L),
-            wasPlaying = legacyPrefs.getBoolean(KEY_WAS_PLAYING, false),
             savedAtMs = legacyPrefs.getLong(KEY_SAVED_AT_MS, 0L),
             baseUrl = legacyPrefs.getString(KEY_BASE_URL, "").orEmpty(),
             username = legacyPrefs.getString(KEY_USERNAME, "").orEmpty()
@@ -57,8 +51,6 @@ class PlaybackResumeStore(context: Context) {
         prefs.edit()
             .putString(KEY_QUEUE_JSON, snapshot.queueJson)
             .putInt(KEY_INDEX, snapshot.index)
-            .putLong(KEY_POSITION_MS, snapshot.positionMs.coerceAtLeast(0L))
-            .putBoolean(KEY_WAS_PLAYING, snapshot.wasPlaying)
             .putLong(KEY_SAVED_AT_MS, snapshot.savedAtMs)
             .putString(KEY_BASE_URL, snapshot.baseUrl)
             .putString(KEY_USERNAME, snapshot.username)
@@ -69,8 +61,6 @@ class PlaybackResumeStore(context: Context) {
         prefs.edit()
             .remove(KEY_QUEUE_JSON)
             .remove(KEY_INDEX)
-            .remove(KEY_POSITION_MS)
-            .remove(KEY_WAS_PLAYING)
             .remove(KEY_SAVED_AT_MS)
             .remove(KEY_BASE_URL)
             .remove(KEY_USERNAME)
@@ -82,8 +72,6 @@ class PlaybackResumeStore(context: Context) {
         legacyPrefs.edit()
             .remove(KEY_QUEUE_JSON)
             .remove(KEY_INDEX)
-            .remove(KEY_POSITION_MS)
-            .remove(KEY_WAS_PLAYING)
             .remove(KEY_SAVED_AT_MS)
             .remove(KEY_BASE_URL)
             .remove(KEY_USERNAME)
@@ -96,8 +84,6 @@ class PlaybackResumeStore(context: Context) {
 
         const val KEY_QUEUE_JSON = "resume_queue_json"
         const val KEY_INDEX = "resume_index"
-        const val KEY_POSITION_MS = "resume_position_ms"
-        const val KEY_WAS_PLAYING = "resume_was_playing"
         const val KEY_SAVED_AT_MS = "resume_saved_at_ms"
         const val KEY_BASE_URL = "resume_base_url"
         const val KEY_USERNAME = "resume_username"

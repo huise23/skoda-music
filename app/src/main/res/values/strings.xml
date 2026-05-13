@@ -35,7 +35,6 @@
     <string name="action_prev">上一首</string>
     <string name="action_next">下一首</string>
     <string name="action_delete">删除</string>
-    <string name="action_continue">继续</string>
     <string name="action_cancel">取消</string>
     <string name="action_delete_source">删除源文件</string>
     <string name="action_recommend_listen">听推荐</string>
@@ -162,8 +161,6 @@
     <string name="toast_update_download_failed">更新下载失败</string>
     <string name="toast_update_install_failed">安装触发失败</string>
     <string name="dialog_delete_source_title">删除源文件</string>
-    <string name="dialog_delete_source_title_final">二次确认</string>
-    <string name="dialog_delete_source_message_first">将从 Emby 删除《%1$s》。是否继续？</string>
     <string name="dialog_delete_source_message_final">此操作会删除源文件且不可恢复：《%1$s》\n确认删除？</string>
     <string name="download_cache_size_placeholder">下载缓存：--</string>
     <string name="download_cache_size_format">下载缓存：%1$s</string>

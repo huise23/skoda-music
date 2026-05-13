@@ -112,6 +112,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var prevButton: ImageButton
     private lateinit var playPauseButton: ImageButton
     private lateinit var nextButton: ImageButton
+    private lateinit var deleteCurrentTrackButton: ImageButton
     private lateinit var homeTabRecommendButton: Button
     private lateinit var homeTabLyricsButton: Button
     private lateinit var homeRecommendPanel: View
@@ -158,7 +159,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var homeLyricsTrackKey: String = ""
     private var homeLyricsRequestTrackKey: String? = null
     private val homeLyricsCache = LinkedHashMap<String, List<LyricLine>>()
-    private var resumeAutoplayDisabledLogged: Boolean = false
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -221,14 +221,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastReportedServiceDurationMs: Long = -1L
     private var lastReportedServiceAtMs: Long = 0L
     private var resumeRestoreAttempted: Boolean = false
-    private var pendingAutoResumePlayback: Boolean = false
-    private var pendingResumeSeekMs: Long = -1L
-    private var pendingResumeSeekTrackId: String = ""
     private var lastResumePersistTrackId: String = ""
     private var lastResumePersistIndex: Int = -1
     private var lastResumePersistQueueSize: Int = -1
-    private var lastResumePersistIsPlaying: Boolean = false
-    private var lastResumePersistPositionMs: Long = -1L
     private var lastResumePersistAtMs: Long = 0L
     private var downloadControllerThread: Thread? = null
     private lateinit var playbackResumeStore: PlaybackResumeStore
@@ -312,6 +307,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         prevButton = findViewById(R.id.btn_prev)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
+        deleteCurrentTrackButton = findViewById(R.id.btn_delete_current_track)
         homeTabRecommendButton = findViewById(R.id.btn_home_tab_recommend)
         homeTabLyricsButton = findViewById(R.id.btn_home_tab_lyrics)
         homeRecommendPanel = findViewById(R.id.home_recommend_panel)
@@ -425,7 +421,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             eventName = "app_foreground"
         )
         reportPlaybackStateToService(force = true)
-        maybeStartPendingAutoResume("activity-onStart")
     }
 
     override fun onStop() {
@@ -567,6 +562,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         nextButton.setOnClickListener {
             performNextAction(source = PlaybackActions.CMD_SOURCE_UI, allowToast = true)
+        }
+        deleteCurrentTrackButton.setOnClickListener {
+            val current = loadedTracks.getOrNull(currentTrackIndex)
+            if (current == null) {
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
+                showToast(R.string.toast_delete_source_failed)
+                return@setOnClickListener
+            }
+            promptDeleteSourceTrack(current)
         }
 
         testEmbyButton.setOnClickListener {
@@ -781,6 +785,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun rebuildTrackLists() {
+        deleteCurrentTrackButton.isEnabled = loadedTracks.isNotEmpty()
+        deleteCurrentTrackButton.alpha = if (loadedTracks.isNotEmpty()) 1f else 0.45f
         renderTrackContainer(
             container = queueTracksContainer,
             tracks = loadedTracks,
@@ -1254,7 +1260,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             builder.setSpan(
-                AbsoluteSizeSpan(if (isActive) 18 else 17, true),
+                AbsoluteSizeSpan(if (isActive) 20 else 19, true),
                 start,
                 end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -1454,17 +1460,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun promptDeleteSourceTrack(track: EmbyTrack) {
         AlertDialog.Builder(this)
             .setTitle(R.string.dialog_delete_source_title)
-            .setMessage(getString(R.string.dialog_delete_source_message_first, track.title))
-            .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton(R.string.action_continue) { _, _ ->
-                confirmDeleteSourceTrack(track)
-            }
-            .show()
-    }
-
-    private fun confirmDeleteSourceTrack(track: EmbyTrack) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_delete_source_title_final)
             .setMessage(getString(R.string.dialog_delete_source_message_final, track.title))
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.action_delete) { _, _ ->
@@ -1893,7 +1888,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             playableText,
             durationText
         )
-        maybeApplyPendingResumeSeek(durationMs)
         maybePersistPlaybackResumeState(positionMs = positionMs)
         maybeSyncServiceCommandTrace()
 
@@ -3623,9 +3617,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 clearPersistedPlaybackResumeState()
             }
             resumeRestoreAttempted = true
-            pendingAutoResumePlayback = false
-            pendingResumeSeekMs = -1L
-            pendingResumeSeekTrackId = ""
             return
         }
         if (resumeRestoreAttempted) {
@@ -3635,7 +3626,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val snapshot = playbackResumeStore.read() ?: return
         val ageMs = (System.currentTimeMillis() - snapshot.savedAtMs).coerceAtLeast(0L)
         appendRuntimeLog(
-            "resume restore snapshot-hit ageMs=$ageMs queueLen=${snapshot.queueJson.length} index=${snapshot.index} wasPlaying=${snapshot.wasPlaying}"
+            "resume restore snapshot-hit ageMs=$ageMs queueLen=${snapshot.queueJson.length} index=${snapshot.index}"
         )
         PostHogTracker.capture(
             context = applicationContext,
@@ -3671,45 +3662,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         syncNativeQueueToCurrentIndex()
         rebuildTrackLists()
 
-        val restoredPosition = snapshot.positionMs.coerceAtLeast(0L)
-        pendingResumeSeekMs = restoredPosition
-        pendingResumeSeekTrackId = loadedTracks[currentTrackIndex].id
-        restorePlaybackSessionForResume(snapshot)
+        val sessionReady = restorePlaybackSessionForResume(snapshot)
 
-        val savedAtMs = snapshot.savedAtMs
-        val wasPlaying = snapshot.wasPlaying
-        val serviceSnapshot = playbackStateStore.readSnapshot()
-        val currentTrackId = loadedTracks.getOrNull(currentTrackIndex)?.id.orEmpty()
-        val serviceIndicatesPlaying = serviceSnapshot.isPlaying &&
-            serviceSnapshot.trackId.isNotBlank() &&
-            serviceSnapshot.trackId == currentTrackId
-        pendingAutoResumePlayback = ENABLE_AUTO_RESUME_PLAYBACK &&
-            (wasPlaying || serviceIndicatesPlaying) &&
-            isResumeAutoplayFresh(savedAtMs)
-        appendRuntimeLog(
-            "resume restore autoplay-check wasPlaying=$wasPlaying servicePlaying=$serviceIndicatesPlaying pending=$pendingAutoResumePlayback"
-        )
-        if (!ENABLE_AUTO_RESUME_PLAYBACK && !resumeAutoplayDisabledLogged) {
-            resumeAutoplayDisabledLogged = true
-            appendRuntimeLog("resume autoplay disabled by config")
-        }
-        if (pendingAutoResumePlayback && !hasPlaybackSession()) {
-            appendRuntimeLog("resume restore pending reason=missing-session")
-            PostHogTracker.capture(
-                context = applicationContext,
-                eventName = "resume_restore_failed",
-                properties = mapOf(
-                    "stage" to "session_restore",
-                    "error_code" to "RESUME_SESSION_MISSING"
-                ),
-                priority = PostHogTracker.Priority.HIGH
-            )
-        }
-
-        val feedback = if (pendingAutoResumePlayback) {
-            "动作反馈：已恢复上次播放，准备续播"
+        val feedback = if (sessionReady) {
+            "动作反馈：已恢复上次播放，自动续播当前索引"
         } else {
-            "动作反馈：已恢复上次播放列表"
+            "动作反馈：已恢复上次播放列表，正在尝试自动鉴权续播"
         }
         updateState {
             it.copy(
@@ -3723,10 +3681,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         }
         maybePersistPlaybackResumeState(force = true)
-        maybeStartPendingAutoResume("resume-restore")
+        maybeStartResumePlayback("resume-restore")
     }
 
-    private fun restorePlaybackSessionForResume(snapshot: PlaybackResumeStore.Snapshot) {
+    private fun restorePlaybackSessionForResume(snapshot: PlaybackResumeStore.Snapshot): Boolean {
         val persistedBase = snapshot.baseUrl.trim()
         val persistedUser = snapshot.username.trim()
         val inputBase = embyBaseUrlInput.text?.toString()?.trim().orEmpty()
@@ -3738,7 +3696,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         val username = if (persistedUser.isNotEmpty()) persistedUser else inputUser
         if (embyBase.isEmpty() || username.isEmpty()) {
-            return
+            return false
         }
         val auth = embySessionCache.loadCachedSessionAuth(embyBase = embyBase, username = username)
         if (auth != null) {
@@ -3746,80 +3704,66 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             embySessionUserId = auth.userId
             embyAccessToken = auth.accessToken
             appendRuntimeLog("resume restore session-hit user=${shortId(auth.userId)}")
+            return true
         } else {
             appendRuntimeLog("resume restore session-miss base=$embyBase")
+            return false
         }
     }
 
-    private fun maybeStartPendingAutoResume(trigger: String) {
-        if (!ENABLE_AUTO_RESUME_PLAYBACK) {
-            pendingAutoResumePlayback = false
-            return
-        }
-        if (!pendingAutoResumePlayback) {
-            return
-        }
+    private fun maybeStartResumePlayback(trigger: String) {
         if (loadedTracks.isEmpty()) {
-            pendingAutoResumePlayback = false
             return
         }
         if (uiState.isPlaying) {
-            pendingAutoResumePlayback = false
             return
         }
-        if (!hasPlaybackSession()) {
-            appendRuntimeLog("resume autoplay wait trigger=$trigger reason=session-unavailable")
-            return
-        }
-        pendingAutoResumePlayback = false
-        appendRuntimeLog("resume autoplay start trigger=$trigger track=${loadedTracks[currentTrackIndex].title}")
-        PostHogTracker.capture(
-            context = applicationContext,
-            eventName = "resume_restore_success",
-            properties = mapOf(
-                "track_id" to loadedTracks[currentTrackIndex].id,
-                "position_ms" to pendingResumeSeekMs.coerceAtLeast(0L)
+        if (hasPlaybackSession()) {
+            appendRuntimeLog("resume autoplay start trigger=$trigger track=${loadedTracks[currentTrackIndex].title}")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "resume_restore_success",
+                properties = mapOf(
+                    "track_id" to loadedTracks[currentTrackIndex].id,
+                    "trigger" to trigger
+                )
             )
+            updateState {
+                it.copy(
+                    isPlaying = true,
+                    playbackStatusRes = R.string.status_playing,
+                    playPauseLabelRes = R.string.action_pause,
+                    feedbackText = "动作反馈：恢复上次播放中"
+                )
+            }
+            playTrackAtCurrentIndex("resume_autoplay")
+            return
+        }
+        val credentials = EmbyCredentials(
+            baseUrl = embyBaseUrlInput.text.toString().trim(),
+            username = embyUsernameInput.text.toString().trim(),
+            password = embyPasswordInput.text.toString().trim(),
+            cfReferenceDomain = resolveCfReferenceDomain()
         )
-        updateState {
-            it.copy(
-                isPlaying = true,
-                playbackStatusRes = R.string.status_playing,
-                playPauseLabelRes = R.string.action_pause,
-                feedbackText = "动作反馈：恢复上次播放中"
+        if (credentials.baseUrl.isEmpty() || credentials.username.isEmpty() || credentials.password.isEmpty()) {
+            appendRuntimeLog("resume autoplay skip trigger=$trigger reason=missing-credentials")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "resume_restore_failed",
+                properties = mapOf(
+                    "stage" to "session_restore",
+                    "error_code" to "RESUME_SESSION_MISSING"
+                ),
+                priority = PostHogTracker.Priority.HIGH
             )
-        }
-        playTrackAtCurrentIndex("resume_autoplay")
-    }
-
-    private fun maybeApplyPendingResumeSeek(durationMs: Long) {
-        if (pendingResumeSeekMs < 0L) {
             return
         }
-        val track = loadedTracks.getOrNull(currentTrackIndex) ?: run {
-            pendingResumeSeekMs = -1L
-            pendingResumeSeekTrackId = ""
-            return
-        }
-        if (pendingResumeSeekTrackId.isNotEmpty() && pendingResumeSeekTrackId != track.id) {
-            pendingResumeSeekMs = -1L
-            pendingResumeSeekTrackId = ""
-            return
-        }
-        if (!uiState.isPlaying) {
-            return
-        }
-        if (durationMs <= 0L) {
-            return
-        }
-        val target = pendingResumeSeekMs.coerceIn(0L, durationMs)
-        pendingResumeSeekMs = -1L
-        pendingResumeSeekTrackId = ""
-        if (target <= 0L) {
-            return
-        }
-        appendRuntimeLog("resume seek restore targetMs=$target")
-        uiProgressHandler.post { applySeekTarget(target) }
+        appendRuntimeLog("resume autoplay auth-retry trigger=$trigger")
+        requestTracksFromEmby(
+            credentials = credentials,
+            onFinished = { maybeStartResumePlayback("$trigger-auth-retry") },
+            forceRefreshRecommendations = false
+        )
     }
 
     private fun maybePersistPlaybackResumeState(positionMs: Long = -1L, force: Boolean = false) {
@@ -3837,22 +3781,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val safeIndex = currentTrackIndex.coerceIn(0, loadedTracks.lastIndex)
         val activeTrack = loadedTracks[safeIndex]
         val queueSize = loadedTracks.size
-        val isPlaying = uiState.isPlaying
-        val resolvedPosition = when {
-            positionMs >= 0L -> positionMs
-            else -> playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: lastResumePersistPositionMs.coerceAtLeast(0L)
-        }
         val now = System.currentTimeMillis()
         val stateChanged = force ||
             activeTrack.id != lastResumePersistTrackId ||
             safeIndex != lastResumePersistIndex ||
-            queueSize != lastResumePersistQueueSize ||
-            isPlaying != lastResumePersistIsPlaying
+            queueSize != lastResumePersistQueueSize
         if (!stateChanged) {
-            if (now - lastResumePersistAtMs < RESUME_PROGRESS_PERSIST_INTERVAL_MS) {
-                return
-            }
-            if (abs(resolvedPosition - lastResumePersistPositionMs) < RESUME_PROGRESS_PERSIST_DELTA_MS) {
+            if (positionMs >= 0L && now - lastResumePersistAtMs < RESUME_INDEX_PERSIST_INTERVAL_MS) {
                 return
             }
         }
@@ -3862,21 +3797,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             PlaybackResumeStore.Snapshot(
                 queueJson = TrackCodec.buildCachedTrackArray(loadedTracks),
                 index = safeIndex,
-                positionMs = resolvedPosition.coerceAtLeast(0L),
-                wasPlaying = isPlaying,
                 savedAtMs = now,
                 baseUrl = baseForPersist,
                 username = usernameForPersist
             )
         )
         appendRuntimeLog(
-            "resume persist saved index=$safeIndex queueSize=$queueSize positionMs=${resolvedPosition.coerceAtLeast(0L)} wasPlaying=$isPlaying"
+            "resume persist saved index=$safeIndex queueSize=$queueSize"
         )
         lastResumePersistTrackId = activeTrack.id
         lastResumePersistIndex = safeIndex
         lastResumePersistQueueSize = queueSize
-        lastResumePersistIsPlaying = isPlaying
-        lastResumePersistPositionMs = resolvedPosition.coerceAtLeast(0L)
         lastResumePersistAtMs = now
     }
 
@@ -3886,8 +3817,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lastResumePersistTrackId = ""
         lastResumePersistIndex = -1
         lastResumePersistQueueSize = -1
-        lastResumePersistIsPlaying = false
-        lastResumePersistPositionMs = -1L
         lastResumePersistAtMs = 0L
     }
 
@@ -3901,14 +3830,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return null
         }
         return runCatching { embyApi.normalizeEmbyBase(inputBase) }.getOrNull()
-    }
-
-    private fun isResumeAutoplayFresh(savedAtMs: Long): Boolean {
-        if (savedAtMs <= 0L) {
-            return false
-        }
-        val age = System.currentTimeMillis() - savedAtMs
-        return age in 0..RESUME_AUTOPLAY_MAX_AGE_MS
     }
 
     private fun hasPlaybackSession(): Boolean {
@@ -4457,10 +4378,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val SERVICE_REPORT_POSITION_DELTA_MS = 2_000L
         const val SERVICE_REPORT_HEARTBEAT_MS = 10_000L
         const val ENABLE_RESUME_STATE_RESTORE = true
-        const val ENABLE_AUTO_RESUME_PLAYBACK = false
-        const val RESUME_PROGRESS_PERSIST_INTERVAL_MS = 4_000L
-        const val RESUME_PROGRESS_PERSIST_DELTA_MS = 3_000L
-        const val RESUME_AUTOPLAY_MAX_AGE_MS = 12L * 60L * 60L * 1000L
+        const val RESUME_INDEX_PERSIST_INTERVAL_MS = 4_000L
         const val AUTO_QUEUE_REFRESH_COOLDOWN_MS = 15_000L
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L

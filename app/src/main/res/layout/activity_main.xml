@@ -112,6 +112,22 @@
                         android:orientation="vertical"
                         android:padding="24dp">
 
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="end|center_vertical">
+
+                            <ImageButton
+                                android:id="@+id/btn_delete_current_track"
+                                android:layout_width="42dp"
+                                android:layout_height="42dp"
+                                android:background="@drawable/button_nav_icon_inactive"
+                                android:contentDescription="@string/action_delete_source"
+                                android:padding="10dp"
+                                android:scaleType="centerInside"
+                                android:src="@android:drawable/ic_menu_delete" />
+                        </LinearLayout>
+
                         <TextView
                             android:id="@+id/track_value"
                             android:layout_width="match_parent"
@@ -354,7 +370,7 @@
                                     android:lineSpacingExtra="3dp"
                                     android:text="@string/home_lyrics_placeholder"
                                     android:textColor="@color/text_secondary"
-                                    android:textSize="17sp" />
+                                    android:textSize="19sp" />
                             </ScrollView>
 
                             <TextView

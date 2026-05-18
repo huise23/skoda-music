@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-05-12
+Last Updated: 2026-05-18
 
 ## Queue Usage (白话说明)
 - `Ready`: 现在立刻能做，不等外部条件。
@@ -89,4 +89,4 @@ Last Updated: 2026-05-12
 - OBS 验收口径: 先查 PostHog 在线事件流；查不到/不完整再回查客户端上报链路。
 - 更新链路定位: 优先“检测准确 + fail-open + 镜像回退”，不做静默安装。
 - 技术红线: `minSdk=17`、Emby-only、IPv4-only、业务 Host 不替换。
-- 最新待验构建: `master@6ed0fca`（含 GitHub 直连 + pre-release 检测）。
+- 最新待验构建: `master@9d771f0`（含删除入口/续播口径收口与文档同步）。

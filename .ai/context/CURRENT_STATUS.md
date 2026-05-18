@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-12
+Last Updated: 2026-05-18
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@6ed0fca`
+- 当前主干: `master@9d771f0`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -32,9 +32,9 @@ Last Updated: 2026-05-12
   - 关闭 `onStart` 自动续播触发入口。
   - 关闭恢复链路的自动起播/自动 seek/续播快照持久化。
   - 启动时发现历史续播快照则清理，避免旧行为残留。
-- `T-S4-UI-024A` 已复开（从 Done 回到 Ready）：
-  - 原因: 用户在最新版反馈“首页仍看不到删除按钮”，说明入口可见性未达验收预期。
-  - 当前处理: 先执行 `T-S4-UI-024B`（位置/样式/默认视图规则），再落地 `024A` 实现修正与回归。
+- `T-S4-UI-024A` 已完成复开收口（历史问题已关闭）：
+  - 背景: 用户曾反馈“首页仍看不到删除按钮”。
+  - 结果: 已通过 `T-S4-UI-024B -> T-S4-UI-024A` 完成入口规则与实现修正。
 - 续播链路已改为“先规划后实现”：
   - `T-S4-RESUME-020D/020E` 进入 Ready，先对齐策略与验收口径。
   - `T-S4-RESUME-020B`（服务侧自动续播二阶段）下沉 Deferred，等待 020D/020E 结论。
@@ -123,7 +123,7 @@ Last Updated: 2026-05-12
 ## Planning Refresh (PostHog, 2026-04-27)
 - 已新增观测模块 `M-S4-OBS-006`：将 PostHog 作为“结构化事件链路”并行接入，不替代全量原始日志。
 - 新增任务链：`T-S4-OBS-034/035/036/037/038/039`，覆盖 schema、API17 兼容上报、关键节点埋点、隐私门禁、查询验证与接入参数确认。
-- 当前状态：`T-S4-OBS-034/039` Done，`T-S4-OBS-035/036/037` In Progress，`T-S4-OBS-038` Blocked。
+- 当前状态：`T-S4-OBS-034/039` Done，`T-S4-OBS-035/036/037/038` In Progress（外部查询验收阶段）。
 - 已新增详细规划文档：`docs/POSTHOG_INSTRUMENTATION_PLAN.md`（含事件预算、节流策略与禁报清单）。
 
 ## Module Execution Progress (PostHog, 2026-04-27)
@@ -138,8 +138,8 @@ Last Updated: 2026-05-12
 - `T-S4-OBS-036` 已启动：
   - `MainActivity` 接入 `app_start/app_ready/foreground/background/play_start/play_success/playback_failed/pause/resume/resume_restore_*`。
   - `PlaybackService` 接入 `background_command_received/background_command_result`。
-- 当前阻塞：
-  - `T-S4-OBS-036/037` 需完成实机压测后，`T-S4-OBS-038` 才可执行在线查询验收。
+- 当前边界：
+  - `T-S4-OBS-038` 已具备模板与入口，剩余为在线查询执行与证据回传。
 
 ## Config Update (2026-04-27)
 - 已按用户提供信息内置 PostHog 默认配置：
@@ -215,5 +215,4 @@ Last Updated: 2026-05-12
 
 ## Follow-up Backlog (Confirmed)
 - 长标题滚动异常修复。
-- 删除入口迁移到主屏。
 - 均衡器/音效优化。

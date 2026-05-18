@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-05-12
+Last Updated: 2026-05-18
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@6ed0fca`
+- 当前主干: `master@9d771f0`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -44,7 +44,7 @@ Last Updated: 2026-05-12
   - 最新版首页仍看不到删除按钮，要求先重规划删除入口位置与功能，再实施修正。
   - 续播相关先做口径规划，不立即恢复自动续播实现。
 - 本轮规划调整：
-  - `T-S4-UI-024A` 从已完成改为复开（Ready）。
+  - `T-S4-UI-024A` 从已完成改为复开（历史动作，现已完成复开收口）。
   - 新增优先前置 `T-S4-UI-024B`（删除入口规则规划），并设为 `024A` 依赖。
   - `T-S4-RESUME-020D/020E` 进入 Ready；`T-S4-RESUME-020B` 下沉 Deferred。
 

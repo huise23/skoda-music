@@ -1,11 +1,11 @@
 # PLAN
 
-Last Updated: 2026-05-12
+Last Updated: 2026-05-18
 
 ## Current Stage
 - Stage Name: S4 本地收口（车机验收前）
 - Scope Source: `.ai/context/SCOPE.md`（2026-05-06）
-- Stage Goal: 在不扩新需求前提下，先收口“首页删除入口未达预期”与“续播口径重规划”两条主线，形成可执行验收入口。
+- Stage Goal: 在不扩新需求前提下，完成外部验收闭环（浮窗复测、OBS 在线验证、更新链路验收、实机回写）。
 
 ## This Stage In Plain Words
 - 这阶段不是继续堆功能，而是把现有能力跑通、说清楚、留证据。
@@ -57,12 +57,11 @@ Last Updated: 2026-05-12
 - 做完算什么: PASS/FAIL/Blocker 有证据，下一步任务清楚。
 
 ## Recommended Order
-1. 先完成 `M-S4-UX-005` 的规则规划（`T-S4-UI-024B`）。
-2. 基于规则复开 `T-S4-UI-024A`，修复首页删除入口可见性与点击命中。
-3. 并行完成 `M-S4-RESUME-003` 的 `T-S4-RESUME-020D/020E`（先定口径，再谈功能回归）。
-4. 再推进 `M-S4-CONTROL-002` 与 `M-S4-CORE-001` 的车机验证收口。
-5. 并行完成 `M-S4-OBS-006`、`M-S4-UPD-007` 外部验收。
-6. 执行 `T-S4-REG-022` 并完成 `T-S4-VAL-033` 回写收口。
+1. 先完成 `T-S4-CORE-026C-HF-20260429` 车机复测（浮窗字号/关闭按钮/触控区）。
+2. 完成 `T-S4-RESUME-020E`（将新续播口径回写到清单与 context）。
+3. 并行推进 `T-S4-OBS-035/036/037/038` 在线查询验收与导出证据。
+4. 并行推进 `T-S4-UPD-044`（CI/实机更新链路闭环）。
+5. 车机窗口到位后执行 `T-S4-REG-022`，随后完成 `T-S4-VAL-033` 回写收口。
 
 ## Dependency Graph
 - `M-S4-CORE-001 -> M-S4-CONTROL-002 -> M-S4-RESUME-003 -> M-S4-VALID-004`

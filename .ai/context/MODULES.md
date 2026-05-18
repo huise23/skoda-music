@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-05-06
+Last Updated: 2026-05-12
 
 ## M-S4-CORE-001
 - Module ID: `M-S4-CORE-001`
@@ -63,7 +63,7 @@ Last Updated: 2026-05-06
 ## M-S4-RESUME-003
 - Module ID: `M-S4-RESUME-003`
 - Name: 熄火/休眠恢复闭环
-- Goal: 按最新用户口径管理续播能力（当前为关闭自动续播）。
+- Goal: 按最新用户口径稳定“无自动续播”基线，并规划续播能力回归的可选方案与验收门槛。
 - Why It Matters: 当前体验反馈明确“自动续播体感差”，需要先保证可控。
 - 这模块在做什么（白话）: 先停用自动续播，后续若恢复再走单独验收。
 - In Scope:
@@ -79,11 +79,11 @@ Last Updated: 2026-05-06
   - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
-  - 自动续播入口关闭（无启动恢复自动起播）。
-  - 不再持久化新的续播快照，并清理历史快照。
-- Related Tasks: `T-S4-RESUME-020C`
+  - 当前“无自动续播”行为在启动/前后台切换下稳定。
+  - 形成续播功能规划文档：策略选项、触发条件、默认值与回滚策略。
+- Related Tasks: `T-S4-RESUME-020C`, `T-S4-RESUME-020D`, `T-S4-RESUME-020E`
 - Priority: P0
-- Status: Done（2026-05-06：用户要求移除自动续播，代码已落地）
+- Status: In Progress（020C/020D 已完成；当前待 020E 文档与验收口径回写）
 - Risks:
   - 会话失效和弱网会让恢复结果不稳定。
 - Suitable For Module Execution?: Yes
@@ -143,7 +143,7 @@ Last Updated: 2026-05-06
   - 上报失败不影响主链路，且可通过开关控制。
 - Related Tasks: `T-S4-OBS-034`, `T-S4-OBS-035`, `T-S4-OBS-036`, `T-S4-OBS-037`, `T-S4-OBS-038`
 - Priority: P1
-- Status: In Progress（schema+上报基线+门禁已落地，待联调验收）
+- Status: In Progress（schema+上报基线+门禁已落地；`T-S4-OBS-038` 查询/导出模板已就绪，待在线执行验收）
 - Risks:
   - 埋点过多会增加噪音与网络开销。
 - Suitable For Module Execution?: Yes
@@ -191,15 +191,16 @@ Last Updated: 2026-05-06
   - 音效优化预案。
 - Out of Scope:
   - 未经确认的额外视觉重构与大交互改版。
-- Dependencies: `M-S4-VALID-004`
+- Dependencies: 无
 - Related Files / Areas:
   - `app/src/main/res/layout/activity_main.xml`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Milestone / Done Criteria:
+  - 删除入口在首页推荐列表首屏可见、可点、可双确认删除并回显结果。
   - 已确认体验项具备可验证实现与回归入口。
-- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024A`, `T-S4-AUDIO-025`
-- Priority: P2
-- Status: In Progress（`T-S4-UI-024A` 已完成，剩余 `UI-023/AUDIO-025` 继续排队）
+- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024A`, `T-S4-UI-024B`, `T-S4-AUDIO-025`
+- Priority: P0
+- Status: In Progress（`T-S4-UI-024A/024B` 已按最新口径落地；`UI-023/AUDIO-025` 继续排队）
 - Risks:
   - 提前开做会造成范围扩张。
 - Suitable For Module Execution?: Yes

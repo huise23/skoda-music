@@ -1,6 +1,6 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-04-29
+Last Updated: 2026-05-12
 
 ## Active Stage
 - S4 本地收口（车机验收前）
@@ -84,7 +84,7 @@ Last Updated: 2026-04-29
 - Module ID: `M-S4-RESUME-003`
 - 这任务在做什么（白话）: 车机休眠回来后，尽量自动续播并回到上次进度。
 - Goal: 将恢复逻辑推进到“可车机验收”的服务侧闭环。
-- Why: 自动续播是 S4 强需求。
+- Why: 该任务保留为“可选回归方案”，仅在 020D/020E 明确恢复自动续播后再执行。
 - Dependencies: `T-S4-CORE-026A`
 - Inputs:
   - `PlaybackResumeStore.kt`
@@ -101,6 +101,7 @@ Last Updated: 2026-04-29
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
+- Status Note: Deferred（需先完成 `T-S4-RESUME-020D/020E` 口径规划与文档对齐）
 
 ## T-S4-VAL-032
 - Task ID: `T-S4-VAL-032`
@@ -132,7 +133,7 @@ Last Updated: 2026-04-29
 - 这任务在做什么（白话）: 在真实 API17 车机上按清单完整跑一遍并留证据。
 - Goal: 执行 S4 全量回归并产出 PASS/FAIL/Blocker。
 - Why: S4 完成标准是实机可验证。
-- Dependencies: `T-S4-CORE-026B`, `T-S4-CORE-026C`, `T-S4-RESUME-020B`, `T-S4-VAL-032`, `T-S4-OBS-036`, `T-S4-OBS-037`
+- Dependencies: `T-S4-CORE-026B`, `T-S4-CORE-026C`, `T-S4-RESUME-020E`, `T-S4-VAL-032`, `T-S4-OBS-036`, `T-S4-OBS-037`
 - Inputs:
   - S4 回归清单
   - 目标构建包与构建号
@@ -141,7 +142,7 @@ Last Updated: 2026-04-29
   - 分组 PASS/FAIL/Blocker 结果。
   - 失败复现步骤 + 日志/截图/视频。
 - Done Criteria:
-  - 覆盖后台按键、浮窗策略、通知兜底、自动续播。
+  - 覆盖后台按键、浮窗策略、通知兜底、续播新口径（当前默认无自动续播）。
   - 至少 1 台 API17 设备执行完成。
 - Risks:
   - 车机窗口不可控。
@@ -427,8 +428,48 @@ Last Updated: 2026-04-29
 - 这任务在做什么（白话）: 把删除按钮放到主屏队列里，听歌时就能直接删。
 - Goal: 在主屏队列预览中提供安全删除入口（含双确认）。
 - Why: 用户明确要求“不要再藏在库页里”，减少操作路径。
-- Dependencies: 无
+- Dependencies: `T-S4-UI-024B`
+- Inputs:
+  - `MainActivity.kt` 列表行渲染与 `buildDeleteButton(...)`
+  - `activity_main.xml` 首页推荐/歌词默认 tab 逻辑
+  - 删除双确认弹窗与删除执行链路
+- Expected Outputs:
+  - 首页推荐列表首屏可见删除按钮。
+  - 首页删除按钮复用双确认与删除执行链路。
+- Done Criteria:
+  - 首页可直接看到并点击删除按钮。
+  - 删除后队列/播放状态反馈与库页一致。
+- Risks:
+  - 首页默认落在歌词 tab 会导致用户误判“无删除入口”。
 - Size: M
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+- Status Note: Done（2026-05-12，已切换为播放卡片右上角删除当前曲目）
+
+## T-S4-UI-024B
+- Task ID: `T-S4-UI-024B`
+- Title: 删除入口位置与样式重规划（首页/队列/库页一致性）
+- Module ID: `M-S4-UX-005`
+- 这任务在做什么（白话）: 先定“按钮到底放哪里、长什么样、什么时候显示”，再进实现。
+- Goal: 固化删除按钮位置信息架构与可见性规则，避免反复改 UI。
+- Why: 当前用户反馈“最新版首页仍看不到删除按钮”，说明现有位置/默认视图存在认知断层。
+- Dependencies: 无
+- Inputs:
+  - 当前首页推荐面板、歌词面板切换逻辑
+  - 队列页/库页列表行渲染逻辑
+  - 车机触控命中与可读性约束
+- Expected Outputs:
+  - 删除入口位置与展示规则（按页面/状态）。
+  - 统一样式与最小触控区规则。
+  - 对应回归检查点补充项。
+- Done Criteria:
+  - 形成可执行规则并回写到 `NEXT_STEPS/HANDOFF`。
+- Risks:
+  - 只改样式不改默认视图，仍会出现“功能存在但用户看不到”。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+- Status Note: Done（2026-05-12，入口规则已固定且不改默认 tab）
 
 ## T-S4-RESUME-020C
 - Task ID: `T-S4-RESUME-020C`
@@ -438,7 +479,62 @@ Last Updated: 2026-04-29
 - Goal: 去掉体感差的续播逻辑，避免用户不想听时自动播。
 - Why: 用户明确要求“先移除续播，再继续删除功能”。
 - Dependencies: 无
+- Inputs:
+  - `MainActivity.kt` 恢复入口、自动起播触发、持久化逻辑
+  - `PlaybackResumeStore.kt`
+- Expected Outputs:
+  - 自动起播关闭，恢复链路仅做列表/状态恢复。
+- Done Criteria:
+  - 启动后不再自动播。
+- Risks:
+  - 旧快照残留可能导致用户误解为仍在续播。
 - Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-RESUME-020D
+- Task ID: `T-S4-RESUME-020D`
+- Title: 续播功能策略重规划（关闭基线 + 可选恢复方案）
+- Module ID: `M-S4-RESUME-003`
+- 这任务在做什么（白话）: 把“续播”拆成可配置策略，而不是二选一硬编码。
+- Goal: 明确续播策略选项、默认值、触发条件、失败降级和回滚方案。
+- Why: 当前口径已从“强制续播”转为“先关闭”，但后续是否恢复仍需可执行方案。
+- Dependencies: `T-S4-RESUME-020C`
+- Inputs:
+  - 当前 `ENABLE_AUTO_RESUME_PLAYBACK=false` 行为
+  - 车机体验反馈与误触发案例
+- Expected Outputs:
+  - 策略文档（例如：仅恢复列表 / 恢复列表+手动播放提示 / 条件自动续播）。
+  - 验收矩阵（触发条件、预期行为、失败降级）。
+- Done Criteria:
+  - 形成明确推荐策略与实施前置条件。
+- Risks:
+  - 若不先定策略，后续实现会在“体验 vs 自动化”间反复。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+- Status Note: Done（2026-05-12，已落地“仅索引恢复 + 自动鉴权续播”，移除 `ENABLE_AUTO_RESUME_PLAYBACK`）
+
+## T-S4-RESUME-020E
+- Task ID: `T-S4-RESUME-020E`
+- Title: 续播策略验收清单回写（S4 文档口径对齐）
+- Module ID: `M-S4-RESUME-003`
+- 这任务在做什么（白话）: 把新的续播策略写进回归清单和交接文档，防止口径漂移。
+- Goal: 将 020D 结论同步到 `API17_INTERACTION_REGRESSION_CHECKLIST` 与 context。
+- Why: 当前文档仍有“自动续播”旧口径，易误导现场验收。
+- Dependencies: `T-S4-RESUME-020D`
+- Inputs:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `CURRENT_STATUS/NEXT_STEPS/HANDOFF`
+- Expected Outputs:
+  - 更新后的续播验收条目和结论模板。
+- Done Criteria:
+  - 文档口径与当前策略一致，现场可按文档执行。
+- Risks:
+  - 文档不更新会导致“实现已改、验收仍按旧规则”。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
 
 ## T-S4-AUDIO-025
 - Task ID: `T-S4-AUDIO-025`

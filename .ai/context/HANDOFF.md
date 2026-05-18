@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-05-06
+Last Updated: 2026-05-12
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -25,20 +25,40 @@ Last Updated: 2026-05-06
 
 ## Execution Entry
 1. `T-S4-CORE-026C-HF-20260429`：复测浮窗 UI 修正（歌名字号、关闭按钮右上角与触控区）。
-2. `T-S4-OBS-035/036/037`（In Progress）：按用户确认口径先查 PostHog 事件流，异常时再回查客户端上报链路。
-3. `T-S4-UPD-044`（In Progress）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
-4. `T-S4-UI-024A`：车机复测主屏删除入口（点击命中/双确认/删除后反馈）。
-5. `T-S4-OBS-038`：执行在线查询验证与 AI 导出模板验收。
+2. `T-S4-RESUME-020E`：回写续播新口径到验收清单与 context（仅索引恢复 + 自动鉴权续播）。
+3. `T-S4-OBS-035/036/037`（In Progress）：按用户确认口径先查 PostHog 事件流，异常时再回查客户端上报链路。
+4. `T-S4-OBS-038`（In Progress）：按 `docs/POSTHOG_QUERY_EXPORT_TEMPLATE.md` 执行在线查询与 AI 导出。
+5. `T-S4-UPD-044`（Blocked by external validation）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
 6. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
 7. `T-S4-UI-023 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
 
-## Latest Delta (2026-05-06)
-- 用户新增执行口径：
-  - 先移除自动续播，再继续实现删除功能。
-- 已完成：
-  - `T-S4-RESUME-020C`：自动续播已关闭，旧续播快照在启动时清理。
-  - `T-S4-UI-024A`：主屏队列预览已增加删除入口（复用双确认删除逻辑）。
-- 本地构建验证：`gradle :app:compileDebugKotlin --no-daemon` 通过。
+## Latest Delta (2026-05-08)
+- 已完成 `T-S4-OBS-038` 本地模板准备：
+  - 新增 `docs/POSTHOG_QUERY_EXPORT_TEMPLATE.md`，固定查询清单、导出字段和证据模板。
+- 当前执行边界：
+  - OBS 仍需在线 PostHog 数据窗口完成最终验收；
+  - UPD 仍需 CI/实机完成安装触发闭环验证。
+
+## Latest Delta (2026-05-12)
+- 用户新增反馈与执行口径：
+  - 最新版首页仍看不到删除按钮，要求先重规划删除入口位置与功能，再实施修正。
+  - 续播相关先做口径规划，不立即恢复自动续播实现。
+- 本轮规划调整：
+  - `T-S4-UI-024A` 从已完成改为复开（Ready）。
+  - 新增优先前置 `T-S4-UI-024B`（删除入口规则规划），并设为 `024A` 依赖。
+  - `T-S4-RESUME-020D/020E` 进入 Ready；`T-S4-RESUME-020B` 下沉 Deferred。
+
+## Latest Delta (Execution, 2026-05-12)
+- 已按用户确认口径执行落地：
+  - 首页删除主入口固定到播放卡片右上角按钮，且始终删除当前播放曲目。
+  - 保持首页默认歌词/推荐 tab 不变（未调整默认切换）。
+  - 续播持久化改为仅队列+索引（附 base/username/savedAt），移除进度/播放态持久化与 `ENABLE_AUTO_RESUME_PLAYBACK` 开关。
+  - 启动恢复后自动播放恢复索引曲目；会话缺失时自动鉴权重试后续播。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+- 当前剩余：
+  - `T-S4-RESUME-020E` 文档与验收清单回写；
+  - 车机侧回归验证删除入口触控与续播自动鉴权行为。
 
 ## Latest Delta (2026-04-29)
 - 用户验证状态更新：

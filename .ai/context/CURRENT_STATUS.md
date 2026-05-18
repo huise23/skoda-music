@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-06
+Last Updated: 2026-05-12
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -27,16 +27,29 @@ Last Updated: 2026-05-06
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
 - 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
 
-## Module Execution Progress (Resume + Delete, 2026-05-06)
+## Module Execution Progress (Resume + Delete Replan, 2026-05-12)
 - 已完成 `T-S4-RESUME-020C`（移除自动续播）：
   - 关闭 `onStart` 自动续播触发入口。
   - 关闭恢复链路的自动起播/自动 seek/续播快照持久化。
   - 启动时发现历史续播快照则清理，避免旧行为残留。
-- 已完成 `T-S4-UI-024A`（删除入口迁移到主屏队列预览）：
-  - Home 队列行新增删除按钮，点击后复用现有双确认删除弹窗与删除执行逻辑。
-  - Library 删除按钮改为复用统一构建函数，确保主屏与库页交互一致。
+- `T-S4-UI-024A` 已复开（从 Done 回到 Ready）：
+  - 原因: 用户在最新版反馈“首页仍看不到删除按钮”，说明入口可见性未达验收预期。
+  - 当前处理: 先执行 `T-S4-UI-024B`（位置/样式/默认视图规则），再落地 `024A` 实现修正与回归。
+- 续播链路已改为“先规划后实现”：
+  - `T-S4-RESUME-020D/020E` 进入 Ready，先对齐策略与验收口径。
+  - `T-S4-RESUME-020B`（服务侧自动续播二阶段）下沉 Deferred，等待 020D/020E 结论。
+
+## Module Execution Progress (UI/Resume Execution, 2026-05-12)
+- 已完成 `T-S4-UI-024A` + `T-S4-UI-024B` 联合收口（按用户最终口径）：
+  - 首页删除主操作入口固定为“播放卡片右上角删除按钮”。
+  - 删除对象固定为当前播放曲目（`currentTrackIndex`），复用既有双确认删除链路。
+  - 未调整首页默认歌词/推荐 tab 逻辑（仍保持当前默认）。
+- 已完成 `T-S4-RESUME-020D` 代码侧落地：
+  - 续播持久化仅保留队列与索引（附带 base/username/savedAt），移除进度与播放态持久化字段。
+  - 移除 `ENABLE_AUTO_RESUME_PLAYBACK` 标记与相关分支。
+  - 启动恢复后自动播放恢复索引曲目；会话缺失时自动尝试鉴权并在成功后自动续播。
 - 本地验证：
-  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-12）。
 
 ## User Verification Update (2026-04-29)
 - 用户已确认 `T-S4-CORE-026A/026B` 车机验证通过。
@@ -93,6 +106,19 @@ Last Updated: 2026-05-06
 - 当前验证状态：
   - `scripts/check_api17_guardrails.sh` 已通过。
   - 本地可使用系统 `gradle` 编译；车机实机验收仍待外部窗口。
+
+## Local Validation (2026-05-08)
+- `gradle :app:compileDebugKotlin --no-daemon` 通过。
+- `T-S4-UPD-044` 代码侧已收口，剩余仅 CI / 实机验证。
+- `T-S4-OBS-035/036/037` 仍依赖 PostHog 在线查询或外部网络环境，不存在新的本地闭环点。
+
+## Module Execution Progress (OBS Query Template, 2026-05-08)
+- 已完成 `T-S4-OBS-038-PREP`（本地模板层）：
+  - 新增 `docs/POSTHOG_QUERY_EXPORT_TEMPLATE.md`。
+  - 固化 Query Checklist（session timeline / error_code 分布 / stage 分布 / 版本对比）。
+  - 固化 AI 导出 payload 字段与证据回传模板。
+- 当前边界：
+  - `T-S4-OBS-038` 已具备执行模板，剩余为在线查询与实机数据导出。
 
 ## Planning Refresh (PostHog, 2026-04-27)
 - 已新增观测模块 `M-S4-OBS-006`：将 PostHog 作为“结构化事件链路”并行接入，不替代全量原始日志。

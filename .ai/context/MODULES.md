@@ -1,206 +1,82 @@
 # MODULES
 
-Last Updated: 2026-05-12
+Last Updated: 2026-05-19
 
-## M-S4-CORE-001
-- Module ID: `M-S4-CORE-001`
-- Name: 核心命令与状态链路收口
-- Goal: 统一 `MainActivity` 和 `PlaybackService` 的职责，确保命令执行结果真实可追踪。
-- Why It Matters: 这是所有后台能力的地基；地基不稳，后面会反复回归。
-- 这模块在做什么（白话）: 把“谁发命令、谁执行、谁记录结果”彻底理顺。
+## M-S4-LRC-008
+- Module ID: `M-S4-LRC-008`
+- Name: Home 歌词中线容器改造
+- Goal: 将歌词显示改为“上文/当前行/下文”三段结构，提升当前行居中稳定性与可读性。
+- Why It Matters: 当前实现是单 `TextView` 富文本滚动，边界场景下居中稳定性与视觉一致性有限。
 - In Scope:
-  - `PlaybackService` 命令分发与状态快照。
-  - `PlaybackControlBus` 结果口径统一（失败即失败）。
-  - 前后台切换时状态同步与焦点冲突收敛。
+  - `activity_main.xml` 歌词面板结构改造。
+  - `MainActivity.kt` 歌词渲染逻辑拆分（上文、当前、下文）。
+  - 边界场景显示规则与本地回归清单。
 - Out of Scope:
-  - UI 大改。
-  - 切换到 MediaSession 主链路。
+  - 歌词获取链路重写（LrcApi 请求/解析/缓存策略保持现状）。
+  - 新增复杂歌词动画系统。
 - Dependencies: 无
 - Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackControlBus.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
-- Milestone / Done Criteria:
-  - 前后台命令结果一致，不再出现“假成功”。
-  - `trackId/position/isPlaying` 可稳定驱动通知与浮窗。
-- Related Tasks: `T-S4-CORE-026A`, `T-S4-CORE-026B`
-- Priority: P0
-- Status: In Progress（`T-S4-CORE-026A/026B` 已用户车机验证通过，待与 CONTROL/RESUME 链路一起收口）
-- Risks:
-  - 当前焦点策略是稳态补丁，后续迁移真源时可能需重调。
-- Suitable For Module Execution?: Yes
-
-## M-S4-CONTROL-002
-- Module ID: `M-S4-CONTROL-002`
-- Name: 后台控制面一致性（媒体键/通知/浮窗）
-- Goal: 三条后台入口的控制行为保持一致。
-- Why It Matters: 车机使用场景主要靠后台入口，不靠前台点击。
-- 这模块在做什么（白话）: 保证从方向盘、通知栏、浮窗按键操作，效果都一样。
-- In Scope:
-  - `ACTION_MEDIA_BUTTON` 到 Service 的命令路径。
-  - 通知三键与浮窗三键的一致性。
-  - 浮窗关闭后“进应用再切出”重显策略。
-- Out of Scope:
-  - 浮窗视觉改版。
-  - 非车机输入设备特殊适配。
-- Dependencies: `M-S4-CORE-001`
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/playback/MediaButtonReceiver.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/RemoteControlClientBridge.kt`
-  - `app/src/main/java/com/skodamusic/app/overlay/OverlayController.kt`
-  - `app/src/main/AndroidManifest.xml`
-- Milestone / Done Criteria:
-  - 三个入口都能稳定触发 `prev/play_pause/next`。
-  - 浮窗策略和用户确认口径一致。
-- Related Tasks: `T-S4-CORE-026C`
-- Priority: P0
-- Status: In Progress（浮窗点击回应用+拖动记忆已落地；新增 UI 修正：歌名字号上调 + 关闭按钮右上角放大，待车机复测）
-- Risks:
-  - 不同 ROM 对媒体键广播优先级处理不同。
-- Suitable For Module Execution?: Yes
-
-## M-S4-RESUME-003
-- Module ID: `M-S4-RESUME-003`
-- Name: 熄火/休眠恢复闭环
-- Goal: 按最新用户口径稳定“无自动续播”基线，并规划续播能力回归的可选方案与验收门槛。
-- Why It Matters: 当前体验反馈明确“自动续播体感差”，需要先保证可控。
-- 这模块在做什么（白话）: 先停用自动续播，后续若恢复再走单独验收。
-- In Scope:
-  - `PlaybackResumeStore` 与 Service 恢复逻辑打通。
-  - 新鲜度窗口、账号恢复、进度 seek 策略。
-  - 失败降级日志可直接排障。
-- Out of Scope:
-  - 跨账号复杂恢复重构。
-  - 长期离线场景恢复。
-- Dependencies: `M-S4-CORE-001`
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackResumeStore.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-- Milestone / Done Criteria:
-  - 当前“无自动续播”行为在启动/前后台切换下稳定。
-  - 形成续播功能规划文档：策略选项、触发条件、默认值与回滚策略。
-- Related Tasks: `T-S4-RESUME-020C`, `T-S4-RESUME-020D`, `T-S4-RESUME-020E`
-- Priority: P0
-- Status: In Progress（020C/020D 已完成；当前待 020E 文档与验收口径回写）
-- Risks:
-  - 会话失效和弱网会让恢复结果不稳定。
-- Suitable For Module Execution?: Yes
-
-## M-S4-VALID-004
-- Module ID: `M-S4-VALID-004`
-- Name: API17 实机回归与证据回填
-- Goal: 用统一清单做实机回归，并把结果结构化回填。
-- Why It Matters: S4 是否完成，要靠证据，不靠感觉。
-- 这模块在做什么（白话）: 按清单测一遍，把结果写回文档，形成下一轮入口。
-- In Scope:
-  - S4 回归清单与 Section 4 验收模板。
-  - 实机执行 PASS/FAIL/Blocker 回传。
-  - 回写 `CURRENT_STATUS/HANDOFF/TASK_QUEUE`。
-- Out of Scope:
-  - 纯体验优化项的扩展验证。
-- Dependencies: `M-S4-CORE-001`, `M-S4-CONTROL-002`, `M-S4-RESUME-003`, `M-S4-OBS-006`
-- Related Files / Areas:
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - `.ai/context/CURRENT_STATUS.md`
-  - `.ai/context/HANDOFF.md`
-  - `.ai/context/TASK_QUEUE.md`
-- Milestone / Done Criteria:
-  - 至少 1 台 API17 设备完成回归并形成证据。
-  - 结论回写完毕，下一步 Ready 清晰。
-- Related Tasks: `T-S4-VAL-032`, `T-S4-REG-022`, `T-S4-VAL-033`
-- Priority: P0
-- Status: In Progress（`T-S4-VAL-032` 已完成，等待车机窗口执行 `REG-022`）
-- Risks:
-  - 设备窗口不可控，可能拖慢收尾。
-- Suitable For Module Execution?: Yes
-
-## M-S4-OBS-006
-- Module ID: `M-S4-OBS-006`
-- Name: PostHog 关键事件观测链路
-- Goal: 建立 API17 可用的结构化事件链路，且失败不影响播放。
-- Why It Matters: 现场问题需要“可查证据”，不是只看零散日志。
-- 这模块在做什么（白话）: 给关键动作打点，出问题时能快速定位哪一步失败。
-- In Scope:
-  - 事件模型与命名规范。
-  - 轻量上报客户端（API17 兼容，fail-open）。
-  - 关键节点埋点、节流、隐私门禁。
-  - 查询与导出模板。
-- Out of Scope:
-  - 把 PostHog 当全量日志仓库。
-  - 高频进度全量上报。
-  - 自托管基础设施建设。
-- Dependencies: `M-S4-CORE-001`
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
-  - `app/src/main/java/com/skodamusic/app/playback/PlaybackStateStore.kt`
-  - `docs/POSTHOG_EVENT_DICTIONARY.md`
-  - `docs/POSTHOG_INSTRUMENTATION_PLAN.md`
-- Milestone / Done Criteria:
-  - 关键事件可查（启动、播放成功/失败、后台命令、恢复失败）。
-  - 上报失败不影响主链路，且可通过开关控制。
-- Related Tasks: `T-S4-OBS-034`, `T-S4-OBS-035`, `T-S4-OBS-036`, `T-S4-OBS-037`, `T-S4-OBS-038`
-- Priority: P1
-- Status: In Progress（schema+上报基线+门禁已落地；`T-S4-OBS-038` 查询/导出模板已就绪，待在线执行验收）
-- Risks:
-  - 埋点过多会增加噪音与网络开销。
-- Suitable For Module Execution?: Yes
-
-## M-S4-UPD-007
-- Module ID: `M-S4-UPD-007`
-- Name: 应用更新检测与镜像加速下载
-- Goal: 实现“检测更新 -> 下载 APK -> 触发安装”的可用闭环。
-- Why It Matters: 车机更新成本高，必须有可靠升级通道。
-- 这模块在做什么（白话）: 让用户能在应用里检查更新并下载安装新版本。
-- In Scope:
-  - GitHub Releases 元数据读取与版本比较。
-  - 冷启动自动检测（节流）与设置页手动检测。
-  - 镜像优先下载 + 官方回退。
-  - 下载完成安装触发与事件观测。
-- Out of Scope:
-  - 静默安装、root 安装。
-  - 差分更新和 OTA 平台。
-- Dependencies: `M-S4-CORE-001`, `M-S4-OBS-006`
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
   - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
   - `app/src/main/res/values/strings.xml`
 - Milestone / Done Criteria:
-  - 自动/手动检测都可用且不影响播放。
-  - 下载失败可回退，成功后可触发系统安装器。
-  - 关键节点有日志和事件可查。
-- Related Tasks: `T-S4-UPD-040`, `T-S4-UPD-041`, `T-S4-UPD-042`, `T-S4-UPD-043`, `T-S4-UPD-044`
-- Priority: P1
-- Status: In Progress（`040/041/042/043` 已完成，`044` 待 CI/实机验收）
+  - 当前行在标准场景稳定处于中线容器。
+  - 首句/末句/无歌词/加载中/超长换行均有确定行为。
+  - 不引入播放阻塞或歌词串歌回归。
+- Related Tasks: `T-S4-LRC-050`, `T-S4-LRC-051`, `T-S4-LRC-052`, `T-S4-LRC-053`
+- Priority: P0
+- Status: Ready
 - Risks:
-  - 镜像可用性波动、API17 安装限制与 TLS 问题。
+  - 超长歌词行换行后可能造成视觉中心偏差。
 - Suitable For Module Execution?: Yes
 
-## M-S4-UX-005
-- Module ID: `M-S4-UX-005`
-- Name: 并行体验改进池
-- Goal: 管理不阻塞主线但已获用户确认的体验改动。
-- Why It Matters: 体验需求会直接影响可用性，需按口径快修而非长期挂起。
-- 这模块在做什么（白话）: 对已确认体验项快速落地，其它继续排队。
+## M-S4-AUDIO-009
+- Module ID: `M-S4-AUDIO-009`
+- Name: 均衡器 API17 规划与 MVP 拆分
+- Goal: 产出 API17 可落地的 Equalizer 设计与后续实现任务，不在本阶段直接全量上线。
+- Why It Matters: “提升播放音质”已进入确认需求，但当前仓库缺少可执行技术路径。
 - In Scope:
-  - 长标题滚动修复方案预案。
-  - 主屏删除入口迁移与交互落地。
-  - 音效优化预案。
+  - `Equalizer` 可行性验证与 ROM 风险识别。
+  - 与 `PlaybackEngine` 的 session 生命周期接线方案。
+  - MVP 范围、配置持久化策略、fail-open 策略。
 - Out of Scope:
-  - 未经确认的额外视觉重构与大交互改版。
+  - 完整音效中心 UI。
+  - BassBoost/Virtualizer 全量联动上线（仅在规划中评估是否纳入后续）。
+- Dependencies: 无（但输出将依赖 `M-S4-LRC-008` 完成后择机实施）
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `docs/`（新增 EQ 规划文档）
+- Milestone / Done Criteria:
+  - 明确可落地方案：session 获取/绑定/释放、异常降级、MVP 功能边界。
+  - 形成可执行任务并进入队列（Ready/Blocked 清晰）。
+- Related Tasks: `T-S4-AUDIO-054`, `T-S4-AUDIO-055`
+- Priority: P1
+- Status: Ready
+- Risks:
+  - 不同车机 ROM 对 `audiofx` 支持不一致，可能出现创建失败或效果不生效。
+- Suitable For Module Execution?: Yes
+
+## M-S4-CARRY-010
+- Module ID: `M-S4-CARRY-010`
+- Name: 旧阶段任务边界维护
+- Goal: 维持旧 S4 外部验收任务可追踪，但不混入本阶段 Ready。
+- Why It Matters: 避免“歌词/EQ 子阶段”被外部依赖任务打断。
+- In Scope:
+  - 保留 `OBS/UPD/REG/VAL` 外部任务的状态与入口。
+  - 在 `TASK_QUEUE/NEXT_STEPS` 中标记为 Blocked/Deferred。
+- Out of Scope:
+  - 执行这些外部任务本身。
 - Dependencies: 无
 - Related Files / Areas:
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `.ai/context/TASK_QUEUE.md`
+  - `.ai/context/NEXT_STEPS.md`
+  - `.ai/context/HANDOFF.md`
 - Milestone / Done Criteria:
-  - 删除入口在首页推荐列表首屏可见、可点、可双确认删除并回显结果。
-  - 已确认体验项具备可验证实现与回归入口。
-- Related Tasks: `T-S4-UI-023`, `T-S4-UI-024A`, `T-S4-UI-024B`, `T-S4-AUDIO-025`
-- Priority: P0
-- Status: In Progress（`T-S4-UI-024A/024B` 已按最新口径落地；`UI-023/AUDIO-025` 继续排队）
+  - 旧任务状态不丢失、且不干扰当前 Ready 队列。
+- Related Tasks: `T-S4-CARRY-056`
+- Priority: P2
+- Status: In Progress
 - Risks:
-  - 提前开做会造成范围扩张。
-- Suitable For Module Execution?: Yes
+  - 若边界维护不清，执行阶段容易误切回旧主线。
+- Suitable For Module Execution?: No

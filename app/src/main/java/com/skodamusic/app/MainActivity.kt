@@ -11,12 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
-import android.text.SpannableStringBuilder
-import android.text.Spanned
 import android.text.format.Formatter
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -33,7 +28,9 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.skodamusic.app.audio.EqualizerManager
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
@@ -118,10 +115,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var homeRecommendPanel: View
     private lateinit var homeLyricsPanel: View
     private lateinit var homeRecommendList: LinearLayout
-    private lateinit var homeLyricsScroll: ScrollView
-    private lateinit var homeLyricsText: TextView
+    private lateinit var homeLyricsPrevText: TextView
+    private lateinit var homeLyricsCurrentText: TextView
+    private lateinit var homeLyricsNextText: TextView
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
+    private lateinit var eqEnableSwitch: SwitchCompat
+    private lateinit var eqPresetPrevButton: Button
+    private lateinit var eqPresetNextButton: Button
+    private lateinit var eqPresetValue: TextView
+    private lateinit var eqStatusValue: TextView
+    private lateinit var eqNoteValue: TextView
     private lateinit var navHomeButton: ImageButton
     private lateinit var navQueueButton: ImageButton
     private lateinit var navLibraryButton: ImageButton
@@ -234,8 +238,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var wifiNetworkGate: WifiNetworkGate
     private lateinit var embySessionCache: EmbySessionCache
     private lateinit var embyApi: EmbyApi
+    private lateinit var equalizerManager: EqualizerManager
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
+    private var lastObservedAudioSessionId: Int = -1
+    private var eqEnabled: Boolean = false
+    private var eqPresetIndex: Int = 0
+    private var suppressEqSwitchListener: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val bootStartMs = SystemClock.elapsedRealtime()
@@ -259,6 +268,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             keyRecommendCacheJson = KEY_RECOMMEND_CACHE_JSON
         )
         embyApi = EmbyApi { message -> appendRuntimeLog(message) }
+        equalizerManager = EqualizerManager { message -> appendRuntimeLog(message) }
+        equalizerManager.updateConfig(enabled = false, presetIndex = 0, source = "init")
         postHogSessionId = PostHogTracker.startNewSession(
             context = applicationContext,
             launchSource = "cold_start"
@@ -313,10 +324,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         homeRecommendPanel = findViewById(R.id.home_recommend_panel)
         homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
         homeRecommendList = findViewById(R.id.home_recommend_list)
-        homeLyricsScroll = findViewById(R.id.home_lyrics_scroll)
-        homeLyricsText = findViewById(R.id.home_lyrics_text)
+        homeLyricsPrevText = findViewById(R.id.home_lyrics_prev_text)
+        homeLyricsCurrentText = findViewById(R.id.home_lyrics_current_text)
+        homeLyricsNextText = findViewById(R.id.home_lyrics_next_text)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
+        eqEnableSwitch = findViewById(R.id.eq_enable_switch)
+        eqPresetPrevButton = findViewById(R.id.btn_eq_preset_prev)
+        eqPresetNextButton = findViewById(R.id.btn_eq_preset_next)
+        eqPresetValue = findViewById(R.id.eq_preset_value)
+        eqStatusValue = findViewById(R.id.eq_status_value)
+        eqNoteValue = findViewById(R.id.eq_note_value)
         navHomeButton = findViewById(R.id.nav_home)
         navQueueButton = findViewById(R.id.nav_queue)
         navLibraryButton = findViewById(R.id.nav_library)
@@ -625,6 +643,36 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             requestLrcApiConnectionTest(credentials)
         }
 
+        eqEnableSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (suppressEqSwitchListener) {
+                return@setOnCheckedChangeListener
+            }
+            if (eqEnabled == isChecked) {
+                return@setOnCheckedChangeListener
+            }
+            eqEnabled = isChecked
+            persistEqualizerConfig()
+            applyEqualizerConfig("ui_toggle")
+            refreshEqualizerSettingsUi()
+            updateState {
+                it.copy(
+                    feedbackText = getString(
+                        if (isChecked) R.string.feedback_eq_enabled else R.string.feedback_eq_disabled
+                    )
+                )
+            }
+            showToast(
+                if (isChecked) R.string.toast_eq_enabled
+                else R.string.toast_eq_disabled
+            )
+        }
+        eqPresetPrevButton.setOnClickListener {
+            adjustEqualizerPreset(-1, "ui_preset_prev")
+        }
+        eqPresetNextButton.setOnClickListener {
+            adjustEqualizerPreset(1, "ui_preset_next")
+        }
+
         clearDownloadCacheButton.setOnClickListener {
             val cleared = clearDownloadCacheFiles("manual-clear")
             refreshDownloadCacheInfoUi()
@@ -766,6 +814,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (selectedPage == PAGE_LIBRARY) {
             ensureLibraryTracksLoaded("enter-library-page")
         } else if (selectedPage == PAGE_SETTINGS) {
+            refreshEqualizerSettingsUi()
             refreshDownloadCacheInfoUi()
         }
     }
@@ -1243,75 +1292,43 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun renderHomeLyricsByPosition(positionMs: Long) {
         if (homeLyricsLines.isEmpty()) {
-            homeLyricsText.text = getString(R.string.home_lyrics_placeholder)
+            val fallback = getString(R.string.home_lyrics_placeholder)
+            homeLyricsPrevText.text = ""
+            homeLyricsCurrentText.text = fallback
+            homeLyricsNextText.text = ""
             return
         }
         val activeIndex = findActiveLyricIndex(positionMs)
-        val builder = SpannableStringBuilder()
-        homeLyricsLines.forEachIndexed { index, line ->
-            val start = builder.length
-            builder.append(line.text)
-            val end = builder.length
-            val isActive = index == activeIndex
-            builder.setSpan(
-                ForegroundColorSpan(resources.getColor(if (isActive) R.color.white else R.color.text_secondary)),
-                start,
-                end,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            builder.setSpan(
-                AbsoluteSizeSpan(if (isActive) 20 else 19, true),
-                start,
-                end,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            if (isActive) {
-                builder.setSpan(
-                    StyleSpan(android.graphics.Typeface.BOLD),
-                    start,
-                    end,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            if (index < homeLyricsLines.lastIndex) {
-                builder.append('\n')
-            }
-        }
-        homeLyricsText.text = builder
-        centerHomeLyricsLine(activeIndex)
+        val currentLine = homeLyricsLines.getOrNull(activeIndex)?.text
+            ?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.home_lyrics_placeholder)
+        homeLyricsPrevText.text = buildLyricContextText(
+            startInclusive = (activeIndex - HOME_LYRICS_CONTEXT_LINES).coerceAtLeast(0),
+            endInclusive = activeIndex - 1
+        )
+        homeLyricsCurrentText.text = currentLine
+        homeLyricsNextText.text = buildLyricContextText(
+            startInclusive = activeIndex + 1,
+            endInclusive = (activeIndex + HOME_LYRICS_CONTEXT_LINES).coerceAtMost(homeLyricsLines.lastIndex)
+        )
     }
 
-    private fun centerHomeLyricsLine(activeIndex: Int) {
-        homeLyricsText.post {
-            val layout = homeLyricsText.layout ?: return@post
-            val viewportHeight = homeLyricsScroll.height
-            if (viewportHeight <= 0) {
-                return@post
-            }
-            if (activeIndex < 0 || activeIndex >= layout.lineCount) {
-                return@post
-            }
-            val lineHeight = (layout.getLineBottom(activeIndex) - layout.getLineTop(activeIndex))
-                .coerceAtLeast(dpToPx(20))
-            val dynamicVerticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
-            if (homeLyricsText.paddingTop != dynamicVerticalPadding || homeLyricsText.paddingBottom != dynamicVerticalPadding) {
-                homeLyricsText.setPadding(
-                    homeLyricsText.paddingLeft,
-                    dynamicVerticalPadding,
-                    homeLyricsText.paddingRight,
-                    dynamicVerticalPadding
-                )
-                homeLyricsText.post { centerHomeLyricsLine(activeIndex) }
-                return@post
-            }
-
-            val lineCenter = homeLyricsText.paddingTop +
-                (layout.getLineTop(activeIndex) + layout.getLineBottom(activeIndex)) / 2
-            val viewportCenter = viewportHeight / 2
-            val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
-            val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)
-            homeLyricsScroll.scrollTo(0, targetScroll)
+    private fun buildLyricContextText(startInclusive: Int, endInclusive: Int): String {
+        if (startInclusive > endInclusive || startInclusive < 0 || endInclusive < 0) {
+            return ""
         }
+        val builder = StringBuilder()
+        for (index in startInclusive..endInclusive) {
+            val text = homeLyricsLines.getOrNull(index)?.text?.trim().orEmpty()
+            if (text.isEmpty()) {
+                continue
+            }
+            if (builder.isNotEmpty()) {
+                builder.append('\n')
+            }
+            builder.append(text)
+        }
+        return builder.toString()
     }
 
     private fun findActiveLyricIndex(positionMs: Long): Int {
@@ -1843,6 +1860,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val durationMs = resolveTrackDurationMs(track, engineDurationMs)
         val positionMsRaw = playbackEngine?.currentPositionMs() ?: -1L
         val positionMs = positionMsRaw.coerceAtLeast(0L)
+        observePlaybackAudioSession(source = "progress_tick")
         val positionText = if (positionMsRaw >= 0L) {
             formatDurationClock(positionMs)
         } else {
@@ -1891,6 +1909,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         maybePersistPlaybackResumeState(positionMs = positionMs)
         maybeSyncServiceCommandTrace()
 
+    }
+
+    private fun observePlaybackAudioSession(source: String) {
+        if (!this::equalizerManager.isInitialized) {
+            return
+        }
+        val engine = playbackEngine ?: return
+        val sessionId = engine.audioSessionId()
+        if (sessionId <= 0) {
+            return
+        }
+        if (sessionId == lastObservedAudioSessionId) {
+            return
+        }
+        lastObservedAudioSessionId = sessionId
+        appendRuntimeLog("audio session observed id=$sessionId source=$source")
+        equalizerManager.onSessionChanged(sessionId = sessionId, source = source)
     }
 
     private fun maybeSyncServiceCommandTrace() {
@@ -2489,6 +2524,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             return
                         }
                         streamPrepared.set(true)
+                        observePlaybackAudioSession(source = "download_on_prepared")
                         if (pauseRequestedRequestId == requestId) {
                             appendRuntimeLog("play prepared requestId=$requestId skipped reason=pause-requested")
                             return
@@ -3162,6 +3198,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         if (requestId != playbackRequestId) {
                             return
                         }
+                        observePlaybackAudioSession(source = "cache_on_prepared")
                         if (pauseRequestedRequestId == requestId) {
                             appendRuntimeLog("cache playback prepared requestId=$requestId skipped reason=pause-requested")
                             return
@@ -3409,6 +3446,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun releasePlayer() {
         playbackEngine?.release()
         playbackEngine = null
+        lastObservedAudioSessionId = -1
+        if (this::equalizerManager.isInitialized) {
+            equalizerManager.onPlayerReleased(source = "main_activity_release_player")
+        }
     }
 
     private fun fetchTracksFromEmby(
@@ -3992,6 +4033,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
         embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
         lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
+        eqEnabled = prefs.getBoolean(KEY_EQ_ENABLED, false)
+        eqPresetIndex = prefs.getInt(KEY_EQ_PRESET_INDEX, 0).coerceAtLeast(0)
+        applyEqualizerConfig("prefs_load")
+        refreshEqualizerSettingsUi()
     }
 
     private fun persistCredentials(credentials: EmbyCredentials) {
@@ -4009,6 +4054,90 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .edit()
             .putString(KEY_LRCAPI_BASE_URL, credentials.baseUrl)
             .apply()
+    }
+
+    private fun persistEqualizerConfig() {
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_EQ_ENABLED, eqEnabled)
+            .putInt(KEY_EQ_PRESET_INDEX, eqPresetIndex.coerceAtLeast(0))
+            .apply()
+    }
+
+    private fun applyEqualizerConfig(source: String) {
+        if (!this::equalizerManager.isInitialized) {
+            return
+        }
+        equalizerManager.updateConfig(
+            enabled = eqEnabled,
+            presetIndex = eqPresetIndex,
+            source = source
+        )
+    }
+
+    private fun adjustEqualizerPreset(delta: Int, source: String) {
+        if (delta == 0) {
+            return
+        }
+        val ringSize = resolveEqualizerPresetCycleSize()
+        val normalized = eqPresetIndex.coerceAtLeast(0)
+        val next = if (ringSize <= 1) {
+            0
+        } else {
+            val base = normalized % ringSize
+            ((base + delta) % ringSize + ringSize) % ringSize
+        }
+        if (next == eqPresetIndex) {
+            return
+        }
+        eqPresetIndex = next
+        persistEqualizerConfig()
+        applyEqualizerConfig(source)
+        refreshEqualizerSettingsUi()
+        updateState {
+            it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, eqPresetIndex))
+        }
+        showToast(R.string.toast_eq_preset_changed)
+    }
+
+    private fun resolveEqualizerPresetCycleSize(): Int {
+        val discovered = equalizerManager.lastKnownPresetCount()
+        if (discovered > 0) {
+            return discovered
+        }
+        return DEFAULT_EQ_PRESET_CYCLE_SIZE
+    }
+
+    private fun refreshEqualizerSettingsUi() {
+        if (!this::eqEnableSwitch.isInitialized) {
+            return
+        }
+        val ringSize = resolveEqualizerPresetCycleSize()
+        val normalizedPreset = if (ringSize > 0) {
+            eqPresetIndex.coerceAtLeast(0) % ringSize
+        } else {
+            0
+        }
+        if (normalizedPreset != eqPresetIndex) {
+            eqPresetIndex = normalizedPreset
+            persistEqualizerConfig()
+            applyEqualizerConfig("ui_normalize")
+        }
+        suppressEqSwitchListener = true
+        eqEnableSwitch.isChecked = eqEnabled
+        suppressEqSwitchListener = false
+        eqPresetValue.text = getString(R.string.eq_preset_value_format, eqPresetIndex)
+        eqStatusValue.text = if (eqEnabled) {
+            getString(R.string.eq_status_enabled_format, eqPresetIndex)
+        } else {
+            getString(R.string.eq_status_disabled)
+        }
+        eqNoteValue.text = getString(R.string.eq_note_fail_open)
+        val controlsEnabled = ringSize > 1
+        eqPresetPrevButton.isEnabled = controlsEnabled
+        eqPresetNextButton.isEnabled = controlsEnabled
+        eqPresetPrevButton.alpha = if (controlsEnabled) 1f else 0.5f
+        eqPresetNextButton.alpha = if (controlsEnabled) 1f else 0.5f
     }
 
     private fun appendRuntimeLog(message: String) {
@@ -4358,6 +4487,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_RECOMMEND_CACHE_DAY = "recommend_cache_day"
         const val KEY_RECOMMEND_CACHE_OWNER = "recommend_cache_owner"
         const val KEY_RECOMMEND_CACHE_JSON = "recommend_cache_json"
+        const val KEY_EQ_ENABLED = "eq_enabled"
+        const val KEY_EQ_PRESET_INDEX = "eq_preset_index"
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
@@ -4383,12 +4514,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
         const val NETWORK_RECOVERY_RETRY_INTERVAL_MS = 4_000L
+        const val DEFAULT_EQ_PRESET_CYCLE_SIZE = 8
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
+        const val HOME_LYRICS_CONTEXT_LINES = 2
         const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
         @Volatile var downloadCacheClearedAtColdStart = false
     }

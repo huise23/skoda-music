@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-05-18
+Last Updated: 2026-05-22
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -24,13 +24,37 @@ Last Updated: 2026-05-18
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CORE-026C-HF-20260429`：复测浮窗 UI 修正（歌名字号、关闭按钮右上角与触控区）。
-2. `T-S4-RESUME-020E`：回写续播新口径到验收清单与 context（仅索引恢复 + 自动鉴权续播）。
-3. `T-S4-OBS-035/036/037`（In Progress）：按用户确认口径先查 PostHog 事件流，异常时再回查客户端上报链路。
-4. `T-S4-OBS-038`（In Progress）：按 `docs/POSTHOG_QUERY_EXPORT_TEMPLATE.md` 执行在线查询与 AI 导出。
-5. `T-S4-UPD-044`（Blocked by external validation）：执行更新链路 CI/实机验收（检查->下载->安装触发->事件可见）。
-6. `T-S4-REG-022` -> `T-S4-VAL-033`：车机实机回归后回填证据并更新 context。
-7. `T-S4-UI-023 + T-S4-AUDIO-025`：保持 Deferred，待 S4 主验收后推进。
+1. `T-S4-CARRY-056`：旧阶段外部任务状态迁移与边界标注。
+2. 外部窗口到位后执行 `T-S4-REG-022/T-S4-VAL-033`，按最新清单补齐 API17 实机证据。
+3. 旧主线任务（`OBS/UPD/REG`）保持 Deferred/Blocked，不混入当前子阶段主线。
+
+## Latest Delta (Module Execution, 2026-05-22)
+- 已完成歌词模块本地收口（`T-S4-LRC-050/051/052/053`）：
+  - `activity_main.xml` 歌词区已改为三段容器：上文/当前/下文。
+  - `MainActivity` 歌词渲染已从整段富文本滚动切换为按 `activeIndex` 分发三段文本。
+  - 旧 `centerHomeLyricsLine` 滚动居中逻辑已移除。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
+  - `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md` 已补充 `G. Home Midline Container Regression` 和本地结论快照。
+- 下一步入口：
+  - EQ 实现链已完成，下一步切回边界维护 + 外部验证留证。
+
+## Latest Delta (Audio Wiring, 2026-05-22)
+- 已完成 `T-S4-AUDIO-057`：
+  - `PlaybackEngine` 新增 `audioSessionId()`，`ExoPlaybackEngine` 已透传。
+  - `MainActivity` 已接入 session 变化观测（prepared + progress tick）。
+- 已完成 `T-S4-AUDIO-058`：
+  - 新增 `EqualizerManager`（fail-open + 单会话熔断 + session 重绑 + 安全释放）。
+  - `releasePlayer()` 已接线调用 `onPlayerReleased`，避免旧 session 持有。
+- 已完成 `T-S4-AUDIO-059`：
+  - 设置页新增 EQ 开关/预设切换与本地持久化。
+  - 启动时恢复 EQ 配置并回写到 `EqualizerManager`。
+- 已完成 `T-S4-AUDIO-060`：
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 新增 `I. Equalizer MVP Fail-Open` 条目与证据字段。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
+- 下一步入口：
+  - 等待 API17 实机窗口执行 EQ I 组条目并回写证据。
 
 ## Latest Delta (2026-05-08)
 - 已完成 `T-S4-OBS-038` 本地模板准备：
@@ -160,3 +184,11 @@ Last Updated: 2026-05-18
 ## Environment Notes
 - 本地仓库无 `gradlew`，可使用系统 `gradle` 编译；车机验证仍依赖外部环境。
 - 车机测试窗口不连续，必须优先保证上下文文档可中断续跑。
+## Latest Delta (Audio Planning, 2026-05-19)
+- 已完成 `T-S4-AUDIO-054/055` 规划闭环：
+  - 新增 `docs/API17_EQUALIZER_MVP_PLAN.md`。
+  - 明确技术结论：API17 车机 ROM 的 `audiofx` 支持不一致，EQ 必须 fail-open。
+  - 明确接线前置：`PlaybackEngine` 增加 `audioSessionId()`，基于 session 做创建/重绑/释放。
+- 任务队列调整：
+  - `T-S4-AUDIO-054/055` -> Done。
+  - 新增 `T-S4-AUDIO-057/058/059/060` 进入后续实现链。

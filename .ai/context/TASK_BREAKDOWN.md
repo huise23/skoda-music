@@ -133,6 +133,90 @@ Last Updated: 2026-05-19
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
 
+## T-S4-AUDIO-057
+- Task ID: `T-S4-AUDIO-057`
+- Title: PlaybackEngine 暴露 audioSessionId 并打通生命周期接线
+- Module ID: `M-S4-AUDIO-009`
+- Goal: 为 EQ 接线提供稳定 session 来源，明确创建/重绑/释放时机。
+- Why: 没有 session 能力，Equalizer 无法与当前 Exo 引擎可靠绑定。
+- Dependencies: 无
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Expected Outputs:
+  - `PlaybackEngine.audioSessionId()` 接口与 `ExoPlaybackEngine` 实现。
+  - `MainActivity` 中 session 变化检测与回调接线点。
+- Done Criteria:
+  - 播放中可获取有效 session id（`>0`），且播放器释放后不会持有旧引用。
+- Risks:
+  - 部分 ROM 可能延迟分配 session，需容忍短暂 `<=0`。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-058
+- Task ID: `T-S4-AUDIO-058`
+- Title: EqualizerManager 最小实现（fail-open + 会话熔断）
+- Module ID: `M-S4-AUDIO-009`
+- Goal: 落地 `Equalizer` 创建/应用/释放与异常熔断策略，不影响主播放链路。
+- Why: API17 ROM 差异大，必须把 EQ 当可失败能力处理。
+- Dependencies: `T-S4-AUDIO-057`
+- Inputs:
+  - `T-S4-AUDIO-057` 接线结果
+  - `docs/API17_EQUALIZER_MVP_PLAN.md`
+- Expected Outputs:
+  - `EqualizerManager`（或同等组件）及 fail-open 日志。
+  - session 变化时自动重绑；失败时单会话降级。
+- Done Criteria:
+  - EQ 任意异常不会导致停播/闪退/切歌阻塞。
+- Risks:
+  - 某些 ROM 上创建成功但听感无变化，仅能记录能力状态。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-059
+- Task ID: `T-S4-AUDIO-059`
+- Title: EQ MVP 设置接线（开关 + 预设 + 持久化）
+- Module ID: `M-S4-AUDIO-009`
+- Goal: 在现有设置页提供最小 EQ 交互，并把配置接到播放会话。
+- Why: 只有引擎能力没有入口，无法形成可验证 MVP。
+- Dependencies: `T-S4-AUDIO-058`
+- Inputs:
+  - 现有设置页结构
+  - `EqualizerManager` 接口
+- Expected Outputs:
+  - 开关 + 预设选择入口
+  - 本地持久化（开关/preset）与启动恢复
+- Done Criteria:
+  - 设置生效且失败自动降级，不影响播放。
+- Risks:
+  - 预设数量在不同设备不一致，UI 需容错空列表。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-060
+- Task ID: `T-S4-AUDIO-060`
+- Title: EQ MVP 本地回归与 API17 实机验证条目补齐
+- Module ID: `M-S4-AUDIO-009`
+- Goal: 固化 EQ 正常与失败场景验证方式，输出可复盘证据模板。
+- Why: fail-open 是否生效必须靠失败注入/实机验证，不可只看代码。
+- Dependencies: `T-S4-AUDIO-059`
+- Inputs:
+  - `docs/API17_EQUALIZER_MVP_PLAN.md`
+  - EQ MVP 落地代码
+- Expected Outputs:
+  - 本地回归结果（正常/异常/降级）
+  - API17 车机验证条目补充
+- Done Criteria:
+  - 能回答“EQ 失败时播放是否完全不受影响”。
+- Risks:
+  - 无稳定车机窗口时只能先完成本地证据。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
 ## T-S4-CARRY-056
 - Task ID: `T-S4-CARRY-056`
 - Title: 旧阶段外部任务状态迁移与边界标注

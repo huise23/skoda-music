@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-18
+Last Updated: 2026-05-22
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -25,7 +25,46 @@ Last Updated: 2026-05-18
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 新增并行焦点：更新检测与分发能力（冷启动自动检测 + 设置手动检测 + GitHub 镜像加速下载）。
+- 并行焦点：EQ MVP 本地收口已完成，下一步转入外部验证留证与队列边界维护。
+
+## Module Execution Progress (Lyrics Midline, 2026-05-22)
+- `M-S4-LRC-008` 已完成本地收口（`T-S4-LRC-050/051/052/053`）：
+  - `Home` 歌词面板由 `Scroll + 单TextView` 改为“上文/当前/下文”三段容器。
+  - 当前行独立使用中线容器展示；上文与下文按上下文行数分发，不再依赖滚动补偿居中。
+  - `MainActivity` 已移除 `centerHomeLyricsLine(...)` 旧逻辑，改为基于 `activeIndex` 的三段文本渲染。
+- 本地验证:
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
+  - `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md` 已新增 `G. Home Midline Container Regression` 与本地结论快照。
+- 当前边界:
+  - 需在后续 API17 实机窗口复核字体渲染体感；不阻塞模块本地收口结论。
+
+## Module Execution Progress (Audio Wiring, 2026-05-22)
+- 已完成 `M-S4-AUDIO-009` 本地执行链（`T-S4-AUDIO-057/058/059/060`）：
+  - `PlaybackEngine` 新增 `audioSessionId()`，`ExoPlaybackEngine` 已透传 session id。
+  - `MainActivity` 新增 session 变化观测（prepared + progress tick），并在 `releasePlayer()` 释放会话绑定。
+  - 新增 `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`：
+    - 支持 `updateConfig / onSessionChanged / onPlayerReleased`
+    - 支持 fail-open、单会话熔断、session 重绑与安全释放日志。
+  - 设置页已接线 EQ MVP：
+    - 开关 + 预设切换 + 配置持久化（`SharedPreferences`）
+    - 启动恢复配置并实时回写 `EqualizerManager`
+  - 回归清单已补齐 EQ 条目：
+    - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 新增 `I. Equalizer MVP Fail-Open` 分组与证据字段。
+- 本地验证:
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
+- 当前边界:
+  - API17 车机 ROM 实机窗口仍需执行 I 组条目，确认 fail-open 在目标设备稳定成立。
+
+## Module Execution Progress (Audio Planning, 2026-05-19)
+- 已完成 `M-S4-AUDIO-009` 规划层里程碑（`T-S4-AUDIO-054/055`）：
+  - 新增 `docs/API17_EQUALIZER_MVP_PLAN.md`，明确 API17 Equalizer 可行性、session 生命周期接线、fail-open 硬约束与验收口径。
+  - 明确结论：`audiofx` 在车机 ROM 间支持不一致，EQ 必须按“可失败能力”实现；任何失败都不得影响播放主链路。
+  - 基于当前代码确认接线前置：`PlaybackEngine` 需新增 `audioSessionId()` 能力，`MainActivity` 需在 session 变化时重绑 EQ。
+- 新增执行任务链（实现层）：
+  - `T-S4-AUDIO-057`：音频 session 能力透传与生命周期接线。
+  - `T-S4-AUDIO-058`：`EqualizerManager` fail-open + 会话熔断。
+  - `T-S4-AUDIO-059`：设置页 MVP（开关 + 预设 + 持久化）。
+  - `T-S4-AUDIO-060`：本地回归 + API17 实机验证条目补齐。
 
 ## Module Execution Progress (Resume + Delete Replan, 2026-05-12)
 - 已完成 `T-S4-RESUME-020C`（移除自动续播）：

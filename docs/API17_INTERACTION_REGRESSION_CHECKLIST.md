@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4)
 
-Last Updated: 2026-04-29  
-Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
+Last Updated: 2026-05-22  
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -9,6 +9,7 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - 方向盘/通知/浮窗控制链路
 - 熄火/休眠恢复自动续播
 - 更新检测与下载安装触发链路
+- Equalizer MVP fail-open 验证
 - 关键事件与日志证据回传
 
 ## 1. Preconditions
@@ -25,8 +26,9 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
   - 浮窗策略（播放/暂停均显示；手动关闭后“进应用再切出”重显）。
   - 恢复链路（熄火/休眠恢复后自动续播）。
   - 更新链路（检查 -> 下载 -> 安装触发）。
+  - EQ MVP（开关/预设/持久化/session 重绑/fail-open）。
 - Out of Scope:
-  - 新需求（长标题滚动/主屏删除入口/均衡器）
+  - 新需求（长标题滚动/主屏删除入口）
   - 静默安装/root 安装
 
 ## 3. Checklist
@@ -86,6 +88,18 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - [ ] H2 网络断开时播放/更新失败路径可见，恢复网络后可继续操作。
 - [ ] H3 浮窗权限不可用时，通知控制条仍可兜底。
 
+### I. Equalizer MVP Fail-Open
+- [ ] I1 设置页可见 EQ 开关、预设切换与状态文本。
+- [ ] I2 切换 EQ 开关不会导致当前播放暂停、卡死或切歌。
+- [ ] I3 预设切换后重进应用仍保留上次配置（开关 + preset index）。
+- [ ] I4 切歌或播放器重建后（session 变化）仍可自动重绑或安全降级。
+- [ ] I5 在 ROM 不支持 `audiofx` / 初始化失败场景，播放主链路不受影响（fail-open）。
+- [ ] I6 运行日志包含 EQ 关键路径：
+  - `eq config update`
+  - `eq init ok` / `eq init fail`
+  - `eq apply preset`（或 `no-presets` 降级日志）
+  - `eq release`
+
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
 ### 4.1 Risk Gates（任一命中即 Blocker）
@@ -101,9 +115,10 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - [ ] EVD3 至少 1 条失败样本（含复现步骤 + 日志关键片段）。
 - [ ] EVD4 更新链路样本（至少 1 次检测结果；若失败附 `failed_stage`）。
 - [ ] EVD5 至少 1 份截图或短视频说明关键现象。
+- [ ] EVD6 EQ fail-open 样本（至少 1 条 `eq init fail` 或 `no-presets` 日志 + 对应播放不中断证据）。
 
 ### 4.3 Acceptance Decision
-- `PASS`: 无 Blocker，且 A~H 关键项通过。
+- `PASS`: 无 Blocker，且 A~I 关键项通过。
 - `PASS with Risks`: 无 Blocker，但存在可接受风险并已有追踪项。
 - `FAIL`: 命中任一 Blocker，或关键链路不可复现/不可诊断。
 
@@ -128,6 +143,7 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - F Update Chain: PASS/FAIL
 - G Observability: PASS/FAIL
 - H Failure/Degrade: PASS/FAIL
+- I Equalizer MVP: PASS/FAIL
 
 ### Section 4 Decision
 - Risk Gate Triggered: YES/NO
@@ -144,6 +160,7 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - playback_error: <error_code/stage/request_id>
 - update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
+- equalizer: <eq config/update/init/apply/release 日志样本>
 - screenshot/video: <说明或路径>
 
 ### Conclusion
@@ -151,3 +168,13 @@ Scope: `T-S4-VAL-032` (module `M-S4-VALID-004`)
 - Must Fix Before Next Round: <列表>
 - Notes: <补充>
 ```
+
+## 6. Local Validation Snapshot (T-S4-AUDIO-060, 2026-05-22)
+- 构建验证:
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过
+- 本地回归结论:
+  - EQ 设置入口已接线（开关 + 预设 + 持久化）
+  - session 观测与重绑链路已接线（prepared + progress tick）
+  - 失败策略保持 fail-open：EQ 初始化/应用失败仅记日志，不中断播放
+- 待外部验证:
+  - API17 目标车机 ROM 的 `audiofx` 实际支持差异需现场留证（重点 I5/I6）

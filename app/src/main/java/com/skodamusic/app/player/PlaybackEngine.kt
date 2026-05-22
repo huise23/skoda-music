@@ -26,6 +26,7 @@ interface PlaybackEngine {
     fun pause()
     fun seekTo(positionMs: Long): Boolean
     fun isPlaying(): Boolean
+    fun audioSessionId(): Int
     fun currentPositionMs(): Long
     fun durationMs(): Long
     fun release()
@@ -132,6 +133,14 @@ class ExoPlaybackEngine(
             exoPlayer?.isPlaying == true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    override fun audioSessionId(): Int {
+        return try {
+            exoPlayer?.audioSessionId ?: -1
+        } catch (_: Exception) {
+            -1
         }
     }
 

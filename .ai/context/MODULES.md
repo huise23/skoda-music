@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-05-19
+Last Updated: 2026-05-22
 
 ## M-S4-LRC-008
 - Module ID: `M-S4-LRC-008`
@@ -25,10 +25,15 @@ Last Updated: 2026-05-19
   - 不引入播放阻塞或歌词串歌回归。
 - Related Tasks: `T-S4-LRC-050`, `T-S4-LRC-051`, `T-S4-LRC-052`, `T-S4-LRC-053`
 - Priority: P0
-- Status: Ready
+- Status: Done（本地收口）
 - Risks:
   - 超长歌词行换行后可能造成视觉中心偏差。
 - Suitable For Module Execution?: Yes
+- Progress Update (2026-05-22):
+  - `T-S4-LRC-051/052` 已完成代码改造：`home_lyrics_panel` 从 `Scroll + 单TextView` 迁移为“上文/当前/下文”三段容器。
+  - `MainActivity` 已移除旧 `centerHomeLyricsLine` 滚动居中策略，改为按当前索引分发上下文歌词文本。
+  - `T-S4-LRC-053` 已完成：回归条目与本地结论已回写 `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md`。
+  - 本地验证 `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
 
 ## M-S4-AUDIO-009
 - Module ID: `M-S4-AUDIO-009`
@@ -50,12 +55,23 @@ Last Updated: 2026-05-19
 - Milestone / Done Criteria:
   - 明确可落地方案：session 获取/绑定/释放、异常降级、MVP 功能边界。
   - 形成可执行任务并进入队列（Ready/Blocked 清晰）。
-- Related Tasks: `T-S4-AUDIO-054`, `T-S4-AUDIO-055`
+- Related Tasks: `T-S4-AUDIO-054`, `T-S4-AUDIO-055`, `T-S4-AUDIO-057`, `T-S4-AUDIO-058`, `T-S4-AUDIO-059`, `T-S4-AUDIO-060`
 - Priority: P1
-- Status: Ready
+- Status: Done（本地 MVP 收口）
 - Risks:
   - 不同车机 ROM 对 `audiofx` 支持不一致，可能出现创建失败或效果不生效。
 - Suitable For Module Execution?: Yes
+- Progress Update (2026-05-19):
+  - `T-S4-AUDIO-054/055` 已完成（规划层）。
+  - 新增执行任务链：`T-S4-AUDIO-057 -> 058 -> 059 -> 060`。
+  - 已新增文档：`docs/API17_EQUALIZER_MVP_PLAN.md`。
+- Progress Update (2026-05-22):
+  - `T-S4-AUDIO-057` 已完成：`PlaybackEngine` 新增 `audioSessionId()` 并由 `ExoPlaybackEngine` 透传。
+  - `MainActivity` 已新增 session 观测与变化接线（prepared + progress tick），为 EQ 绑定提供稳定入口。
+  - `T-S4-AUDIO-058` 已完成：新增 `EqualizerManager`（fail-open、单会话熔断、session 重绑与释放）。
+  - `T-S4-AUDIO-059` 已完成：设置页接入 EQ 开关/预设切换/持久化，并与 `EqualizerManager` 配置联动。
+  - `T-S4-AUDIO-060` 已完成：`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 新增 EQ fail-open 回归条目与证据字段。
+  - 本地验证 `gradle :app:compileDebugKotlin --no-daemon` 通过，待 API17 实机窗口执行 I 组条目留证。
 
 ## M-S4-CARRY-010
 - Module ID: `M-S4-CARRY-010`

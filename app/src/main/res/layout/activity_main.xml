@@ -355,23 +355,55 @@
                             android:orientation="vertical"
                             android:visibility="gone">
 
-                            <ScrollView
-                                android:id="@+id/home_lyrics_scroll"
+                            <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:fillViewport="true">
+                                android:orientation="vertical">
 
                                 <TextView
-                                    android:id="@+id/home_lyrics_text"
+                                    android:id="@+id/home_lyrics_prev_text"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="0dp"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:fontFamily="sans-serif"
+                                    android:gravity="bottom|center_horizontal"
+                                    android:lineSpacingExtra="3dp"
+                                    android:maxLines="3"
+                                    android:text=""
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="17sp" />
+
+                                <TextView
+                                    android:id="@+id/home_lyrics_current_text"
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
-                                    android:fontFamily="sans-serif"
+                                    android:layout_marginTop="6dp"
+                                    android:layout_marginBottom="6dp"
+                                    android:background="@drawable/field_surface"
+                                    android:fontFamily="sans-serif-medium"
                                     android:gravity="center_horizontal"
                                     android:lineSpacingExtra="3dp"
+                                    android:minHeight="64dp"
+                                    android:padding="10dp"
                                     android:text="@string/home_lyrics_placeholder"
+                                    android:textColor="@color/white"
+                                    android:textSize="21sp" />
+
+                                <TextView
+                                    android:id="@+id/home_lyrics_next_text"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="0dp"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:fontFamily="sans-serif"
+                                    android:gravity="top|center_horizontal"
+                                    android:lineSpacingExtra="3dp"
+                                    android:maxLines="3"
+                                    android:text=""
                                     android:textColor="@color/text_secondary"
-                                    android:textSize="19sp" />
-                            </ScrollView>
+                                    android:textSize="17sp" />
+                            </LinearLayout>
 
                             <TextView
                                 android:id="@+id/runtime_log_label"
@@ -754,6 +786,120 @@
                         android:text="@string/lrcapi_status_not_tested"
                         android:textColor="@color/text_secondary"
                         android:textSize="17sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/label_equalizer"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/eq_enable_label"
+                            android:textColor="@color/text_primary"
+                            android:textSize="18sp" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/eq_enable_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/eq_preset_title"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_eq_preset_prev"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/button_secondary"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/action_eq_preset_prev"
+                            android:textAllCaps="false"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+
+                        <Space
+                            android:layout_width="10dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/eq_preset_value"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1.2"
+                            android:background="@drawable/field_surface"
+                            android:fontFamily="monospace"
+                            android:gravity="center"
+                            android:paddingLeft="10dp"
+                            android:paddingRight="10dp"
+                            android:text="@string/eq_preset_placeholder"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+
+                        <Space
+                            android:layout_width="10dp"
+                            android:layout_height="1dp" />
+
+                        <Button
+                            android:id="@+id/btn_eq_preset_next"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/button_secondary"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/action_eq_preset_next"
+                            android:textAllCaps="false"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/eq_status_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/eq_status_disabled"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/eq_note_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:fontFamily="sans-serif"
+                        android:text="@string/eq_note_fail_open"
+                        android:textColor="@color/text_muted"
+                        android:textSize="15sp" />
 
                     <TextView
                         android:id="@+id/download_cache_size_value"

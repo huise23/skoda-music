@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-22
+Last Updated: 2026-05-25
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -25,7 +25,28 @@ Last Updated: 2026-05-22
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 并行焦点：EQ MVP 本地收口已完成，下一步转入外部验证留证与队列边界维护。
+- 并行焦点：EQ 界面规划已完成，当前切到 `M-S4-AUDIO-012` 执行 UI 实现链（`065~068`）。
+
+## Planning Refresh (EQ UI, 2026-05-25)
+- 用户确认“EQ 已验证可用”，本轮切换为“先规划界面，不直接实现”。
+- 新增模块 `M-S4-AUDIO-011`（EQ 界面规划与任务化）：
+  - `T-S4-AUDIO-061` 入口/信息架构
+  - `T-S4-AUDIO-062` 状态与 fail-open 反馈矩阵
+  - `T-S4-AUDIO-063` 低保真线框与流程
+  - `T-S4-AUDIO-064` 实现任务拆分与验收清单
+
+## Module Execution Progress (EQ UI Planning, 2026-05-25)
+- `M-S4-AUDIO-011` 已完成规划闭环（`T-S4-AUDIO-061~064`）：
+  - 新增 `docs/API17_EQUALIZER_UI_PLAN.md`，覆盖：
+    - 入口与信息架构（推荐保留设置页内嵌 EQ 卡片）
+    - `off/pending/active/no-presets/fused` 状态矩阵
+    - 低保真线框与交互流程
+    - 实现任务化输出（`T-S4-AUDIO-065~068`）
+- 队列状态变化：
+  - `061~064` 已转 Done。
+  - 新实现链 `065~068` 已进入 `Ready/Blocked` 序列。
+- 当前边界：
+  - `M-S4-AUDIO-011` 规划模块完成，下一步切换到 `M-S4-AUDIO-012` 实现模块。
 
 ## Module Execution Progress (Lyrics Midline, 2026-05-22)
 - `M-S4-LRC-008` 已完成本地收口（`T-S4-LRC-050/051/052/053`）：

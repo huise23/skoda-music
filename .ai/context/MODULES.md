@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-05-22
+Last Updated: 2026-05-25
 
 ## M-S4-LRC-008
 - Module ID: `M-S4-LRC-008`
@@ -96,3 +96,76 @@ Last Updated: 2026-05-22
 - Risks:
   - 若边界维护不清，执行阶段容易误切回旧主线。
 - Suitable For Module Execution?: No
+
+## M-S4-AUDIO-011
+- Module ID: `M-S4-AUDIO-011`
+- Name: EQ 界面规划与任务化
+- Goal: 在现有 EQ MVP 能力基础上，先完成下一阶段界面规划，不直接写 UI 代码。
+- Why It Matters: EQ 能力已可用，但没有清晰界面规划会导致实现阶段反复改版。
+- In Scope:
+  - EQ 页面的入口、信息层级、交互路径与状态文案规划。
+  - fail-open 在 UI 侧的可见性定义（不可用态/降级态/异常提示）。
+  - 从规划到任务的可执行拆分（Ready 队列）。
+- Out of Scope:
+  - 本轮不实现 EQ 新界面代码。
+  - 本轮不实现 `BassBoost/Virtualizer` 页面与参数联动。
+- Dependencies:
+  - `M-S4-AUDIO-009`（已完成，提供可用 EQ MVP 基线）
+- Related Files / Areas:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `docs/API17_EQUALIZER_MVP_PLAN.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Milestone / Done Criteria:
+  - 完成 EQ 界面规划文档（结构 + 状态矩阵 + 交互边界）。
+  - 形成实现任务链并进入 `TASK_QUEUE` Ready。
+  - 明确本轮“不做实现”的边界，避免 scope 蔓延。
+- Related Tasks:
+  - `T-S4-AUDIO-061`
+  - `T-S4-AUDIO-062`
+  - `T-S4-AUDIO-063`
+  - `T-S4-AUDIO-064`
+- Priority: P0
+- Status: Done（规划闭环）
+- Risks:
+  - 若未提前锁定“首版界面深度”，后续容易从 MVP 膨胀为完整音效中心。
+- Suitable For Module Execution?: Yes
+- Progress Update (2026-05-25):
+  - 已新增 `docs/API17_EQUALIZER_UI_PLAN.md`，覆盖 IA、状态矩阵、低保真线框与实现任务化。
+  - `T-S4-AUDIO-061~064` 已完成并回写队列。
+
+## M-S4-AUDIO-012
+- Module ID: `M-S4-AUDIO-012`
+- Name: EQ 界面实现与验证
+- Goal: 将 `API17_EQUALIZER_UI_PLAN` 的规划产物落地为可运行 UI，并完成本地/实机观察点验证。
+- Why It Matters: 规划已完成，下一步需要把 fail-open 可见性和交互一致性真正落在界面实现上。
+- In Scope:
+  - EQ 卡片布局重排与视觉分组。
+  - EQ 状态模型在 UI 上的渲染（off/pending/active/no-presets/fused）。
+  - 文案与交互反馈统一。
+  - 本地回归与 API17 实机观察点补齐。
+- Out of Scope:
+  - `BassBoost/Virtualizer` 实装与联动。
+  - 自定义 band 曲线编辑器。
+- Dependencies:
+  - `M-S4-AUDIO-011`（已完成）
+- Related Files / Areas:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
+  - `docs/API17_EQUALIZER_UI_PLAN.md`
+- Milestone / Done Criteria:
+  - EQ UI 能明确表达 fail-open 降级状态且不误导用户。
+  - `T-S4-AUDIO-065~068` 完成并形成可复盘验证记录。
+- Related Tasks:
+  - `T-S4-AUDIO-065`
+  - `T-S4-AUDIO-066`
+  - `T-S4-AUDIO-067`
+  - `T-S4-AUDIO-068`
+- Priority: P0
+- Status: Ready
+- Risks:
+  - 设备差异导致部分状态复现频率低，需补实机证据。
+- Suitable For Module Execution?: Yes

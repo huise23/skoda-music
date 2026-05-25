@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-05-22
+Last Updated: 2026-05-25
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -24,9 +24,17 @@ Last Updated: 2026-05-22
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-CARRY-056`：旧阶段外部任务状态迁移与边界标注。
-2. 外部窗口到位后执行 `T-S4-REG-022/T-S4-VAL-033`，按最新清单补齐 API17 实机证据。
-3. 旧主线任务（`OBS/UPD/REG`）保持 Deferred/Blocked，不混入当前子阶段主线。
+1. `T-S4-AUDIO-065`：EQ 卡片视觉分组与状态行重排（布局实现）。
+2. `T-S4-AUDIO-066`：EQ 状态模型接线与 UI 渲染。
+3. `T-S4-AUDIO-067/068`：文案反馈收口 + 回归与实机观察点补齐。
+4. 旧主线任务（`OBS/UPD/REG`）保持 Deferred/Blocked，不混入当前子阶段主线。
+
+## Latest Delta (EQ UI Planning, 2026-05-25)
+- 已完成 `M-S4-AUDIO-011`（`T-S4-AUDIO-061~064`）：
+  - 新增 `docs/API17_EQUALIZER_UI_PLAN.md`（IA、状态矩阵、低保真线框、实现任务化）。
+  - 规划链路已收口，`061~064` 全部转 Done。
+- 下一步入口：
+  - 切换到 `M-S4-AUDIO-012`，执行 `T-S4-AUDIO-065~068` 实现链。
 
 ## Latest Delta (Module Execution, 2026-05-22)
 - 已完成歌词模块本地收口（`T-S4-LRC-050/051/052/053`）：

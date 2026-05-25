@@ -21,6 +21,8 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -121,10 +123,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var eqEnableSwitch: SwitchCompat
-    private lateinit var eqPresetPrevButton: Button
-    private lateinit var eqPresetNextButton: Button
-    private lateinit var eqPresetValue: TextView
-    private lateinit var eqStatusValue: TextView
+    private lateinit var eqEntryRow: View
+    private lateinit var eqEntryValue: TextView
     private lateinit var eqNoteValue: TextView
     private lateinit var navHomeButton: ImageButton
     private lateinit var navQueueButton: ImageButton
@@ -244,6 +244,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastObservedAudioSessionId: Int = -1
     private var eqEnabled: Boolean = false
     private var eqPresetIndex: Int = 0
+    private var eqMode: EqualizerManager.EqMode = EqualizerManager.EqMode.PRESET
+    private val eqCustomBandLevels = mutableListOf<Int>()
     private var suppressEqSwitchListener: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -330,10 +332,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         eqEnableSwitch = findViewById(R.id.eq_enable_switch)
-        eqPresetPrevButton = findViewById(R.id.btn_eq_preset_prev)
-        eqPresetNextButton = findViewById(R.id.btn_eq_preset_next)
-        eqPresetValue = findViewById(R.id.eq_preset_value)
-        eqStatusValue = findViewById(R.id.eq_status_value)
+        eqEntryRow = findViewById(R.id.eq_entry_row)
+        eqEntryValue = findViewById(R.id.eq_entry_value)
         eqNoteValue = findViewById(R.id.eq_note_value)
         navHomeButton = findViewById(R.id.nav_home)
         navQueueButton = findViewById(R.id.nav_queue)
@@ -650,7 +650,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             if (eqEnabled == isChecked) {
                 return@setOnCheckedChangeListener
             }
-            eqEnabled = isChecked
+            if (isChecked) {
+                eqEnabled = true
+            } else {
+                resetEqualizerToDefaults()
+            }
             persistEqualizerConfig()
             applyEqualizerConfig("ui_toggle")
             refreshEqualizerSettingsUi()
@@ -666,11 +670,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 else R.string.toast_eq_disabled
             )
         }
-        eqPresetPrevButton.setOnClickListener {
-            adjustEqualizerPreset(-1, "ui_preset_prev")
-        }
-        eqPresetNextButton.setOnClickListener {
-            adjustEqualizerPreset(1, "ui_preset_next")
+        eqEntryRow.setOnClickListener {
+            showEqualizerControlDialog()
         }
 
         clearDownloadCacheButton.setOnClickListener {
@@ -4035,6 +4036,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
         eqEnabled = prefs.getBoolean(KEY_EQ_ENABLED, false)
         eqPresetIndex = prefs.getInt(KEY_EQ_PRESET_INDEX, 0).coerceAtLeast(0)
+        eqMode = parseEqualizerMode(
+            raw = prefs.getString(KEY_EQ_MODE, EqualizerManager.EqMode.PRESET.name),
+            fallback = EqualizerManager.EqMode.PRESET
+        )
+        eqCustomBandLevels.clear()
+        eqCustomBandLevels.addAll(
+            parseBandLevelsCsv(prefs.getString(KEY_EQ_CUSTOM_LEVELS, "").orEmpty())
+        )
         applyEqualizerConfig("prefs_load")
         refreshEqualizerSettingsUi()
     }
@@ -4061,6 +4070,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .edit()
             .putBoolean(KEY_EQ_ENABLED, eqEnabled)
             .putInt(KEY_EQ_PRESET_INDEX, eqPresetIndex.coerceAtLeast(0))
+            .putString(KEY_EQ_MODE, eqMode.name)
+            .putString(KEY_EQ_CUSTOM_LEVELS, eqCustomBandLevels.joinToString(","))
             .apply()
     }
 
@@ -4071,53 +4082,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         equalizerManager.updateConfig(
             enabled = eqEnabled,
             presetIndex = eqPresetIndex,
+            mode = eqMode,
+            customBandLevels = eqCustomBandLevels.toList(),
             source = source
         )
     }
 
-    private fun adjustEqualizerPreset(delta: Int, source: String) {
-        if (delta == 0) {
-            return
+    private fun resetEqualizerToDefaults() {
+        eqEnabled = false
+        eqPresetIndex = 0
+        eqMode = EqualizerManager.EqMode.PRESET
+        for (index in eqCustomBandLevels.indices) {
+            eqCustomBandLevels[index] = 0
         }
-        val ringSize = resolveEqualizerPresetCycleSize()
-        val normalized = eqPresetIndex.coerceAtLeast(0)
-        val next = if (ringSize <= 1) {
-            0
-        } else {
-            val base = normalized % ringSize
-            ((base + delta) % ringSize + ringSize) % ringSize
-        }
-        if (next == eqPresetIndex) {
-            return
-        }
-        eqPresetIndex = next
-        persistEqualizerConfig()
-        applyEqualizerConfig(source)
-        refreshEqualizerSettingsUi()
-        updateState {
-            it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, eqPresetIndex))
-        }
-        showToast(R.string.toast_eq_preset_changed)
-    }
-
-    private fun resolveEqualizerPresetCycleSize(): Int {
-        val discovered = equalizerManager.lastKnownPresetCount()
-        if (discovered > 0) {
-            return discovered
-        }
-        return DEFAULT_EQ_PRESET_CYCLE_SIZE
     }
 
     private fun refreshEqualizerSettingsUi() {
         if (!this::eqEnableSwitch.isInitialized) {
             return
         }
-        val ringSize = resolveEqualizerPresetCycleSize()
-        val normalizedPreset = if (ringSize > 0) {
-            eqPresetIndex.coerceAtLeast(0) % ringSize
-        } else {
-            0
-        }
+        val presetNames = resolvePresetDisplayNames()
+        val normalizedPreset = normalizePresetIndex(eqPresetIndex, presetNames.size)
         if (normalizedPreset != eqPresetIndex) {
             eqPresetIndex = normalizedPreset
             persistEqualizerConfig()
@@ -4126,18 +4111,306 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         suppressEqSwitchListener = true
         eqEnableSwitch.isChecked = eqEnabled
         suppressEqSwitchListener = false
-        eqPresetValue.text = getString(R.string.eq_preset_value_format, eqPresetIndex)
-        eqStatusValue.text = if (eqEnabled) {
-            getString(R.string.eq_status_enabled_format, eqPresetIndex)
+        val modeLabelRes = if (eqMode == EqualizerManager.EqMode.CUSTOM) {
+            R.string.eq_mode_custom
         } else {
-            getString(R.string.eq_status_disabled)
+            R.string.eq_mode_preset
+        }
+        val presetLabel = presetNames.getOrNull(eqPresetIndex) ?: getString(R.string.eq_preset_default_name)
+        eqEntryValue.text = if (eqEnabled) {
+            getString(R.string.eq_entry_value_enabled_format, presetLabel, getString(modeLabelRes))
+        } else {
+            getString(R.string.eq_entry_value_disabled)
         }
         eqNoteValue.text = getString(R.string.eq_note_fail_open)
-        val controlsEnabled = ringSize > 1
-        eqPresetPrevButton.isEnabled = controlsEnabled
-        eqPresetNextButton.isEnabled = controlsEnabled
-        eqPresetPrevButton.alpha = if (controlsEnabled) 1f else 0.5f
-        eqPresetNextButton.alpha = if (controlsEnabled) 1f else 0.5f
+        eqEntryRow.alpha = if (eqEnabled) 1f else 0.88f
+    }
+
+    private fun showEqualizerControlDialog() {
+        val capabilities = equalizerManager.capabilitiesSnapshot()
+        val presetNames = resolvePresetDisplayNames(capabilities.presetNames)
+        val bands = resolveBandInfos(capabilities.bands)
+        ensureCustomBandLevelsSize(bands.size)
+
+        val root = ScrollView(this).apply {
+            setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(2))
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(10))
+        }
+        root.addView(
+            content,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val status = TextView(this).apply {
+            text = if (eqEnabled) {
+                getString(R.string.eq_dialog_status_on)
+            } else {
+                getString(R.string.eq_dialog_status_off)
+            }
+            setTextColor(resources.getColor(R.color.text_secondary))
+            textSize = 15f
+        }
+        content.addView(status)
+
+        val presetTitle = TextView(this).apply {
+            setPadding(0, dpToPx(10), 0, dpToPx(6))
+            text = getString(R.string.eq_dialog_preset_title)
+            setTextColor(resources.getColor(R.color.text_primary))
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        content.addView(presetTitle)
+
+        val presetGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        presetNames.forEachIndexed { index, name ->
+            val button = RadioButton(this).apply {
+                id = View.generateViewId()
+                text = name
+                tag = index
+                setTextColor(resources.getColor(R.color.text_primary))
+                textSize = 16f
+                setPadding(0, dpToPx(4), 0, dpToPx(4))
+                isChecked = (eqMode == EqualizerManager.EqMode.PRESET && index == eqPresetIndex)
+            }
+            presetGroup.addView(button)
+        }
+        presetGroup.setOnCheckedChangeListener { group, checkedId ->
+            if (checkedId == View.NO_ID) {
+                return@setOnCheckedChangeListener
+            }
+            val checked = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
+            val targetIndex = (checked.tag as? Int) ?: return@setOnCheckedChangeListener
+            applyPresetSelectionFromDialog(
+                presetIndex = targetIndex,
+                statusView = status
+            )
+        }
+        content.addView(presetGroup)
+
+        val sliderTitle = TextView(this).apply {
+            setPadding(0, dpToPx(12), 0, dpToPx(6))
+            text = getString(R.string.eq_dialog_slider_title)
+            setTextColor(resources.getColor(R.color.text_primary))
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        content.addView(sliderTitle)
+
+        bands.forEachIndexed { index, band ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dpToPx(3), 0, dpToPx(8))
+            }
+            val headerRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val freqLabel = TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                text = formatBandLabel(band.centerFreqHz)
+                setTextColor(resources.getColor(R.color.text_secondary))
+                textSize = 15f
+            }
+            val valueLabel = TextView(this).apply {
+                text = formatBandLevelLabel(eqCustomBandLevels[index])
+                setTextColor(resources.getColor(R.color.text_secondary))
+                textSize = 14f
+                minWidth = dpToPx(62)
+                gravity = Gravity.END
+            }
+            headerRow.addView(freqLabel)
+            headerRow.addView(valueLabel)
+            row.addView(headerRow)
+
+            val slider = SeekBar(this).apply {
+                val span = (band.maxLevelMillibel - band.minLevelMillibel).coerceAtLeast(1)
+                max = span
+                progress = (eqCustomBandLevels[index] - band.minLevelMillibel).coerceIn(0, span)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (!fromUser) {
+                            return
+                        }
+                        val nextLevel = (band.minLevelMillibel + progress).coerceIn(
+                            band.minLevelMillibel,
+                            band.maxLevelMillibel
+                        )
+                        eqCustomBandLevels[index] = nextLevel
+                        valueLabel.text = formatBandLevelLabel(nextLevel)
+                        applyCustomBandSelectionFromDialog(status)
+                        presetGroup.clearCheck()
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                })
+            }
+            row.addView(slider)
+            content.addView(row)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.eq_dialog_title)
+            .setView(root)
+            .setPositiveButton(R.string.action_close, null)
+            .show()
+    }
+
+    private fun applyPresetSelectionFromDialog(
+        presetIndex: Int,
+        statusView: TextView
+    ) {
+        eqPresetIndex = presetIndex.coerceAtLeast(0)
+        eqMode = EqualizerManager.EqMode.PRESET
+        if (!eqEnabled) {
+            eqEnabled = true
+        }
+        persistEqualizerConfig()
+        applyEqualizerConfig("eq_dialog_preset")
+        refreshEqualizerSettingsUi()
+        statusView.text = getString(R.string.eq_dialog_status_on)
+        updateState {
+            it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, resolveActivePresetName()))
+        }
+        showToast(R.string.toast_eq_enabled)
+    }
+
+    private fun applyCustomBandSelectionFromDialog(statusView: TextView) {
+        eqMode = EqualizerManager.EqMode.CUSTOM
+        if (!eqEnabled) {
+            eqEnabled = true
+        }
+        persistEqualizerConfig()
+        applyEqualizerConfig("eq_dialog_custom")
+        refreshEqualizerSettingsUi()
+        statusView.text = getString(R.string.eq_dialog_status_on)
+        updateState {
+            it.copy(feedbackText = getString(R.string.feedback_eq_custom_applied))
+        }
+    }
+
+    private fun resolveActivePresetName(): String {
+        val names = resolvePresetDisplayNames()
+        return names.getOrNull(eqPresetIndex) ?: getString(R.string.eq_preset_default_name)
+    }
+
+    private fun resolvePresetDisplayNames(rawNames: List<String> = equalizerManager.capabilitiesSnapshot().presetNames): List<String> {
+        val cleaned = rawNames.mapIndexed { index, value ->
+            val trimmed = value.trim()
+            mapPresetDisplayName(index = index, rawName = trimmed)
+        }.filter { it.isNotBlank() }
+        if (cleaned.isNotEmpty()) {
+            return cleaned
+        }
+        return FALLBACK_EQ_PRESET_NAMES
+    }
+
+    private fun mapPresetDisplayName(index: Int, rawName: String): String {
+        if (index == 0) {
+            return getString(R.string.eq_preset_default_name)
+        }
+        if (rawName.isBlank()) {
+            return FALLBACK_EQ_PRESET_NAMES.getOrElse(index) {
+                getString(R.string.eq_preset_fallback_format, index)
+            }
+        }
+        val lower = rawName.lowercase(Locale.US)
+        return when (lower) {
+            "normal", "default" -> getString(R.string.eq_preset_default_name)
+            "classical" -> getString(R.string.eq_preset_classical)
+            "dance" -> getString(R.string.eq_preset_dance)
+            "flat" -> getString(R.string.eq_preset_flat)
+            "folk" -> getString(R.string.eq_preset_folk)
+            "heavy metal" -> getString(R.string.eq_preset_heavy_metal)
+            "hip hop" -> getString(R.string.eq_preset_hip_hop)
+            "jazz" -> getString(R.string.eq_preset_jazz)
+            "pop" -> getString(R.string.eq_preset_pop)
+            "rock" -> getString(R.string.eq_preset_rock)
+            else -> {
+                FALLBACK_EQ_PRESET_NAMES.getOrElse(index) {
+                    getString(R.string.eq_preset_fallback_format, index)
+                }
+            }
+        }
+    }
+
+    private fun resolveBandInfos(discovered: List<EqualizerManager.EqBandInfo>): List<EqualizerManager.EqBandInfo> {
+        if (discovered.isNotEmpty()) {
+            return discovered
+        }
+        return FALLBACK_EQ_BAND_FREQ_HZ.mapIndexed { index, freq ->
+            EqualizerManager.EqBandInfo(
+                index = index,
+                centerFreqHz = freq,
+                minLevelMillibel = DEFAULT_EQ_BAND_MIN_LEVEL_MB,
+                maxLevelMillibel = DEFAULT_EQ_BAND_MAX_LEVEL_MB
+            )
+        }
+    }
+
+    private fun ensureCustomBandLevelsSize(targetSize: Int) {
+        if (targetSize <= 0) {
+            eqCustomBandLevels.clear()
+            return
+        }
+        while (eqCustomBandLevels.size < targetSize) {
+            eqCustomBandLevels.add(0)
+        }
+        while (eqCustomBandLevels.size > targetSize) {
+            eqCustomBandLevels.removeAt(eqCustomBandLevels.lastIndex)
+        }
+    }
+
+    private fun normalizePresetIndex(index: Int, presetCount: Int): Int {
+        if (presetCount <= 0) {
+            return 0
+        }
+        return index.coerceAtLeast(0) % presetCount
+    }
+
+    private fun parseEqualizerMode(raw: String?, fallback: EqualizerManager.EqMode): EqualizerManager.EqMode {
+        val normalized = raw?.trim().orEmpty()
+        if (normalized.isEmpty()) {
+            return fallback
+        }
+        return try {
+            EqualizerManager.EqMode.valueOf(normalized)
+        } catch (_: IllegalArgumentException) {
+            fallback
+        }
+    }
+
+    private fun parseBandLevelsCsv(raw: String): List<Int> {
+        if (raw.isBlank()) {
+            return emptyList()
+        }
+        val output = mutableListOf<Int>()
+        raw.split(',').forEach { token ->
+            val level = token.trim().toIntOrNull() ?: return@forEach
+            output.add(level)
+        }
+        return output
+    }
+
+    private fun formatBandLabel(centerFreqHz: Int): String {
+        if (centerFreqHz >= 1000) {
+            val khz = centerFreqHz / 1000f
+            return String.format(Locale.US, "%.1f kHz", khz)
+        }
+        return "$centerFreqHz Hz"
+    }
+
+    private fun formatBandLevelLabel(levelMillibel: Int): String {
+        val db = levelMillibel / 100f
+        return String.format(Locale.US, "%+.1f dB", db)
     }
 
     private fun appendRuntimeLog(message: String) {
@@ -4489,6 +4762,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_RECOMMEND_CACHE_JSON = "recommend_cache_json"
         const val KEY_EQ_ENABLED = "eq_enabled"
         const val KEY_EQ_PRESET_INDEX = "eq_preset_index"
+        const val KEY_EQ_MODE = "eq_mode"
+        const val KEY_EQ_CUSTOM_LEVELS = "eq_custom_levels"
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
@@ -4514,7 +4789,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
         const val NETWORK_RECOVERY_RETRY_INTERVAL_MS = 4_000L
-        const val DEFAULT_EQ_PRESET_CYCLE_SIZE = 8
+        const val DEFAULT_EQ_BAND_MIN_LEVEL_MB = -1500
+        const val DEFAULT_EQ_BAND_MAX_LEVEL_MB = 1500
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2
@@ -4523,6 +4799,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val LYRICS_CACHE_MAX_TRACKS = 32
         const val HOME_LYRICS_CONTEXT_LINES = 2
         const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
+        val FALLBACK_EQ_BAND_FREQ_HZ = intArrayOf(60, 230, 910, 3600, 14000)
+        val FALLBACK_EQ_PRESET_NAMES = listOf(
+            "默认",
+            "古典",
+            "舞曲",
+            "平坦",
+            "民谣",
+            "重金属",
+            "嘻哈",
+            "爵士",
+            "流行",
+            "摇滚"
+        )
         @Volatile var downloadCacheClearedAtColdStart = false
     }
 }

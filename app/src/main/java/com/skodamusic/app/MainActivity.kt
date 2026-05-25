@@ -11,7 +11,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.format.Formatter
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -117,9 +122,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var homeRecommendPanel: View
     private lateinit var homeLyricsPanel: View
     private lateinit var homeRecommendList: LinearLayout
-    private lateinit var homeLyricsPrevText: TextView
-    private lateinit var homeLyricsCurrentText: TextView
-    private lateinit var homeLyricsNextText: TextView
+    private lateinit var homeLyricsScroll: ScrollView
+    private lateinit var homeLyricsText: TextView
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var eqEnableSwitch: SwitchCompat
@@ -326,9 +330,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         homeRecommendPanel = findViewById(R.id.home_recommend_panel)
         homeLyricsPanel = findViewById(R.id.home_lyrics_panel)
         homeRecommendList = findViewById(R.id.home_recommend_list)
-        homeLyricsPrevText = findViewById(R.id.home_lyrics_prev_text)
-        homeLyricsCurrentText = findViewById(R.id.home_lyrics_current_text)
-        homeLyricsNextText = findViewById(R.id.home_lyrics_next_text)
+        homeLyricsScroll = findViewById(R.id.home_lyrics_scroll)
+        homeLyricsText = findViewById(R.id.home_lyrics_text)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         eqEnableSwitch = findViewById(R.id.eq_enable_switch)
@@ -1293,43 +1296,97 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun renderHomeLyricsByPosition(positionMs: Long) {
         if (homeLyricsLines.isEmpty()) {
-            val fallback = getString(R.string.home_lyrics_placeholder)
-            homeLyricsPrevText.text = ""
-            homeLyricsCurrentText.text = fallback
-            homeLyricsNextText.text = ""
+            homeLyricsText.text = getString(R.string.home_lyrics_placeholder)
             return
         }
         val activeIndex = findActiveLyricIndex(positionMs)
-        val currentLine = homeLyricsLines.getOrNull(activeIndex)?.text
-            ?.takeIf { it.isNotBlank() }
-            ?: getString(R.string.home_lyrics_placeholder)
-        homeLyricsPrevText.text = buildLyricContextText(
-            startInclusive = (activeIndex - HOME_LYRICS_CONTEXT_LINES).coerceAtLeast(0),
-            endInclusive = activeIndex - 1
-        )
-        homeLyricsCurrentText.text = currentLine
-        homeLyricsNextText.text = buildLyricContextText(
-            startInclusive = activeIndex + 1,
-            endInclusive = (activeIndex + HOME_LYRICS_CONTEXT_LINES).coerceAtMost(homeLyricsLines.lastIndex)
+        val builder = SpannableStringBuilder()
+        var activeStartOffset = -1
+        var activeEndOffset = -1
+        homeLyricsLines.forEachIndexed { index, line ->
+            val start = builder.length
+            builder.append(line.text)
+            val end = builder.length
+            val isActive = index == activeIndex
+            if (isActive) {
+                activeStartOffset = start
+                activeEndOffset = end
+            }
+            builder.setSpan(
+                ForegroundColorSpan(resources.getColor(if (isActive) R.color.white else R.color.text_secondary)),
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            builder.setSpan(
+                AbsoluteSizeSpan(if (isActive) 20 else 19, true),
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            if (isActive) {
+                builder.setSpan(
+                    StyleSpan(android.graphics.Typeface.BOLD),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            if (index < homeLyricsLines.lastIndex) {
+                builder.append('\n')
+            }
+        }
+        homeLyricsText.text = builder
+        centerHomeLyricsLine(
+            activeStartOffset = activeStartOffset,
+            activeEndOffset = activeEndOffset
         )
     }
 
-    private fun buildLyricContextText(startInclusive: Int, endInclusive: Int): String {
-        if (startInclusive > endInclusive || startInclusive < 0 || endInclusive < 0) {
-            return ""
-        }
-        val builder = StringBuilder()
-        for (index in startInclusive..endInclusive) {
-            val text = homeLyricsLines.getOrNull(index)?.text?.trim().orEmpty()
-            if (text.isEmpty()) {
-                continue
+    private fun centerHomeLyricsLine(
+        activeStartOffset: Int,
+        activeEndOffset: Int
+    ) {
+        homeLyricsText.post {
+            val layout = homeLyricsText.layout ?: return@post
+            val viewportHeight = homeLyricsScroll.height
+            if (viewportHeight <= 0) {
+                return@post
             }
-            if (builder.isNotEmpty()) {
-                builder.append('\n')
+            if (activeStartOffset < 0 || activeEndOffset <= activeStartOffset) {
+                return@post
             }
-            builder.append(text)
+            val safeStart = activeStartOffset.coerceIn(0, layout.text.length)
+            val safeEndExclusive = activeEndOffset.coerceIn(safeStart + 1, layout.text.length)
+            val startLine = layout.getLineForOffset(safeStart)
+            val endLine = layout.getLineForOffset((safeEndExclusive - 1).coerceAtLeast(0))
+            val lyricTop = layout.getLineTop(startLine)
+            val lyricBottom = layout.getLineBottom(endLine)
+            val lineHeight = (lyricBottom - lyricTop)
+                .coerceAtLeast(dpToPx(20))
+            val dynamicVerticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
+            if (homeLyricsText.paddingTop != dynamicVerticalPadding || homeLyricsText.paddingBottom != dynamicVerticalPadding) {
+                homeLyricsText.setPadding(
+                    homeLyricsText.paddingLeft,
+                    dynamicVerticalPadding,
+                    homeLyricsText.paddingRight,
+                    dynamicVerticalPadding
+                )
+                homeLyricsText.post {
+                    centerHomeLyricsLine(
+                        activeStartOffset = activeStartOffset,
+                        activeEndOffset = activeEndOffset
+                    )
+                }
+                return@post
+            }
+
+            val lineCenter = homeLyricsText.paddingTop + (lyricTop + lyricBottom) / 2
+            val viewportCenter = viewportHeight / 2
+            val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
+            val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)
+            homeLyricsScroll.scrollTo(0, targetScroll)
         }
-        return builder.toString()
     }
 
     private fun findActiveLyricIndex(positionMs: Long): Int {
@@ -4797,7 +4854,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
-        const val HOME_LYRICS_CONTEXT_LINES = 2
         const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
         val FALLBACK_EQ_BAND_FREQ_HZ = intArrayOf(60, 230, 910, 3600, 14000)
         val FALLBACK_EQ_PRESET_NAMES = listOf(

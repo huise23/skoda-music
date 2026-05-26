@@ -4273,7 +4273,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 progress = (eqCustomBandLevels[index] - band.minLevelMillibel).coerceIn(0, span)
                 progressDrawable = resources.getDrawable(R.drawable.seekbar_glass_track)
                 thumb = resources.getDrawable(R.drawable.seekbar_glass_thumb)
-                splitTrack = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    splitTrack = false
+                }
                 setPadding(0, dpToPx(8), 0, 0)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {

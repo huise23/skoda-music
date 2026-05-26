@@ -26,8 +26,6 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -130,6 +128,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var eqEntryRow: View
     private lateinit var eqEntryValue: TextView
     private lateinit var eqNoteValue: TextView
+    private lateinit var eqPage: View
+    private lateinit var eqPageStateValue: TextView
+    private lateinit var eqBandsContainer: LinearLayout
+    private lateinit var eqPresetsContainer: LinearLayout
+    private lateinit var eqBackButton: ImageButton
     private lateinit var navHomeButton: ImageButton
     private lateinit var navQueueButton: ImageButton
     private lateinit var navLibraryButton: ImageButton
@@ -338,6 +341,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         eqEntryRow = findViewById(R.id.eq_entry_row)
         eqEntryValue = findViewById(R.id.eq_entry_value)
         eqNoteValue = findViewById(R.id.eq_note_value)
+        eqPage = findViewById(R.id.page_eq)
+        eqPageStateValue = findViewById(R.id.eq_page_state_value)
+        eqBandsContainer = findViewById(R.id.eq_bands_container)
+        eqPresetsContainer = findViewById(R.id.eq_presets_container)
+        eqBackButton = findViewById(R.id.btn_eq_back)
         navHomeButton = findViewById(R.id.nav_home)
         navQueueButton = findViewById(R.id.nav_queue)
         navLibraryButton = findViewById(R.id.nav_library)
@@ -674,7 +682,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         }
         eqEntryRow.setOnClickListener {
-            showEqualizerControlDialog()
+            switchPage(PAGE_EQ)
+        }
+        eqBackButton.setOnClickListener {
+            switchPage(PAGE_SETTINGS)
         }
 
         clearDownloadCacheButton.setOnClickListener {
@@ -814,19 +825,24 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         pageQueue.visibility = View.GONE
         pageLibrary.visibility = if (selectedPage == PAGE_LIBRARY) View.VISIBLE else View.GONE
         pageSettings.visibility = if (selectedPage == PAGE_SETTINGS) View.VISIBLE else View.GONE
+        eqPage.visibility = if (selectedPage == PAGE_EQ) View.VISIBLE else View.GONE
         updateNavigationVisualState()
         if (selectedPage == PAGE_LIBRARY) {
             ensureLibraryTracksLoaded("enter-library-page")
         } else if (selectedPage == PAGE_SETTINGS) {
             refreshEqualizerSettingsUi()
             refreshDownloadCacheInfoUi()
+        } else if (selectedPage == PAGE_EQ) {
+            refreshEqualizerSettingsUi()
+            renderEqualizerFullscreenPage()
         }
     }
 
     private fun updateNavigationVisualState() {
+        val onSettingsArea = selectedPage == PAGE_SETTINGS || selectedPage == PAGE_EQ
         setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME, android.R.drawable.ic_menu_view)
         setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY, android.R.drawable.ic_menu_agenda)
-        setNavButtonSelected(navSettingsButton, selectedPage == PAGE_SETTINGS, android.R.drawable.ic_menu_manage)
+        setNavButtonSelected(navSettingsButton, onSettingsArea, android.R.drawable.ic_menu_manage)
     }
 
     private fun setNavButtonSelected(button: ImageButton, selected: Boolean, iconRes: Int) {
@@ -4158,7 +4174,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::eqEnableSwitch.isInitialized) {
             return
         }
-        val presetNames = resolvePresetDisplayNames()
+        val capabilities = equalizerManager.capabilitiesSnapshot()
+        val presetNames = resolvePresetDisplayNames(capabilities.presetNames)
         val normalizedPreset = normalizePresetIndex(eqPresetIndex, presetNames.size)
         if (normalizedPreset != eqPresetIndex) {
             eqPresetIndex = normalizedPreset
@@ -4179,118 +4196,85 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         } else {
             getString(R.string.eq_entry_value_disabled)
         }
+        val isFallback = eqEnabled &&
+            lastObservedAudioSessionId > 0 &&
+            capabilities.presetNames.isEmpty() &&
+            capabilities.bands.isEmpty()
         eqNoteValue.text = getString(R.string.eq_note_fail_open)
+        eqNoteValue.visibility = if (isFallback) View.VISIBLE else View.GONE
         eqEntryRow.alpha = if (eqEnabled) 1f else 0.88f
+        if (selectedPage == PAGE_EQ) {
+            renderEqualizerFullscreenPage()
+        }
     }
 
-    private fun showEqualizerControlDialog() {
+    private fun renderEqualizerFullscreenPage() {
+        if (!this::eqBandsContainer.isInitialized || !this::eqPresetsContainer.isInitialized) {
+            return
+        }
         val capabilities = equalizerManager.capabilitiesSnapshot()
         val presetNames = resolvePresetDisplayNames(capabilities.presetNames)
         val bands = resolveBandInfos(capabilities.bands)
         ensureCustomBandLevelsSize(bands.size)
+        renderEqualizerBandRows(bands)
+        renderEqualizerPresetButtons(presetNames)
+        refreshEqualizerFullscreenHeader(presetNames)
+    }
 
-        val root = ScrollView(this).apply {
-            setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(2))
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(10))
-        }
-        root.addView(
-            content,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+    private fun renderEqualizerBandRows(bands: List<EqualizerManager.EqBandInfo>) {
+        eqBandsContainer.removeAllViews()
+        if (bands.isEmpty()) {
+            val empty = TextView(this).apply {
+                text = getString(R.string.eq_page_bands_empty)
+                setTextColor(resources.getColor(R.color.text_secondary))
+                textSize = 15f
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, dpToPx(12), 0, 0)
+            }
+            eqBandsContainer.addView(
+                empty,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
-        )
-
-        val status = TextView(this).apply {
-            text = if (eqEnabled) {
-                getString(R.string.eq_dialog_status_on)
-            } else {
-                getString(R.string.eq_dialog_status_off)
-            }
-            setTextColor(resources.getColor(R.color.text_secondary))
-            textSize = 15f
+            return
         }
-        content.addView(status)
-
-        val presetTitle = TextView(this).apply {
-            setPadding(0, dpToPx(10), 0, dpToPx(6))
-            text = getString(R.string.eq_dialog_preset_title)
-            setTextColor(resources.getColor(R.color.text_primary))
-            textSize = 17f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        content.addView(presetTitle)
-
-        val presetGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-        presetNames.forEachIndexed { index, name ->
-            val button = RadioButton(this).apply {
-                id = View.generateViewId()
-                text = name
-                tag = index
-                setTextColor(resources.getColor(R.color.text_primary))
-                textSize = 16f
-                setPadding(0, dpToPx(4), 0, dpToPx(4))
-                isChecked = (eqMode == EqualizerManager.EqMode.PRESET && index == eqPresetIndex)
-            }
-            presetGroup.addView(button)
-        }
-        presetGroup.setOnCheckedChangeListener { group, checkedId ->
-            if (checkedId == View.NO_ID) {
-                return@setOnCheckedChangeListener
-            }
-            val checked = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
-            val targetIndex = (checked.tag as? Int) ?: return@setOnCheckedChangeListener
-            applyPresetSelectionFromDialog(
-                presetIndex = targetIndex,
-                statusView = status
-            )
-        }
-        content.addView(presetGroup)
-
-        val sliderTitle = TextView(this).apply {
-            setPadding(0, dpToPx(12), 0, dpToPx(6))
-            text = getString(R.string.eq_dialog_slider_title)
-            setTextColor(resources.getColor(R.color.text_primary))
-            textSize = 17f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        content.addView(sliderTitle)
-
         bands.forEachIndexed { index, band ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, dpToPx(3), 0, dpToPx(8))
+                setBackgroundResource(R.drawable.field_surface)
+                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
             }
-            val headerRow = LinearLayout(this).apply {
+            val header = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            val freqLabel = TextView(this).apply {
+            val freq = TextView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 text = formatBandLabel(band.centerFreqHz)
-                setTextColor(resources.getColor(R.color.text_secondary))
+                setTextColor(resources.getColor(R.color.text_primary))
                 textSize = 15f
             }
-            val valueLabel = TextView(this).apply {
+            val level = TextView(this).apply {
                 text = formatBandLevelLabel(eqCustomBandLevels[index])
-                setTextColor(resources.getColor(R.color.text_secondary))
-                textSize = 14f
-                minWidth = dpToPx(62)
+                setTextColor(resources.getColor(R.color.brand_primary))
+                textSize = 13f
+                minWidth = dpToPx(68)
                 gravity = Gravity.END
             }
-            headerRow.addView(freqLabel)
-            headerRow.addView(valueLabel)
-            row.addView(headerRow)
+            header.addView(freq)
+            header.addView(level)
+            row.addView(header)
 
             val slider = SeekBar(this).apply {
                 val span = (band.maxLevelMillibel - band.minLevelMillibel).coerceAtLeast(1)
                 max = span
                 progress = (eqCustomBandLevels[index] - band.minLevelMillibel).coerceIn(0, span)
+                progressDrawable = resources.getDrawable(R.drawable.seekbar_glass_track)
+                thumb = resources.getDrawable(R.drawable.seekbar_glass_thumb)
+                splitTrack = false
+                setPadding(0, dpToPx(8), 0, 0)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                         if (!fromUser) {
@@ -4301,9 +4285,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             band.maxLevelMillibel
                         )
                         eqCustomBandLevels[index] = nextLevel
-                        valueLabel.text = formatBandLevelLabel(nextLevel)
-                        applyCustomBandSelectionFromDialog(status)
-                        presetGroup.clearCheck()
+                        level.text = formatBandLevelLabel(nextLevel)
+                        applyCustomBandSelectionFromEqPage()
                     }
 
                     override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
@@ -4311,44 +4294,133 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 })
             }
             row.addView(slider)
-            content.addView(row)
+            val rowParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                rowParams.topMargin = dpToPx(10)
+            }
+            eqBandsContainer.addView(row, rowParams)
         }
-
-        AlertDialog.Builder(this)
-            .setTitle(R.string.eq_dialog_title)
-            .setView(root)
-            .setPositiveButton(R.string.action_close, null)
-            .show()
     }
 
-    private fun applyPresetSelectionFromDialog(
-        presetIndex: Int,
-        statusView: TextView
-    ) {
+    private fun renderEqualizerPresetButtons(presetNames: List<String>) {
+        eqPresetsContainer.removeAllViews()
+        if (presetNames.isEmpty()) {
+            val empty = TextView(this).apply {
+                text = getString(R.string.eq_page_presets_empty)
+                setTextColor(resources.getColor(R.color.text_secondary))
+                textSize = 15f
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, dpToPx(12), 0, 0)
+            }
+            eqPresetsContainer.addView(
+                empty,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            return
+        }
+
+        var row: LinearLayout? = null
+        presetNames.forEachIndexed { index, name ->
+            if (index % 2 == 0) {
+                row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                eqPresetsContainer.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        if (index > 0) {
+                            topMargin = dpToPx(10)
+                        }
+                    }
+                )
+            }
+            val button = Button(this).apply {
+                text = name
+                isAllCaps = false
+                textSize = 16f
+                minHeight = dpToPx(48)
+                setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+                val active = eqMode == EqualizerManager.EqMode.PRESET && eqPresetIndex == index && eqEnabled
+                setBackgroundResource(if (active) R.drawable.button_eq_preset_active else R.drawable.button_eq_preset_inactive)
+                setTextColor(resources.getColor(if (active) R.color.white else R.color.text_primary))
+                setOnClickListener {
+                    applyPresetSelectionFromEqPage(index)
+                }
+            }
+            row?.addView(
+                button,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (index % 2 == 1) {
+                        leftMargin = dpToPx(10)
+                    }
+                }
+            )
+        }
+    }
+
+    private fun refreshEqualizerFullscreenHeader(presetNames: List<String>) {
+        if (!this::eqPageStateValue.isInitialized) {
+            return
+        }
+        val capabilities = equalizerManager.capabilitiesSnapshot()
+        val fallback = eqEnabled &&
+            lastObservedAudioSessionId > 0 &&
+            capabilities.presetNames.isEmpty() &&
+            capabilities.bands.isEmpty()
+        if (fallback) {
+            eqPageStateValue.text = getString(R.string.eq_page_state_fallback)
+            eqPageStateValue.setTextColor(resources.getColor(R.color.brand_primary))
+            return
+        }
+        val modeLabelRes = if (eqMode == EqualizerManager.EqMode.CUSTOM) {
+            R.string.eq_mode_custom
+        } else {
+            R.string.eq_mode_preset
+        }
+        val presetName = presetNames.getOrNull(eqPresetIndex) ?: getString(R.string.eq_preset_default_name)
+        if (eqEnabled) {
+            eqPageStateValue.text = getString(R.string.eq_page_state_on_format, presetName, getString(modeLabelRes))
+            eqPageStateValue.setTextColor(resources.getColor(R.color.text_primary))
+        } else {
+            eqPageStateValue.text = getString(R.string.eq_page_state_off)
+            eqPageStateValue.setTextColor(resources.getColor(R.color.text_secondary))
+        }
+    }
+
+    private fun applyPresetSelectionFromEqPage(presetIndex: Int) {
         eqPresetIndex = presetIndex.coerceAtLeast(0)
         eqMode = EqualizerManager.EqMode.PRESET
         if (!eqEnabled) {
             eqEnabled = true
         }
         persistEqualizerConfig()
-        applyEqualizerConfig("eq_dialog_preset")
+        applyEqualizerConfig("eq_page_preset")
         refreshEqualizerSettingsUi()
-        statusView.text = getString(R.string.eq_dialog_status_on)
+        renderEqualizerFullscreenPage()
         updateState {
             it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, resolveActivePresetName()))
         }
         showToast(R.string.toast_eq_enabled)
     }
 
-    private fun applyCustomBandSelectionFromDialog(statusView: TextView) {
+    private fun applyCustomBandSelectionFromEqPage() {
         eqMode = EqualizerManager.EqMode.CUSTOM
         if (!eqEnabled) {
             eqEnabled = true
         }
         persistEqualizerConfig()
-        applyEqualizerConfig("eq_dialog_custom")
+        applyEqualizerConfig("eq_page_custom")
         refreshEqualizerSettingsUi()
-        statusView.text = getString(R.string.eq_dialog_status_on)
+        renderEqualizerFullscreenPage()
         updateState {
             it.copy(feedbackText = getString(R.string.feedback_eq_custom_applied))
         }
@@ -4752,6 +4824,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     override fun onBackPressed() {
+        if (selectedPage == PAGE_EQ) {
+            switchPage(PAGE_SETTINGS)
+            return
+        }
         if (selectedPage != PAGE_HOME) {
             switchPage(PAGE_HOME)
             updateState { it.copy(feedbackText = "动作反馈：已返回首页") }
@@ -4851,6 +4927,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2
+        const val PAGE_EQ = 3
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32

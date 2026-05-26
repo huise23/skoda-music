@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-25
+Last Updated: 2026-05-26
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@9d771f0`
+- 当前主干: `master@5dfe1dc`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -25,9 +25,41 @@ Last Updated: 2026-05-25
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 并行焦点：EQ 界面规划已完成，当前切到 `M-S4-AUDIO-012` 执行 UI 实现链（`065~068`）。
+- 并行焦点：EQ 全屏子页重做已完成本地闭环，当前转入 API17 实机观察点留证。
 
-## Planning Refresh (EQ UI, 2026-05-25)
+## Module Execution Progress (EQ Full-screen, 2026-05-26)
+- `M-S4-AUDIO-012` 本地执行链完成（`T-S4-AUDIO-065~068`）：
+  - EQ 页面改为全屏横屏子页。
+  - 左侧按设备能力动态生成 bands 滑杆。
+  - 右侧 preset 按钮网格可直接切换，保留“自动开启 + 外部开关同步”。
+  - 玻璃态视觉保留并重做层级；常驻 fail-open 提示已移除，仅在回退/降级触发提示。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-26）。
+- 当前边界：
+  - API17 实机观察点与证据回填仍依赖外部窗口（`T-S4-REG-022` / `T-S4-VAL-033`）。
+
+## Module Execution Progress (EQ Visual Polish V2, 2026-05-26)
+- 在 `M-S4-AUDIO-012` 范围内完成一轮页面质感收口（不改音频链路）：
+  - EQ 子页左右分区改为差异化玻璃面板，页头状态改为胶囊徽标。
+  - 左侧 bands 行改为卡片化展示，并统一玻璃滑杆轨道/拇指样式。
+  - 右侧 preset 按钮改为“激活/未激活”两套视觉态，提升可读性与触控辨识。
+  - 状态文案颜色分层：开启/关闭/回退三态区分。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 再次通过（2026-05-26）。
+
+## Planning Refresh (EQ Full-screen Redesign, 2026-05-26)
+- 用户已确认：
+  - EQ 改为全屏横屏子页。
+  - 左侧动态 bands 滑杆，右侧 preset 按钮网格。
+  - 继续保留自动开启 + 外部开关同步开启。
+  - 保留玻璃态风格，但重新调整颜色配比与文字层级。
+  - fail-open 提示不常驻，仅在回退/降级时显示。
+- 当前执行模块：
+  - `M-S4-AUDIO-012`（EQ 全屏子页重做与验证）
+- 当前 Ready：
+  - `T-S4-AUDIO-065`：EQ 全屏子页骨架与横屏布局重构
+
+## Historical Planning Refresh (EQ UI, 2026-05-25)
 - 用户确认“EQ 已验证可用”，本轮切换为“先规划界面，不直接实现”。
 - 新增模块 `M-S4-AUDIO-011`（EQ 界面规划与任务化）：
   - `T-S4-AUDIO-061` 入口/信息架构

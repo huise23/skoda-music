@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-05-25
+Last Updated: 2026-05-26
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@9d771f0`
+- 当前主干: `master@5dfe1dc`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -17,6 +17,7 @@ Last Updated: 2026-05-25
 - 命令执行策略固定为“失败即失败”：不记录待执行命令，不做延迟重放/重试。
 - 新增需求：每次冷启动自动检测更新；设置页支持手动检测更新；下载增加 GitHub 镜像加速。
 - 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
+- EQ 页面改为全屏横屏子页：左侧动态 bands 滑杆，右侧 preset 按钮网格；保留玻璃态风格，fail-open 提示只在回退/降级时显示。
 
 ## Technical Strategy (Confirmed)
 - 采用 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`。
@@ -24,12 +25,32 @@ Last Updated: 2026-05-25
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-AUDIO-065`：EQ 卡片视觉分组与状态行重排（布局实现）。
-2. `T-S4-AUDIO-066`：EQ 状态模型接线与 UI 渲染。
-3. `T-S4-AUDIO-067/068`：文案反馈收口 + 回归与实机观察点补齐。
-4. 旧主线任务（`OBS/UPD/REG`）保持 Deferred/Blocked，不混入当前子阶段主线。
+1. `T-S4-REG-022`：API17 实机回归（含 EQ 全屏子页观察点）。
+2. `T-S4-VAL-033`：实机证据回填与阶段状态更新。
+3. `T-S4-CARRY-056`：旧阶段外部任务状态迁移与边界标注。
 
-## Latest Delta (EQ UI Planning, 2026-05-25)
+## Latest Delta (EQ Full-screen Redesign, 2026-05-26)
+- 用户确认 EQ 子页重做方向：
+  - 全屏横屏子页。
+  - 左侧动态 bands 滑杆。
+  - 右侧 preset 按钮网格。
+  - 保持玻璃态风格，但重做颜色配比和文字层级。
+  - fail-open 提示不常驻，仅回退/降级时显示。
+- 本轮执行结果：
+  - `T-S4-AUDIO-065~068` 已完成本地闭环。
+  - 本地编译通过：`gradle :app:compileDebugKotlin --no-daemon`。
+  - 下一步转入 API17 实机观察点与证据回填。
+
+## Latest Delta (EQ Visual Polish V2, 2026-05-26)
+- 在既有全屏 EQ 子页上完成视觉二次收口（不改音频能力层）：
+  - 新增左右分区玻璃面板与页头状态徽标。
+  - 左侧动态 bands 行改为卡片化，滑杆统一使用玻璃轨道/拇指样式。
+  - 右侧 preset 按钮增加激活/未激活双态视觉，提升横屏触控辨识度。
+  - 开启/关闭/回退状态文案按颜色分层展示。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-26）。
+
+## Historical Delta (EQ UI Planning, 2026-05-25)
 - 已完成 `M-S4-AUDIO-011`（`T-S4-AUDIO-061~064`）：
   - 新增 `docs/API17_EQUALIZER_UI_PLAN.md`（IA、状态矩阵、低保真线框、实现任务化）。
   - 规划链路已收口，`061~064` 全部转 Done。

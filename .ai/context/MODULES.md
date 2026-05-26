@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-05-25
+Last Updated: 2026-05-26
 
 ## M-S4-LRC-008
 - Module ID: `M-S4-LRC-008`
@@ -137,17 +137,20 @@ Last Updated: 2026-05-25
 
 ## M-S4-AUDIO-012
 - Module ID: `M-S4-AUDIO-012`
-- Name: EQ 界面实现与验证
-- Goal: 将 `API17_EQUALIZER_UI_PLAN` 的规划产物落地为可运行 UI，并完成本地/实机观察点验证。
-- Why It Matters: 规划已完成，下一步需要把 fail-open 可见性和交互一致性真正落在界面实现上。
+- Name: EQ 全屏子页重做与验证
+- Goal: 将现有 EQ 界面重做为适配 1024x600 横屏的全屏子页，并完成本地验证。
+- Why It Matters: 当前 EQ UI 虽然能用，但文字、结构和触控体验都不够车机化，容易让用户误判为“音效能力不稳定”。
 - In Scope:
-  - EQ 卡片布局重排与视觉分组。
-  - EQ 状态模型在 UI 上的渲染（off/pending/active/no-presets/fused）。
-  - 文案与交互反馈统一。
-  - 本地回归与 API17 实机观察点补齐。
+  - 全屏横屏子页布局重构。
+  - 左侧动态 bands 滑杆区。
+  - 右侧动态 preset 按钮区。
+  - 自动开启 EQ + 外部开关同步开启。
+  - 玻璃态风格保留但重新调整颜色配比与字号层级。
+  - fail-open 仅在回退/降级时显式提示。
 - Out of Scope:
   - `BassBoost/Virtualizer` 实装与联动。
-  - 自定义 band 曲线编辑器。
+  - 自定义曲线编辑器、导入导出、复杂 preset 管理。
+  - 播放主链路重构。
 - Dependencies:
   - `M-S4-AUDIO-011`（已完成）
 - Related Files / Areas:
@@ -155,9 +158,10 @@ Last Updated: 2026-05-25
   - `app/src/main/res/values/strings.xml`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
   - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
-  - `docs/API17_EQUALIZER_UI_PLAN.md`
 - Milestone / Done Criteria:
-  - EQ UI 能明确表达 fail-open 降级状态且不误导用户。
+  - EQ 页面在 1024x600 横屏下无明显拥挤或遮挡。
+  - 预设、滑杆、开关联动正确，且不影响播放主链路。
+  - 颜色与文字层级恢复可读性。
   - `T-S4-AUDIO-065~068` 完成并形成可复盘验证记录。
 - Related Tasks:
   - `T-S4-AUDIO-065`
@@ -165,7 +169,25 @@ Last Updated: 2026-05-25
   - `T-S4-AUDIO-067`
   - `T-S4-AUDIO-068`
 - Priority: P0
-- Status: Ready
+- Status: Done（本地收口，待实机观察点）
 - Risks:
-  - 设备差异导致部分状态复现频率低，需补实机证据。
+  - 预设数量与 bands 数在不同 ROM 上不一致，必须动态布局。
+  - 右侧按钮区和左侧滑杆区若间距控制不好，会挤压触控面积。
 - Suitable For Module Execution?: Yes
+- Progress Update (2026-05-26):
+  - `T-S4-AUDIO-065~068` 已完成本地闭环：
+    - 设置页保留开关+入口，新增 EQ 全屏横屏子页。
+    - 左侧按设备能力动态生成 bands 滑杆。
+    - 右侧预设按钮网格支持直接切换，并保持“自动开启 + 外部开关同步”。
+    - 常驻 fail-open 提示已移除，仅在回退/降级条件触发时显示。
+  - 本地验证：
+    - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-26）。
+  - 后续：
+    - API17 实机观察点留证进入外部窗口任务链。
+- Progress Update (2026-05-26, V2 Visual Polish):
+  - 在不改动音频链路与 fail-open 策略前提下，补充页面质感收口：
+    - 左右分区玻璃面板与页头状态徽标。
+    - bands 行卡片化 + 玻璃滑杆样式统一。
+    - preset 按钮激活/未激活视觉分层。
+  - 本地验证：
+    - `gradle :app:compileDebugKotlin --no-daemon` 再次通过。

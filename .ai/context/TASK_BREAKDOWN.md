@@ -304,82 +304,82 @@ Last Updated: 2026-05-25
 
 ## T-S4-AUDIO-065
 - Task ID: `T-S4-AUDIO-065`
-- Title: EQ 卡片视觉分组与状态行重排（布局实现）
+- Title: EQ 全屏子页骨架与横屏布局重构
 - Module ID: `M-S4-AUDIO-012`
-- Goal: 按 `docs/API17_EQUALIZER_UI_PLAN.md` 的 IA 方案重排设置页 EQ 卡片结构。
-- Why: 不先收口布局层，后续状态渲染与文案很难稳定落位。
+- Goal: 把 EQ 从设置页内的小块入口，改成全屏横屏子页骨架。
+- Why: 先把页面结构立住，后面的动态 bands / preset 才有稳定承载面。
 - Dependencies: `T-S4-AUDIO-064`
 - Inputs:
-  - `docs/API17_EQUALIZER_UI_PLAN.md`
   - `app/src/main/res/layout/activity_main.xml`
+  - `.ai/context/SCOPE.md`
 - Expected Outputs:
-  - EQ 卡片层级重排（开关/状态/预设/说明）与触控可读性优化。
+  - 全屏子页骨架、返回路径、基础标题/分区。
 - Done Criteria:
-  - 1024x600 下可读且不与设置页其他块冲突。
+  - 1024x600 横屏下无明显裁切，主操作区可直接触达。
 - Risks:
-  - 设置页信息密度高，若间距不足会影响触控命中。
+  - 全屏后若返回路径不清晰，用户可能误以为“进了新页面但退不回去”。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
 
 ## T-S4-AUDIO-066
 - Task ID: `T-S4-AUDIO-066`
-- Title: EQ 状态模型接线与 UI 渲染
+- Title: 左侧动态 bands 滑杆区接线
 - Module ID: `M-S4-AUDIO-012`
-- Goal: 让 UI 可区分 `off/pending/active/no-presets/fused` 状态并稳定渲染。
-- Why: fail-open 若不可见，用户无法判断“播放正常但 EQ 降级”。
+- Goal: 根据设备能力动态生成左侧 bands 滑杆，并完成数值/当前值渲染。
+- Why: 左侧滑杆是 EQ 的主操作区，必须按 ROM 能力动态适配，而不是写死。
 - Dependencies: `T-S4-AUDIO-065`
 - Inputs:
   - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `docs/API17_EQUALIZER_UI_PLAN.md` 状态矩阵
+  - `app/src/main/res/layout/activity_main.xml`
 - Expected Outputs:
-  - 状态渲染逻辑与控件 enable/disable 策略一致化。
+  - 动态 bands 生成、滑杆范围、当前值标签、选中态渲染。
 - Done Criteria:
-  - UI 状态与日志主路径一致，不出现误导可操作状态。
+  - 设备 bands 数变化时不崩、不空白、不错位。
 - Risks:
-  - 需要最小状态透出机制，避免仅靠日志字符串推断。
+  - bands 数量变化可能导致布局高度变化，需要确保不挤压右侧区域。
 - Size: M
 - Suitable For Micro Execution?: No
 - Suitable For Module Execution?: Yes
 
 ## T-S4-AUDIO-067
 - Task ID: `T-S4-AUDIO-067`
-- Title: EQ 文案与交互反馈收口
+- Title: 右侧 preset 按钮区与联动行为收口
 - Module ID: `M-S4-AUDIO-012`
-- Goal: 收口 EQ 状态文案、toast 与动作反馈，统一 fail-open 语义。
-- Why: 文案不一致会被误解为播放故障。
+- Goal: 让 preset 按钮可直接切换并自动开启 EQ，同时同步外部开关状态。
+- Why: 右侧按钮是快速入口，必须和左侧滑杆、顶部开关保持一致语义。
 - Dependencies: `T-S4-AUDIO-066`
 - Inputs:
   - `app/src/main/res/values/strings.xml`
-  - `docs/API17_EQUALIZER_UI_PLAN.md`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Expected Outputs:
-  - 状态文案、降级文案、按钮可达性文案一致。
+  - preset 按钮区、自动开启、外部开关同步、回退提示。
 - Done Criteria:
-  - 能用单一文案口径解释所有 EQ 状态。
+  - 预设切换后，页面和设置页开关状态一致。
 - Risks:
-  - 文案过长影响 1024x600 可读性。
+  - preset 按钮太多时可能挤压右栏，需考虑两列网格或滚动承载。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes
 
 ## T-S4-AUDIO-068
 - Task ID: `T-S4-AUDIO-068`
-- Title: EQ UI 回归与 API17 观察点补齐
+- Title: EQ 颜色样式收口与回归验证
 - Module ID: `M-S4-AUDIO-012`
-- Goal: 完成本地回归并补充 API17 实机观察点，闭环 UI 实现阶段。
-- Why: 界面改造也需验证 fail-open 不干扰播放主链路。
+- Goal: 收口玻璃态颜色、字号、对比度，并补齐本地/实机验证入口。
+- Why: 当前问题不只是结构，观感本身也需要一次性收口。
 - Dependencies: `T-S4-AUDIO-067`
 - Inputs:
   - 新版 EQ UI
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
 - Expected Outputs:
-  - 本地 PASS/FAIL 与风险说明
-  - API17 观察点增量（重点降级态可见性）
+  - 颜色、字号、按键/滑杆对比度调整完成
+  - 本地 PASS/FAIL 与 API17 观察点补齐
 - Done Criteria:
-  - 可回答“UI 层是否正确表达 fail-open 且不误导用户”。
+  - 1024x600 下可读、可点、可看，不再“灰成一片”。
 - Risks:
-  - 部分状态在本地难稳定复现，需实机补证。
+  - 如果色板过浅或过花，会直接破坏车机可读性。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes

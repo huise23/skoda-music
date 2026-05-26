@@ -81,6 +81,15 @@
     <string name="eq_dialog_status_off">状态：关闭（选预设或滑杆会自动开启）</string>
     <string name="eq_dialog_preset_title">预设模式</string>
     <string name="eq_dialog_slider_title">滑杆（自定义）</string>
+    <string name="eq_page_title">均衡器</string>
+    <string name="eq_page_back">返回设置</string>
+    <string name="eq_page_bands_title">频段调节</string>
+    <string name="eq_page_presets_title">预设</string>
+    <string name="eq_page_state_off">状态：关闭</string>
+    <string name="eq_page_state_on_format">%1$s · %2$s</string>
+    <string name="eq_page_state_fallback">状态：已回退（不影响播放）</string>
+    <string name="eq_page_bands_empty">当前设备未返回频段信息</string>
+    <string name="eq_page_presets_empty">当前设备未返回预设</string>
     <string name="eq_preset_default_name">默认</string>
     <string name="eq_preset_fallback_format">预设 %1$d</string>
     <string name="eq_preset_classical">古典</string>

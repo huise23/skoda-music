@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4)
 
-Last Updated: 2026-05-22  
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060`
+Last Updated: 2026-05-27  
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -99,6 +99,13 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060`
   - `eq init ok` / `eq init fail`
   - `eq apply preset`（或 `no-presets` 降级日志）
   - `eq release`
+- [ ] I7 启动后默认“系统均衡器优先 + 应用EQ关闭”，播放不中断。
+- [ ] I8 播放 session 建立后可见系统 EQ 会话日志：
+  - `system-eq open session=<id>`
+  - 释放/切换时 `system-eq close session=<id>`
+- [ ] I9 系统 EQ 不可用时有明确提示：
+  - toast：`系统均衡器不可用，可手动开启应用 EQ`
+  - 并且用户可手动打开应用 EQ 兜底，不影响播放。
 
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 

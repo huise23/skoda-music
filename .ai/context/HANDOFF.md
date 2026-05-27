@@ -1,6 +1,6 @@
 # HANDOFF
 
-Last Updated: 2026-05-26
+Last Updated: 2026-05-27
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
@@ -18,6 +18,7 @@ Last Updated: 2026-05-26
 - 新增需求：每次冷启动自动检测更新；设置页支持手动检测更新；下载增加 GitHub 镜像加速。
 - 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
 - EQ 页面改为全屏横屏子页：左侧动态 bands 滑杆，右侧 preset 按钮网格；保留玻璃态风格，fail-open 提示只在回退/降级时显示。
+- EQ 需求已更新：优先系统 EQ 继承接线（Option B），应用内 EQ 默认不自动介入但保留手动兜底。
 
 ## Technical Strategy (Confirmed)
 - 采用 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`。
@@ -25,9 +26,10 @@ Last Updated: 2026-05-26
 - 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
 
 ## Execution Entry
-1. `T-S4-REG-022`：API17 实机回归（含 EQ 全屏子页观察点）。
-2. `T-S4-VAL-033`：实机证据回填与阶段状态更新。
-3. `T-S4-CARRY-056`：旧阶段外部任务状态迁移与边界标注。
+1. `T-S4-AUDIO-069`：系统 EQ 会话接线实现（open/close）。
+2. `T-S4-AUDIO-070`：启动默认系统优先 + 手动应用 EQ 兜底联动。
+3. `T-S4-AUDIO-071`：系统不可用 toast 与反馈文案收口（设置页结构不变）。
+4. `T-S4-AUDIO-072`：本地回归 + API17 观察点补齐，再转 `T-S4-REG-022/VAL-033` 留证链。
 
 ## Latest Delta (EQ Full-screen Redesign, 2026-05-26)
 - 用户确认 EQ 子页重做方向：
@@ -49,6 +51,33 @@ Last Updated: 2026-05-26
   - 开启/关闭/回退状态文案按颜色分层展示。
 - 本地验证：
   - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-26）。
+
+## Latest Delta (Requirement Refresh, 2026-05-27)
+- 用户确认“仅关闭应用 EQ 不等于系统 EQ 接管”。
+- 新需求口径已收敛（Option B）：
+  - 先尝试系统 EQ 接线；
+  - 系统不可用时 toast 提示；
+  - 允许手动开启应用内 EQ；
+  - 设置页暂不重构，先不改入口信息架构。
+- 已更新 `.ai/context/SCOPE.md`，等待 planning 产出任务拆分。
+
+## Latest Delta (Planning Refresh, 2026-05-27)
+- 已完成 `ai-planning` 回写：
+  - `PLAN` 切换到“系统 EQ 继承接线”阶段。
+  - 新增模块 `M-S4-AUDIO-013`。
+  - 新增任务链 `T-S4-AUDIO-069~072` 并将 `069` 设为 Ready。
+- 当前执行建议：下一轮直接用 `ai-execution` 进入 Module Mode 执行 `M-S4-AUDIO-013`。
+
+## Latest Delta (Execution Refresh, 2026-05-27)
+- `M-S4-AUDIO-013` 已完成本地闭环（`T-S4-AUDIO-069~072`）：
+  - 系统 EQ 会话 open/close 接线已落地。
+  - 启动默认系统优先；系统不可用时提示并允许手动应用 EQ 兜底。
+  - 设置页结构保持不变，文案与反馈链路已收口。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已新增 I7~I9 观察项。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-27）。
+- 下一步入口：
+  - `T-S4-REG-022` -> `T-S4-VAL-033`（API17 实机留证）。
 
 ## Historical Delta (EQ UI Planning, 2026-05-25)
 - 已完成 `M-S4-AUDIO-011`（`T-S4-AUDIO-061~064`）：

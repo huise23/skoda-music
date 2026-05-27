@@ -1,6 +1,6 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-26
+Last Updated: 2026-05-27
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
@@ -25,7 +25,35 @@ Last Updated: 2026-05-26
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 并行焦点：EQ 全屏子页重做已完成本地闭环，当前转入 API17 实机观察点留证。
+- 并行焦点：EQ 目标从“应用内 UI 重做”切换为“系统 EQ 继承接线”。
+
+## Requirement Refresh (System EQ Inherit, 2026-05-27)
+- 用户确认新口径（Option B）：
+  - 仅关闭应用 EQ 不等于系统 EQ 已接管，需要补系统接线验证。
+  - 系统不可用时：toast 提示，并允许手动开启应用内 EQ。
+  - 设置页暂不改信息架构；启动时先关闭应用 EQ 并尝试系统 EQ。
+- 状态:
+  - `Pending Confirmation -> Done`（需求确认完成，待进入 planning 拆任务）。
+
+## Planning Refresh (System EQ Inherit, 2026-05-27)
+- 已按新 scope 完成规划重排：
+  - 新增模块 `M-S4-AUDIO-013`（系统 EQ 继承接线与手动兜底）。
+  - 新任务链：`T-S4-AUDIO-069 -> 070 -> 071 -> 072`。
+  - Ready 入口切换为 `T-S4-AUDIO-069`（系统 EQ 会话接线）。
+- 当前状态：
+  - `Done`: 需求确认 + planning 回写。
+  - `Planned`: 系统 EQ 接线实现与回归验证。
+
+## Module Execution Progress (System EQ Inherit, 2026-05-27)
+- 已按 `M-S4-AUDIO-013` 完成本地执行链（`T-S4-AUDIO-069~072`）：
+  - 系统 EQ 会话 open/close 已接线（基于 `audioSessionId` 生命周期）。
+  - 启动默认“系统优先 + 应用 EQ 关闭”已落地。
+  - 系统不可用时 toast + 反馈文案已收口，并保留手动开启应用 EQ 兜底。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补 I7~I9 观察项。
+- 本地验证：
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-27）。
+- 当前边界：
+  - 是否真实由系统音效接管仍需 API17 实机留证确认（`T-S4-REG-022` / `T-S4-VAL-033`）。
 
 ## Module Execution Progress (EQ Full-screen, 2026-05-26)
 - `M-S4-AUDIO-012` 本地执行链完成（`T-S4-AUDIO-065~068`）：

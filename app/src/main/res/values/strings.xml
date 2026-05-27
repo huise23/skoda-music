@@ -72,6 +72,9 @@
     <string name="label_equalizer">音效（Equalizer MVP）</string>
     <string name="eq_enable_label">均衡器</string>
     <string name="eq_entry_value_disabled">关闭（点击进入 EQ 子页）</string>
+    <string name="eq_entry_value_system_follow">优先系统均衡器（可手动开启应用 EQ）</string>
+    <string name="eq_entry_value_system_unavailable">系统均衡器不可用（可手动开启应用 EQ）</string>
+    <string name="eq_entry_value_app_eq_fallback">应用 EQ 已开启（手动兜底）</string>
     <string name="eq_entry_value_enabled_format">%1$s · %2$s</string>
     <string name="eq_mode_preset">预设</string>
     <string name="eq_mode_custom">自定义</string>
@@ -88,6 +91,8 @@
     <string name="eq_page_state_off">状态：关闭</string>
     <string name="eq_page_state_on_format">%1$s · %2$s</string>
     <string name="eq_page_state_fallback">状态：已回退（不影响播放）</string>
+    <string name="eq_page_state_system_follow">状态：系统均衡器优先</string>
+    <string name="eq_page_state_system_unavailable">状态：系统均衡器不可用（可手动兜底）</string>
     <string name="eq_page_bands_empty">当前设备未返回频段信息</string>
     <string name="eq_page_presets_empty">当前设备未返回预设</string>
     <string name="eq_preset_default_name">默认</string>
@@ -103,10 +108,16 @@
     <string name="eq_preset_rock">摇滚</string>
     <string name="feedback_eq_enabled">动作反馈：均衡器已开启</string>
     <string name="feedback_eq_disabled">动作反馈：均衡器已关闭</string>
+    <string name="feedback_eq_system_follow">动作反馈：当前优先系统均衡器，可手动开启应用 EQ</string>
+    <string name="feedback_eq_app_fallback_enabled">动作反馈：系统均衡器不可用，已启用应用 EQ 兜底</string>
+    <string name="feedback_eq_system_unavailable_use_app_eq">动作反馈：系统均衡器不可用，可手动开启应用 EQ</string>
     <string name="feedback_eq_preset_changed">动作反馈：均衡器预设已切换到 %1$s</string>
     <string name="feedback_eq_custom_applied">动作反馈：均衡器自定义滑杆已应用</string>
     <string name="toast_eq_enabled">均衡器已开启</string>
     <string name="toast_eq_disabled">均衡器已关闭</string>
+    <string name="toast_eq_system_follow">当前优先系统均衡器</string>
+    <string name="toast_eq_app_fallback_enabled">已启用应用 EQ 兜底</string>
+    <string name="toast_eq_system_unavailable_use_app_eq">系统均衡器不可用，可手动开启应用 EQ</string>
     <string name="feedback_play_now_queue">动作反馈：从首页队列立即播放</string>
     <string name="feedback_play_now_library">动作反馈：从媒体库立即播放</string>
     <string name="feedback_queue_recommend_missing_session">动作反馈：Emby 会话不可用，请先测试 Emby</string>

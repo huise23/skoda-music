@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-05-26
+Last Updated: 2026-05-27
 
 ## Queue Usage (白话说明)
 - `Ready`: 当前就能做，且在本阶段 scope 内。
@@ -10,7 +10,7 @@ Last Updated: 2026-05-26
 - `Deferred`: 暂不优先推进，避免范围扩张。
 
 ## Ready
-- [ ] `T-S4-CARRY-056` 旧阶段外部任务状态迁移与边界标注
+- [ ] `T-S4-CARRY-056` 旧阶段外部任务状态迁移与边界标注 `[Module: M-S4-CARRY-010 | Mode: Single | P2]`
 
 ## In Progress
 - [ ] （空）
@@ -47,14 +47,18 @@ Last Updated: 2026-05-26
 - [x] `T-S4-AUDIO-066` 左侧动态 bands 滑杆区接线
 - [x] `T-S4-AUDIO-067` 右侧 preset 按钮区与联动行为收口
 - [x] `T-S4-AUDIO-068` EQ 颜色样式收口与回归验证（本地）
+- [x] `T-S4-AUDIO-069` 系统 EQ 会话接线实现（open/close）
+- [x] `T-S4-AUDIO-070` 启动默认系统优先策略与手动应用 EQ 兜底联动
+- [x] `T-S4-AUDIO-071` 系统不可用 toast 与反馈文案收口（设置页结构不变）
+- [x] `T-S4-AUDIO-072` 系统 EQ 接线本地回归与 API17 观察点补齐
 - [x] `T-S4-LRC-050` 歌词三段容器口径收敛（以三段容器实现口径固化）
 - [x] `T-S4-LRC-051` Home 歌词面板三段容器布局改造
 - [x] `T-S4-LRC-052` 歌词渲染逻辑改造（上文/当前/下文分发）
 - [x] `T-S4-LRC-053` 歌词改造本地回归与文档回写
 
 ## Queue Notes
-- 本阶段主线已从“EQ 卡片实现”切到“EQ 全屏子页重做”，先做骨架，再做动态控件与样式收口。
-- EQ 全屏子页已完成 V2 视觉收口（滑杆/预设按钮/状态徽标），代码侧无新增功能范围扩张。
+- 本阶段主线已切到“系统 EQ 继承接线（Option B）”：系统优先，手动应用 EQ 兜底。
+- 当前代码现实：系统 EQ 会话 open/close 已接线，启动默认系统优先；系统不可用时提示并允许手动开启应用 EQ 兜底。
 - 技术红线保持不变：`minSdk=17`、Emby-only、IPv4-only、download-only 主链路。
-- `audiofx` 在 API17 ROM 上按 fail-open 处理：EQ 失败不影响播放。
-- `T-S4-AUDIO-068` 已完成本地验证；API17 实机观察点与证据回填转入外部窗口任务链（`T-S4-REG-022` / `T-S4-VAL-033`）。
+- `audiofx` / 系统音效在 API17 ROM 上按 fail-open 处理：音效失败不影响播放。
+- 系统 EQ 接线本地验证已完成；下一步转入外部窗口任务链（`T-S4-REG-022` / `T-S4-VAL-033`）补齐实机证据。

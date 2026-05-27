@@ -1,6 +1,6 @@
 # MODULES
 
-Last Updated: 2026-05-26
+Last Updated: 2026-05-27
 
 ## M-S4-LRC-008
 - Module ID: `M-S4-LRC-008`
@@ -191,3 +191,52 @@ Last Updated: 2026-05-26
     - preset 按钮激活/未激活视觉分层。
   - 本地验证：
     - `gradle :app:compileDebugKotlin --no-daemon` 再次通过。
+
+## M-S4-AUDIO-013
+- Module ID: `M-S4-AUDIO-013`
+- Name: 系统 EQ 继承接线与手动兜底
+- Goal: 优先尝试系统自带音效接管，系统不可用时提示并允许手动开启应用 EQ。
+- Why It Matters: “仅关闭应用EQ”不能证明系统接管成立，需要真实的系统会话接线闭环。
+- In Scope:
+  - 系统音效会话 open/close 接线（基于播放 audioSessionId 生命周期）。
+  - 启动默认策略：先关闭应用内 EQ，优先系统接管。
+  - 系统不可用提示（toast）与用户反馈文案。
+  - 保留手动开启应用 EQ 的兜底路径（不删现有应用 EQ 代码）。
+- Out of Scope:
+  - 设置页入口/信息架构改版。
+  - EQ 全屏页面视觉重做与交互重构。
+  - BassBoost/Virtualizer 等附加音效能力。
+- Dependencies:
+  - `M-S4-AUDIO-009`（已有 session 能力透传与 fail-open 基线）
+  - `M-S4-AUDIO-012`（已有 EQ 页面与用户兜底入口）
+- Related Files / Areas:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+  - `app/src/main/res/values/strings.xml`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Milestone / Done Criteria:
+  - 已实现系统 EQ 会话接线，不再只是停用应用 EQ。
+  - 启动默认“系统优先”，且系统不可用时提示明确。
+  - 用户可手动开启应用 EQ，播放链路持续 fail-open。
+  - 本地验证通过并补齐 API17 观察点条目。
+- Related Tasks:
+  - `T-S4-AUDIO-069`
+  - `T-S4-AUDIO-070`
+  - `T-S4-AUDIO-071`
+  - `T-S4-AUDIO-072`
+- Priority: P0
+- Status: Done（本地收口，待实机观察点）
+- Risks:
+  - 车机 ROM 可能忽略系统会话广播，导致“有接线无听感变化”。
+  - 系统不可用判定若过于激进，可能导致误报。
+- Suitable For Module Execution?: Yes
+- Progress Update (2026-05-27):
+  - `T-S4-AUDIO-069~072` 已完成本地闭环：
+    - 系统 EQ 会话 open/close 已按 audio session 生命周期接线。
+    - 启动默认“系统优先 + 应用 EQ 关闭”；系统不可用时可手动开启应用 EQ 兜底。
+    - 设置页结构保持不变，补齐不可用 toast 与反馈文案。
+    - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补系统接线观察项（I7~I9）。
+  - 本地验证：
+    - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-27）。
+  - 后续：
+    - 转入 `T-S4-REG-022 / T-S4-VAL-033` 执行 API17 实机留证。

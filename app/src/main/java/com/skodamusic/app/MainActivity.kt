@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.media.audiofx.AudioEffect
 import android.provider.Settings
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -254,6 +255,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var eqMode: EqualizerManager.EqMode = EqualizerManager.EqMode.PRESET
     private val eqCustomBandLevels = mutableListOf<Int>()
     private var suppressEqSwitchListener: Boolean = false
+    private var systemEqSessionId: Int = -1
+    private var lastSystemEqUnavailableToastAtMs: Long = 0L
+    private var systemEqFallbackHintShown: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val bootStartMs = SystemClock.elapsedRealtime()
@@ -279,6 +283,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         embyApi = EmbyApi { message -> appendRuntimeLog(message) }
         equalizerManager = EqualizerManager { message -> appendRuntimeLog(message) }
         equalizerManager.updateConfig(enabled = false, presetIndex = 0, source = "init")
+        if (USE_SYSTEM_EQ_INHERIT_MODE) {
+            appendRuntimeLog("eq mode=system-priority manual-app-eq-fallback-enabled")
+        }
         postHogSessionId = PostHogTracker.startNewSession(
             context = applicationContext,
             launchSource = "cold_start"
@@ -663,22 +670,37 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
             if (isChecked) {
                 eqEnabled = true
+                closeSystemEqualizerSession("ui_toggle_enable_app_eq")
             } else {
                 resetEqualizerToDefaults()
+                if (USE_SYSTEM_EQ_INHERIT_MODE) {
+                    openSystemEqualizerSessionIfPossible(
+                        sessionId = lastObservedAudioSessionId,
+                        source = "ui_toggle_disable_app_eq"
+                    )
+                }
             }
             persistEqualizerConfig()
             applyEqualizerConfig("ui_toggle")
             refreshEqualizerSettingsUi()
             updateState {
                 it.copy(
-                    feedbackText = getString(
-                        if (isChecked) R.string.feedback_eq_enabled else R.string.feedback_eq_disabled
-                    )
+                    feedbackText = when {
+                        isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> getString(R.string.feedback_eq_app_fallback_enabled)
+                        !isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> getString(R.string.feedback_eq_system_follow)
+                        else -> getString(
+                            if (isChecked) R.string.feedback_eq_enabled else R.string.feedback_eq_disabled
+                        )
+                    }
                 )
             }
             showToast(
-                if (isChecked) R.string.toast_eq_enabled
-                else R.string.toast_eq_disabled
+                when {
+                    isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> R.string.toast_eq_app_fallback_enabled
+                    !isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> R.string.toast_eq_system_follow
+                    isChecked -> R.string.toast_eq_enabled
+                    else -> R.string.toast_eq_disabled
+                }
             )
         }
         eqEntryRow.setOnClickListener {
@@ -1994,12 +2016,85 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (sessionId <= 0) {
             return
         }
-        if (sessionId == lastObservedAudioSessionId) {
+        val changed = sessionId != lastObservedAudioSessionId
+        if (changed) {
+            lastObservedAudioSessionId = sessionId
+            appendRuntimeLog("audio session observed id=$sessionId source=$source")
+        }
+        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
+            openSystemEqualizerSessionIfPossible(sessionId = sessionId, source = source)
             return
         }
-        lastObservedAudioSessionId = sessionId
-        appendRuntimeLog("audio session observed id=$sessionId source=$source")
+        closeSystemEqualizerSession("$source-app-eq")
         equalizerManager.onSessionChanged(sessionId = sessionId, source = source)
+    }
+
+    private fun openSystemEqualizerSessionIfPossible(sessionId: Int, source: String) {
+        if (!USE_SYSTEM_EQ_INHERIT_MODE || eqEnabled || sessionId <= 0) {
+            return
+        }
+        if (systemEqSessionId == sessionId) {
+            return
+        }
+        closeSystemEqualizerSession("reopen:$source")
+        val intent = Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
+            putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+            putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+        }
+        val hasReceiver = runCatching {
+            packageManager.queryBroadcastReceivers(intent, 0).isNotEmpty()
+        }.getOrDefault(false)
+        if (!hasReceiver) {
+            appendRuntimeLog("system-eq open skip no-receiver session=$sessionId source=$source")
+            maybeShowSystemEqUnavailableHint()
+            return
+        }
+        runCatching {
+            sendBroadcast(intent)
+            systemEqSessionId = sessionId
+            systemEqFallbackHintShown = false
+            appendRuntimeLog("system-eq open session=$sessionId source=$source")
+        }.onFailure { error ->
+            appendRuntimeLog(
+                "system-eq open fail session=$sessionId source=$source type=${error.javaClass.simpleName} msg=${error.message}"
+            )
+            maybeShowSystemEqUnavailableHint()
+        }
+    }
+
+    private fun closeSystemEqualizerSession(source: String) {
+        val openedSession = systemEqSessionId
+        if (openedSession <= 0) {
+            return
+        }
+        runCatching {
+            val intent = Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION).apply {
+                putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+                putExtra(AudioEffect.EXTRA_AUDIO_SESSION, openedSession)
+            }
+            sendBroadcast(intent)
+            appendRuntimeLog("system-eq close session=$openedSession source=$source")
+        }.onFailure { error ->
+            appendRuntimeLog(
+                "system-eq close fail session=$openedSession source=$source type=${error.javaClass.simpleName} msg=${error.message}"
+            )
+        }
+        systemEqSessionId = -1
+    }
+
+    private fun maybeShowSystemEqUnavailableHint() {
+        val now = SystemClock.elapsedRealtime()
+        if (systemEqFallbackHintShown && now - lastSystemEqUnavailableToastAtMs < SYSTEM_EQ_HINT_TOAST_INTERVAL_MS) {
+            return
+        }
+        systemEqFallbackHintShown = true
+        lastSystemEqUnavailableToastAtMs = now
+        showToast(R.string.toast_eq_system_unavailable_use_app_eq)
+        if (this::uiState.isInitialized) {
+            updateState {
+                it.copy(feedbackText = getString(R.string.feedback_eq_system_unavailable_use_app_eq))
+            }
+        }
     }
 
     private fun maybeSyncServiceCommandTrace() {
@@ -3521,6 +3616,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackEngine?.release()
         playbackEngine = null
         lastObservedAudioSessionId = -1
+        closeSystemEqualizerSession("main_activity_release_player")
         if (this::equalizerManager.isInitialized) {
             equalizerManager.onPlayerReleased(source = "main_activity_release_player")
         }
@@ -4117,6 +4213,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         eqCustomBandLevels.addAll(
             parseBandLevelsCsv(prefs.getString(KEY_EQ_CUSTOM_LEVELS, "").orEmpty())
         )
+        if (USE_SYSTEM_EQ_INHERIT_MODE) {
+            eqEnabled = false
+        }
         applyEqualizerConfig("prefs_load")
         refreshEqualizerSettingsUi()
     }
@@ -4152,6 +4251,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::equalizerManager.isInitialized) {
             return
         }
+        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
+            equalizerManager.updateConfig(
+                enabled = false,
+                presetIndex = 0,
+                mode = EqualizerManager.EqMode.PRESET,
+                customBandLevels = emptyList(),
+                source = "$source-system-inherit"
+            )
+            return
+        }
         equalizerManager.updateConfig(
             enabled = eqEnabled,
             presetIndex = eqPresetIndex,
@@ -4174,6 +4283,26 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::eqEnableSwitch.isInitialized) {
             return
         }
+        if (USE_SYSTEM_EQ_INHERIT_MODE) {
+            suppressEqSwitchListener = true
+            eqEnableSwitch.isChecked = eqEnabled
+            suppressEqSwitchListener = false
+            eqEnableSwitch.isEnabled = true
+            eqEntryValue.text = if (eqEnabled) {
+                getString(R.string.eq_entry_value_app_eq_fallback)
+            } else if (systemEqFallbackHintShown) {
+                getString(R.string.eq_entry_value_system_unavailable)
+            } else {
+                getString(R.string.eq_entry_value_system_follow)
+            }
+            eqNoteValue.visibility = View.GONE
+            eqEntryRow.alpha = 1f
+            if (selectedPage == PAGE_EQ) {
+                renderEqualizerFullscreenPage()
+            }
+            return
+        }
+        eqEnableSwitch.isEnabled = true
         val capabilities = equalizerManager.capabilitiesSnapshot()
         val presetNames = resolvePresetDisplayNames(capabilities.presetNames)
         val normalizedPreset = normalizePresetIndex(eqPresetIndex, presetNames.size)
@@ -4373,6 +4502,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::eqPageStateValue.isInitialized) {
             return
         }
+        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
+            eqPageStateValue.text = if (systemEqFallbackHintShown) {
+                getString(R.string.eq_page_state_system_unavailable)
+            } else {
+                getString(R.string.eq_page_state_system_follow)
+            }
+            eqPageStateValue.setTextColor(resources.getColor(R.color.text_secondary))
+            return
+        }
         val capabilities = equalizerManager.capabilitiesSnapshot()
         val fallback = eqEnabled &&
             lastObservedAudioSessionId > 0 &&
@@ -4403,6 +4541,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         eqMode = EqualizerManager.EqMode.PRESET
         if (!eqEnabled) {
             eqEnabled = true
+            closeSystemEqualizerSession("eq_page_preset_enable_app_eq")
         }
         persistEqualizerConfig()
         applyEqualizerConfig("eq_page_preset")
@@ -4411,13 +4550,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         updateState {
             it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, resolveActivePresetName()))
         }
-        showToast(R.string.toast_eq_enabled)
+        showToast(
+            if (USE_SYSTEM_EQ_INHERIT_MODE) R.string.toast_eq_app_fallback_enabled
+            else R.string.toast_eq_enabled
+        )
     }
 
     private fun applyCustomBandSelectionFromEqPage() {
         eqMode = EqualizerManager.EqMode.CUSTOM
         if (!eqEnabled) {
             eqEnabled = true
+            closeSystemEqualizerSession("eq_page_custom_enable_app_eq")
         }
         persistEqualizerConfig()
         applyEqualizerConfig("eq_page_custom")
@@ -4425,6 +4568,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         renderEqualizerFullscreenPage()
         updateState {
             it.copy(feedbackText = getString(R.string.feedback_eq_custom_applied))
+        }
+        if (USE_SYSTEM_EQ_INHERIT_MODE) {
+            showToast(R.string.toast_eq_app_fallback_enabled)
         }
     }
 
@@ -4899,6 +5045,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_EQ_PRESET_INDEX = "eq_preset_index"
         const val KEY_EQ_MODE = "eq_mode"
         const val KEY_EQ_CUSTOM_LEVELS = "eq_custom_levels"
+        const val USE_SYSTEM_EQ_INHERIT_MODE = true
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
@@ -4924,6 +5071,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val APP_STARTUP_QUEUE_REFRESH_DELAY_MS = 400L
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
         const val NETWORK_RECOVERY_RETRY_INTERVAL_MS = 4_000L
+        const val SYSTEM_EQ_HINT_TOAST_INTERVAL_MS = 8_000L
         const val DEFAULT_EQ_BAND_MIN_LEVEL_MB = -1500
         const val DEFAULT_EQ_BAND_MAX_LEVEL_MB = 1500
         const val PAGE_HOME = 0

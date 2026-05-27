@@ -1,9 +1,9 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-05-25
+Last Updated: 2026-05-27
 
 ## Active Stage
-- S4 子阶段（歌词中线改造 + 均衡器规划）
+- S4 子阶段（系统 EQ 继承接线）
 
 ## T-S4-LRC-050
 - Task ID: `T-S4-LRC-050`
@@ -380,6 +380,90 @@ Last Updated: 2026-05-25
   - 1024x600 下可读、可点、可看，不再“灰成一片”。
 - Risks:
   - 如果色板过浅或过花，会直接破坏车机可读性。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-069
+- Task ID: `T-S4-AUDIO-069`
+- Title: 系统 EQ 会话接线实现（open/close）
+- Module ID: `M-S4-AUDIO-013`
+- Goal: 在播放 session 生命周期中接入系统音效会话 open/close，不再仅停用应用 EQ。
+- Why: 当前“系统继承模式”仅禁用应用 EQ，不能证明系统音效真正接管。
+- Dependencies: 无
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+- Expected Outputs:
+  - 基于 `audioSessionId` 的系统会话广播接线（open/close）。
+  - runtime log 记录发送时机与 session id。
+- Done Criteria:
+  - 播放启动/切歌/释放时会话广播触发路径完整，且不影响播放。
+- Risks:
+  - 部分 ROM 对广播无响应，只能保证“已尝试接线”。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-070
+- Task ID: `T-S4-AUDIO-070`
+- Title: 启动默认系统优先策略与手动应用 EQ 兜底联动
+- Module ID: `M-S4-AUDIO-013`
+- Goal: 启动时默认关闭应用 EQ 并尝试系统 EQ；系统不可用时允许手动开启应用 EQ。
+- Why: 用户口径明确要求“系统优先 + 手动兜底”，不是强制锁死某一模式。
+- Dependencies: `T-S4-AUDIO-069`
+- Inputs:
+  - `MainActivity` EQ 开关/入口逻辑
+  - 当前 `EqualizerManager` 能力
+- Expected Outputs:
+  - 启动默认策略落地。
+  - 手动开启应用 EQ 后恢复既有应用 EQ 行为。
+- Done Criteria:
+  - 默认路径和手动兜底路径都可执行，且状态不冲突。
+- Risks:
+  - 策略切换时若状态同步不完整，可能出现 UI 与实际能力不一致。
+- Size: M
+- Suitable For Micro Execution?: No
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-071
+- Task ID: `T-S4-AUDIO-071`
+- Title: 系统不可用 toast 与反馈文案收口（设置页结构不变）
+- Module ID: `M-S4-AUDIO-013`
+- Goal: 补齐系统 EQ 不可用提示文案，同时保持设置页结构不改版。
+- Why: 用户需要明确知道“系统未接管”并可选择手动开启应用 EQ。
+- Dependencies: `T-S4-AUDIO-070`
+- Inputs:
+  - `app/src/main/res/values/strings.xml`
+  - `MainActivity` 反馈与 toast 链路
+- Expected Outputs:
+  - 统一提示文案与触发时机。
+  - 不改设置页布局结构。
+- Done Criteria:
+  - 系统不可用时有清晰提示，且不会误导为播放故障。
+- Risks:
+  - ROM 差异导致“不可用”判定边界需要保守处理。
+- Size: S
+- Suitable For Micro Execution?: Yes
+- Suitable For Module Execution?: Yes
+
+## T-S4-AUDIO-072
+- Task ID: `T-S4-AUDIO-072`
+- Title: 系统 EQ 接线本地回归与 API17 观察点补齐
+- Module ID: `M-S4-AUDIO-013`
+- Goal: 固化系统 EQ 接线验证方式，补齐 API17 实机观察点与证据字段。
+- Why: 若无验证模板，后续无法确认“已接线但 ROM 不响应”与“未接线”的区别。
+- Dependencies: `T-S4-AUDIO-071`
+- Inputs:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 本地构建与运行日志
+- Expected Outputs:
+  - 本地验证记录（会话广播尝试、fallback 行为、手动兜底）。
+  - API17 观察点与证据字段补齐。
+- Done Criteria:
+  - 可直接用于后续 `T-S4-REG-022 / T-S4-VAL-033` 外部留证执行。
+- Risks:
+  - 无实机窗口时只能完成本地证据与模板层收口。
 - Size: S
 - Suitable For Micro Execution?: Yes
 - Suitable For Module Execution?: Yes

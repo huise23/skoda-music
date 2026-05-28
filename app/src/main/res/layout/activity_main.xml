@@ -949,7 +949,7 @@
                         android:textColor="@color/text_primary"
                         android:textSize="17sp" />
 
-                    <ScrollView
+                    <HorizontalScrollView
                         android:id="@+id/eq_bands_scroll"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
@@ -958,10 +958,11 @@
 
                         <LinearLayout
                             android:id="@+id/eq_bands_container"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical" />
-                    </ScrollView>
+                            android:layout_width="wrap_content"
+                            android:layout_height="match_parent"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
                 </LinearLayout>
 
                 <Space

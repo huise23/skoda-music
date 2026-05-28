@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.media.audiofx.AudioEffect
+import android.graphics.Canvas
 import android.provider.Settings
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -21,6 +22,7 @@ import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -4345,6 +4347,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val presetNames = resolvePresetDisplayNames(capabilities.presetNames)
         val bands = resolveBandInfos(capabilities.bands)
         ensureCustomBandLevelsSize(bands.size)
+        if (eqMode == EqualizerManager.EqMode.PRESET) {
+            syncCustomBandLevelsFromCurrentBands(bands)
+        }
         renderEqualizerBandRows(bands)
         renderEqualizerPresetButtons(presetNames)
         refreshEqualizerFullscreenHeader(presetNames)
@@ -4352,6 +4357,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun renderEqualizerBandRows(bands: List<EqualizerManager.EqBandInfo>) {
         eqBandsContainer.removeAllViews()
+        eqBandsContainer.orientation = LinearLayout.HORIZONTAL
+        eqBandsContainer.gravity = Gravity.CENTER_VERTICAL
         if (bands.isEmpty()) {
             val empty = TextView(this).apply {
                 text = getString(R.string.eq_page_bands_empty)
@@ -4370,33 +4377,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         bands.forEachIndexed { index, band ->
-            val row = LinearLayout(this).apply {
+            val column = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
                 setBackgroundResource(R.drawable.field_surface)
-                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
-            }
-            val header = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
             }
             val freq = TextView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 text = formatBandLabel(band.centerFreqHz)
                 setTextColor(resources.getColor(R.color.text_primary))
                 textSize = 15f
+                gravity = Gravity.CENTER
             }
-            val level = TextView(this).apply {
-                text = formatBandLevelLabel(eqCustomBandLevels[index])
-                setTextColor(resources.getColor(R.color.brand_primary))
-                textSize = 13f
-                minWidth = dpToPx(68)
-                gravity = Gravity.END
-            }
-            header.addView(freq)
-            header.addView(level)
-            row.addView(header)
+            column.addView(freq)
 
-            val slider = SeekBar(this).apply {
+            val slider = VerticalSeekBar(this).apply {
                 val span = (band.maxLevelMillibel - band.minLevelMillibel).coerceAtLeast(1)
                 max = span
                 progress = (eqCustomBandLevels[index] - band.minLevelMillibel).coerceIn(0, span)
@@ -4405,34 +4400,46 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     splitTrack = false
                 }
-                setPadding(0, dpToPx(8), 0, 0)
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                        if (!fromUser) {
-                            return
-                        }
-                        val nextLevel = (band.minLevelMillibel + progress).coerceIn(
-                            band.minLevelMillibel,
-                            band.maxLevelMillibel
-                        )
-                        eqCustomBandLevels[index] = nextLevel
-                        level.text = formatBandLevelLabel(nextLevel)
-                        applyCustomBandSelectionFromEqPage()
-                    }
-
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                })
+                setPadding(0, dpToPx(8), 0, dpToPx(8))
             }
-            row.addView(slider)
-            val rowParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            column.addView(
+                slider,
+                LinearLayout.LayoutParams(
+                    dpToPx(44),
+                    0,
+                    1f
+                ).apply {
+                    topMargin = dpToPx(8)
+                    bottomMargin = dpToPx(8)
+                }
+            )
+
+            val level = TextView(this).apply {
+                text = formatBandLevelLabel(eqCustomBandLevels[index])
+                setTextColor(resources.getColor(R.color.brand_primary))
+                textSize = 13f
+                gravity = Gravity.CENTER
+            }
+            column.addView(level)
+
+            slider.onUserProgressChanged = { progress ->
+                val nextLevel = (band.minLevelMillibel + progress).coerceIn(
+                    band.minLevelMillibel,
+                    band.maxLevelMillibel
+                )
+                eqCustomBandLevels[index] = nextLevel
+                level.text = formatBandLevelLabel(nextLevel)
+                applyCustomBandSelectionFromEqPage()
+            }
+
+            val columnParams = LinearLayout.LayoutParams(
+                dpToPx(92),
+                LinearLayout.LayoutParams.MATCH_PARENT
             )
             if (index > 0) {
-                rowParams.topMargin = dpToPx(10)
+                columnParams.leftMargin = dpToPx(10)
             }
-            eqBandsContainer.addView(row, rowParams)
+            eqBandsContainer.addView(column, columnParams)
         }
     }
 
@@ -4620,15 +4627,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun resolveBandInfos(discovered: List<EqualizerManager.EqBandInfo>): List<EqualizerManager.EqBandInfo> {
-        if (discovered.isNotEmpty()) {
-            return discovered
+        return discovered
+    }
+
+    private fun syncCustomBandLevelsFromCurrentBands(bands: List<EqualizerManager.EqBandInfo>) {
+        if (bands.isEmpty()) {
+            return
         }
-        return FALLBACK_EQ_BAND_FREQ_HZ.mapIndexed { index, freq ->
-            EqualizerManager.EqBandInfo(
-                index = index,
-                centerFreqHz = freq,
-                minLevelMillibel = DEFAULT_EQ_BAND_MIN_LEVEL_MB,
-                maxLevelMillibel = DEFAULT_EQ_BAND_MAX_LEVEL_MB
+        ensureCustomBandLevelsSize(bands.size)
+        bands.forEachIndexed { index, band ->
+            eqCustomBandLevels[index] = band.currentLevelMillibel.coerceIn(
+                band.minLevelMillibel,
+                band.maxLevelMillibel
             )
         }
     }
@@ -5024,6 +5034,57 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
+    private class VerticalSeekBar(context: android.content.Context) : SeekBar(context) {
+        var onUserProgressChanged: ((Int) -> Unit)? = null
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            super.onMeasure(heightMeasureSpec, widthMeasureSpec)
+            setMeasuredDimension(measuredHeight, measuredWidth)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            canvas.rotate(-90f)
+            canvas.translate(-height.toFloat(), 0f)
+            super.onDraw(canvas)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!isEnabled) {
+                return false
+            }
+            when (event.action) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_MOVE,
+                MotionEvent.ACTION_UP -> {
+                    parent?.requestDisallowInterceptTouchEvent(event.action != MotionEvent.ACTION_UP)
+                    if (height <= 0) {
+                        return true
+                    }
+                    val nextProgress = (max - (max * event.y / height).toInt()).coerceIn(0, max)
+                    if (progress != nextProgress) {
+                        progress = nextProgress
+                        onUserProgressChanged?.invoke(nextProgress)
+                    }
+                    onSizeChanged(width, height, 0, 0)
+                    if (event.action == MotionEvent.ACTION_UP) {
+                        performClick()
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
+        }
+
+        override fun performClick(): Boolean {
+            super.performClick()
+            return true
+        }
+    }
+
     private companion object {
         const val LOG_TAG = "SkodaMusicEmby"
         const val PREFS_EMBY = "emby_credentials"
@@ -5045,7 +5106,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_EQ_PRESET_INDEX = "eq_preset_index"
         const val KEY_EQ_MODE = "eq_mode"
         const val KEY_EQ_CUSTOM_LEVELS = "eq_custom_levels"
-        const val USE_SYSTEM_EQ_INHERIT_MODE = true
+        const val USE_SYSTEM_EQ_INHERIT_MODE = false
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
         const val LOAD_CONTROL_MAX_BUFFER_MS = 50_000
@@ -5072,8 +5133,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val AUTO_UPDATE_CHECK_DELAY_MS = 1_500L
         const val NETWORK_RECOVERY_RETRY_INTERVAL_MS = 4_000L
         const val SYSTEM_EQ_HINT_TOAST_INTERVAL_MS = 8_000L
-        const val DEFAULT_EQ_BAND_MIN_LEVEL_MB = -1500
-        const val DEFAULT_EQ_BAND_MAX_LEVEL_MB = 1500
         const val PAGE_HOME = 0
         const val PAGE_LIBRARY = 1
         const val PAGE_SETTINGS = 2
@@ -5082,7 +5141,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
         const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
-        val FALLBACK_EQ_BAND_FREQ_HZ = intArrayOf(60, 230, 910, 3600, 14000)
         val FALLBACK_EQ_PRESET_NAMES = listOf(
             "默认",
             "古典",

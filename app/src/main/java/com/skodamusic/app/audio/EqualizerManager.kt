@@ -14,7 +14,8 @@ class EqualizerManager(
         val index: Int,
         val centerFreqHz: Int,
         val minLevelMillibel: Int,
-        val maxLevelMillibel: Int
+        val maxLevelMillibel: Int,
+        val currentLevelMillibel: Int
     )
 
     data class EqCapabilities(
@@ -77,7 +78,7 @@ class EqualizerManager(
             return
         }
         if (activeSessionId > 0) {
-            bindSession(activeSessionId, "$source-reapply")
+            applyToActiveSession("$source-reapply")
         }
     }
 
@@ -94,7 +95,11 @@ class EqualizerManager(
             releaseInternal("session-disabled")
             return
         }
-        bindSession(sessionId, source)
+        if (changed || equalizer == null) {
+            bindSession(sessionId, source)
+        } else {
+            applyToActiveSession(source)
+        }
     }
 
     fun onPlayerReleased(source: String) {
@@ -126,6 +131,31 @@ class EqualizerManager(
         }
     }
 
+    private fun applyToActiveSession(source: String) {
+        val sessionId = activeSessionId
+        if (sessionId <= 0 || !config.enabled) {
+            return
+        }
+        if (fusedSessionId == sessionId) {
+            log("eq session fused session=$sessionId source=$source")
+            return
+        }
+        val current = equalizer
+        if (current == null) {
+            bindSession(sessionId, source)
+            return
+        }
+        try {
+            applyConfigToEqualizer(current, source)
+            current.enabled = true
+            log("eq apply ok session=$sessionId source=$source")
+        } catch (e: Exception) {
+            fusedSessionId = sessionId
+            releaseInternal("apply-failed:$source")
+            log("eq apply fail session=$sessionId source=$source type=${e.javaClass.simpleName} msg=${e.message}")
+        }
+    }
+
     private fun refreshCapabilities(target: Equalizer, source: String) {
         try {
             val presetCount = target.numberOfPresets.toInt().coerceAtLeast(0)
@@ -147,7 +177,8 @@ class EqualizerManager(
                         index = i,
                         centerFreqHz = (centerMilliHz / 1000).coerceAtLeast(0),
                         minLevelMillibel = minLevel,
-                        maxLevelMillibel = maxLevel
+                        maxLevelMillibel = maxLevel,
+                        currentLevelMillibel = readBandLevel(target, i, minLevel, maxLevel)
                     )
                 )
             }
@@ -155,6 +186,8 @@ class EqualizerManager(
             capabilityBands = bands
             log("eq capabilities refresh presets=${presetNames.size} bands=${bands.size} source=$source")
         } catch (e: Exception) {
+            capabilityPresetNames = emptyList()
+            capabilityBands = emptyList()
             log("eq capabilities refresh fail source=$source type=${e.javaClass.simpleName} msg=${e.message}")
         }
     }
@@ -174,6 +207,7 @@ class EqualizerManager(
         }
         val preset = config.presetIndex.coerceIn(0, count - 1).toShort()
         target.usePreset(preset)
+        syncCurrentBandLevels(target)
         log("eq apply preset=$preset source=$source")
     }
 
@@ -188,7 +222,35 @@ class EqualizerManager(
             val clamped = raw.coerceIn(band.minLevelMillibel, band.maxLevelMillibel)
             target.setBandLevel(band.index.toShort(), clamped.toShort())
         }
+        syncCurrentBandLevels(target)
         log("eq apply custom bands=${capabilityBands.size} source=$source")
+    }
+
+    private fun syncCurrentBandLevels(target: Equalizer) {
+        if (capabilityBands.isEmpty()) {
+            return
+        }
+        capabilityBands = capabilityBands.map { band ->
+            band.copy(
+                currentLevelMillibel = readBandLevel(
+                    target = target,
+                    bandIndex = band.index,
+                    minLevel = band.minLevelMillibel,
+                    maxLevel = band.maxLevelMillibel
+                )
+            )
+        }
+    }
+
+    private fun readBandLevel(
+        target: Equalizer,
+        bandIndex: Int,
+        minLevel: Int,
+        maxLevel: Int
+    ): Int {
+        return runCatching {
+            target.getBandLevel(bandIndex.toShort()).toInt()
+        }.getOrDefault(0).coerceIn(minLevel, maxLevel)
     }
 
     private fun releaseInternal(source: String) {

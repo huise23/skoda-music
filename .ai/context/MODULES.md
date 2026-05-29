@@ -1,242 +1,81 @@
 # MODULES
 
-Last Updated: 2026-05-27
+Last Updated: 2026-05-29
 
-## M-S4-LRC-008
-- Module ID: `M-S4-LRC-008`
-- Name: Home 歌词中线容器改造
-- Goal: 将歌词显示改为“上文/当前行/下文”三段结构，提升当前行居中稳定性与可读性。
-- Why It Matters: 当前实现是单 `TextView` 富文本滚动，边界场景下居中稳定性与视觉一致性有限。
-- In Scope:
-  - `activity_main.xml` 歌词面板结构改造。
-  - `MainActivity.kt` 歌词渲染逻辑拆分（上文、当前、下文）。
-  - 边界场景显示规则与本地回归清单。
-- Out of Scope:
-  - 歌词获取链路重写（LrcApi 请求/解析/缓存策略保持现状）。
-  - 新增复杂歌词动画系统。
-- Dependencies: 无
-- Related Files / Areas:
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/values/strings.xml`
-- Milestone / Done Criteria:
-  - 当前行在标准场景稳定处于中线容器。
-  - 首句/末句/无歌词/加载中/超长换行均有确定行为。
-  - 不引入播放阻塞或歌词串歌回归。
-- Related Tasks: `T-S4-LRC-050`, `T-S4-LRC-051`, `T-S4-LRC-052`, `T-S4-LRC-053`
-- Priority: P0
-- Status: Done（本地收口）
-- Risks:
-  - 超长歌词行换行后可能造成视觉中心偏差。
-- Suitable For Module Execution?: Yes
-- Progress Update (2026-05-22):
-  - `T-S4-LRC-051/052` 已完成代码改造：`home_lyrics_panel` 从 `Scroll + 单TextView` 迁移为“上文/当前/下文”三段容器。
-  - `MainActivity` 已移除旧 `centerHomeLyricsLine` 滚动居中策略，改为按当前索引分发上下文歌词文本。
-  - `T-S4-LRC-053` 已完成：回归条目与本地结论已回写 `docs/LYRICS_ABNORMAL_TEST_CHECKLIST.md`。
-  - 本地验证 `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-22）。
+## Active Module
 
-## M-S4-AUDIO-009
-- Module ID: `M-S4-AUDIO-009`
-- Name: 均衡器 API17 规划与 MVP 拆分
-- Goal: 产出 API17 可落地的 Equalizer 设计与后续实现任务，不在本阶段直接全量上线。
-- Why It Matters: “提升播放音质”已进入确认需求，但当前仓库缺少可执行技术路径。
+## M-S4-AUDIO-014
+- Module ID: `M-S4-AUDIO-014`
+- Name: 应用内 EQ 固定 10 段直写试验
+- Goal: 将应用内 EQ 从“设备能力动态 UI”改为“固定 10 段系统式 UI + 逐 band 直写试验”，并保证失败不影响播放、不写入失败配置。
+- Why It Matters: 实机已确认系统 EQ 继承不可用，应用内 EQ 必须成为可用主线；当前动态 bands UI 与用户期望的系统 EQ 形态不一致，且无法验证厂商 10 段能力是否对第三方开放。
 - In Scope:
-  - `Equalizer` 可行性验证与 ROM 风险识别。
-  - 与 `PlaybackEngine` 的 session 生命周期接线方案。
-  - MVP 范围、配置持久化策略、fail-open 策略。
+  - 固定 10 段频点与固定中文预设。
+  - 窄竖滑杆横屏 UI，接近系统 EQ 截图。
+  - Android Equalizer band `0..9` 逐段直写试验。
+  - 每个 band 独立 try/catch，真实失败才提示，不预先禁用。
+  - 可写入 band 继续生效，真实失败 band 跳过本次写入。
+  - 先应用后保存，真实失败 band 不落盘。
+  - 设置页开关与子页自动开启同步保持。
+  - 本地验证与 API17 实机清单更新。
 - Out of Scope:
-  - 完整音效中心 UI。
-  - BassBoost/Virtualizer 全量联动上线（仅在规划中评估是否纳入后续）。
-- Dependencies: 无（但输出将依赖 `M-S4-LRC-008` 完成后择机实施）
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `docs/`（新增 EQ 规划文档）
-- Milestone / Done Criteria:
-  - 明确可落地方案：session 获取/绑定/释放、异常降级、MVP 功能边界。
-  - 形成可执行任务并进入队列（Ready/Blocked 清晰）。
-- Related Tasks: `T-S4-AUDIO-054`, `T-S4-AUDIO-055`, `T-S4-AUDIO-057`, `T-S4-AUDIO-058`, `T-S4-AUDIO-059`, `T-S4-AUDIO-060`
-- Priority: P1
-- Status: Done（本地 MVP 收口）
-- Risks:
-  - 不同车机 ROM 对 `audiofx` 支持不一致，可能出现创建失败或效果不生效。
-- Suitable For Module Execution?: Yes
-- Progress Update (2026-05-19):
-  - `T-S4-AUDIO-054/055` 已完成（规划层）。
-  - 新增执行任务链：`T-S4-AUDIO-057 -> 058 -> 059 -> 060`。
-  - 已新增文档：`docs/API17_EQUALIZER_MVP_PLAN.md`。
-- Progress Update (2026-05-22):
-  - `T-S4-AUDIO-057` 已完成：`PlaybackEngine` 新增 `audioSessionId()` 并由 `ExoPlaybackEngine` 透传。
-  - `MainActivity` 已新增 session 观测与变化接线（prepared + progress tick），为 EQ 绑定提供稳定入口。
-  - `T-S4-AUDIO-058` 已完成：新增 `EqualizerManager`（fail-open、单会话熔断、session 重绑与释放）。
-  - `T-S4-AUDIO-059` 已完成：设置页接入 EQ 开关/预设切换/持久化，并与 `EqualizerManager` 配置联动。
-  - `T-S4-AUDIO-060` 已完成：`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 新增 EQ fail-open 回归条目与证据字段。
-  - 本地验证 `gradle :app:compileDebugKotlin --no-daemon` 通过，待 API17 实机窗口执行 I 组条目留证。
-
-## M-S4-CARRY-010
-- Module ID: `M-S4-CARRY-010`
-- Name: 旧阶段任务边界维护
-- Goal: 维持旧 S4 外部验收任务可追踪，但不混入本阶段 Ready。
-- Why It Matters: 避免“歌词/EQ 子阶段”被外部依赖任务打断。
-- In Scope:
-  - 保留 `OBS/UPD/REG/VAL` 外部任务的状态与入口。
-  - 在 `TASK_QUEUE/NEXT_STEPS` 中标记为 Blocked/Deferred。
-- Out of Scope:
-  - 执行这些外部任务本身。
-- Dependencies: 无
-- Related Files / Areas:
-  - `.ai/context/TASK_QUEUE.md`
-  - `.ai/context/NEXT_STEPS.md`
-  - `.ai/context/HANDOFF.md`
-- Milestone / Done Criteria:
-  - 旧任务状态不丢失、且不干扰当前 Ready 队列。
-- Related Tasks: `T-S4-CARRY-056`
-- Priority: P2
-- Status: In Progress
-- Risks:
-  - 若边界维护不清，执行阶段容易误切回旧主线。
-- Suitable For Module Execution?: No
-
-## M-S4-AUDIO-011
-- Module ID: `M-S4-AUDIO-011`
-- Name: EQ 界面规划与任务化
-- Goal: 在现有 EQ MVP 能力基础上，先完成下一阶段界面规划，不直接写 UI 代码。
-- Why It Matters: EQ 能力已可用，但没有清晰界面规划会导致实现阶段反复改版。
-- In Scope:
-  - EQ 页面的入口、信息层级、交互路径与状态文案规划。
-  - fail-open 在 UI 侧的可见性定义（不可用态/降级态/异常提示）。
-  - 从规划到任务的可执行拆分（Ready 队列）。
-- Out of Scope:
-  - 本轮不实现 EQ 新界面代码。
-  - 本轮不实现 `BassBoost/Virtualizer` 页面与参数联动。
+  - 系统 EQ 继承继续推进。
+  - 最近频点/插值映射。
+  - 读取或展示 ROM bands/presets。
+  - BassBoost/Virtualizer/Reverb/LoudnessEnhancer。
+  - 多套自定义曲线保存和复杂音效中心。
 - Dependencies:
-  - `M-S4-AUDIO-009`（已完成，提供可用 EQ MVP 基线）
+  - `M-S4-AUDIO-009` 已完成：session 能力与 `EqualizerManager` fail-open 基线。
+  - `M-S4-AUDIO-012` 已完成：EQ 全屏子页与竖滑杆基础。
+  - `M-S4-AUDIO-013` 已完成但实机否定：系统 EQ 继承不可作为当前主线。
 - Related Files / Areas:
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/values/strings.xml`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `docs/API17_EQUALIZER_MVP_PLAN.md`
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-- Milestone / Done Criteria:
-  - 完成 EQ 界面规划文档（结构 + 状态矩阵 + 交互边界）。
-  - 形成实现任务链并进入 `TASK_QUEUE` Ready。
-  - 明确本轮“不做实现”的边界，避免 scope 蔓延。
-- Related Tasks:
-  - `T-S4-AUDIO-061`
-  - `T-S4-AUDIO-062`
-  - `T-S4-AUDIO-063`
-  - `T-S4-AUDIO-064`
-- Priority: P0
-- Status: Done（规划闭环）
-- Risks:
-  - 若未提前锁定“首版界面深度”，后续容易从 MVP 膨胀为完整音效中心。
-- Suitable For Module Execution?: Yes
-- Progress Update (2026-05-25):
-  - 已新增 `docs/API17_EQUALIZER_UI_PLAN.md`，覆盖 IA、状态矩阵、低保真线框与实现任务化。
-  - `T-S4-AUDIO-061~064` 已完成并回写队列。
-
-## M-S4-AUDIO-012
-- Module ID: `M-S4-AUDIO-012`
-- Name: EQ 全屏子页重做与验证
-- Goal: 将现有 EQ 界面重做为适配 1024x600 横屏的全屏子页，并完成本地验证。
-- Why It Matters: 当前 EQ UI 虽然能用，但文字、结构和触控体验都不够车机化，容易让用户误判为“音效能力不稳定”。
-- In Scope:
-  - 全屏横屏子页布局重构。
-  - 左侧动态 bands 滑杆区。
-  - 右侧动态 preset 按钮区。
-  - 自动开启 EQ + 外部开关同步开启。
-  - 玻璃态风格保留但重新调整颜色配比与字号层级。
-  - fail-open 仅在回退/降级时显式提示。
-- Out of Scope:
-  - `BassBoost/Virtualizer` 实装与联动。
-  - 自定义曲线编辑器、导入导出、复杂 preset 管理。
-  - 播放主链路重构。
-- Dependencies:
-  - `M-S4-AUDIO-011`（已完成）
-- Related Files / Areas:
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/values/strings.xml`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
   - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
-- Milestone / Done Criteria:
-  - EQ 页面在 1024x600 横屏下无明显拥挤或遮挡。
-  - 预设、滑杆、开关联动正确，且不影响播放主链路。
-  - 颜色与文字层级恢复可读性。
-  - `T-S4-AUDIO-065~068` 完成并形成可复盘验证记录。
-- Related Tasks:
-  - `T-S4-AUDIO-065`
-  - `T-S4-AUDIO-066`
-  - `T-S4-AUDIO-067`
-  - `T-S4-AUDIO-068`
-- Priority: P0
-- Status: Done（本地收口，待实机观察点）
-- Risks:
-  - 预设数量与 bands 数在不同 ROM 上不一致，必须动态布局。
-  - 右侧按钮区和左侧滑杆区若间距控制不好，会挤压触控面积。
-- Suitable For Module Execution?: Yes
-- Progress Update (2026-05-26):
-  - `T-S4-AUDIO-065~068` 已完成本地闭环：
-    - 设置页保留开关+入口，新增 EQ 全屏横屏子页。
-    - 左侧按设备能力动态生成 bands 滑杆。
-    - 右侧预设按钮网格支持直接切换，并保持“自动开启 + 外部开关同步”。
-    - 常驻 fail-open 提示已移除，仅在回退/降级条件触发时显示。
-  - 本地验证：
-    - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-26）。
-  - 后续：
-    - API17 实机观察点留证进入外部窗口任务链。
-- Progress Update (2026-05-26, V2 Visual Polish):
-  - 在不改动音频链路与 fail-open 策略前提下，补充页面质感收口：
-    - 左右分区玻璃面板与页头状态徽标。
-    - bands 行卡片化 + 玻璃滑杆样式统一。
-    - preset 按钮激活/未激活视觉分层。
-  - 本地验证：
-    - `gradle :app:compileDebugKotlin --no-daemon` 再次通过。
-
-## M-S4-AUDIO-013
-- Module ID: `M-S4-AUDIO-013`
-- Name: 系统 EQ 继承接线与手动兜底
-- Goal: 优先尝试系统自带音效接管，系统不可用时提示并允许手动开启应用 EQ。
-- Why It Matters: “仅关闭应用EQ”不能证明系统接管成立，需要真实的系统会话接线闭环。
-- In Scope:
-  - 系统音效会话 open/close 接线（基于播放 audioSessionId 生命周期）。
-  - 启动默认策略：先关闭应用内 EQ，优先系统接管。
-  - 系统不可用提示（toast）与用户反馈文案。
-  - 保留手动开启应用 EQ 的兜底路径（不删现有应用 EQ 代码）。
-- Out of Scope:
-  - 设置页入口/信息架构改版。
-  - EQ 全屏页面视觉重做与交互重构。
-  - BassBoost/Virtualizer 等附加音效能力。
-- Dependencies:
-  - `M-S4-AUDIO-009`（已有 session 能力透传与 fail-open 基线）
-  - `M-S4-AUDIO-012`（已有 EQ 页面与用户兜底入口）
-- Related Files / Areas:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+  - `app/src/main/res/layout/activity_main.xml`
   - `app/src/main/res/values/strings.xml`
+  - `app/src/main/res/drawable/*eq*` / `*seekbar*`
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
 - Milestone / Done Criteria:
-  - 已实现系统 EQ 会话接线，不再只是停用应用 EQ。
-  - 启动默认“系统优先”，且系统不可用时提示明确。
-  - 用户可手动开启应用 EQ，播放链路持续 fail-open。
-  - 本地验证通过并补齐 API17 观察点条目。
+  - EQ 子页固定显示 10 段窄竖滑杆和固定中文预设。
+  - UI 不再依赖 ROM bands/presets，也不出现设备能力空态。
+  - 预设切换和滑杆拖动都会逐 band 尝试真实写入。
+  - 任一 band 写入失败不闪退、不停播、不导致整体不可用。
+  - 失败提示只由真实写入异常触发，不预先禁用 band。
+  - 真实失败 band 不写入持久化配置，下次启动安全。
+  - `gradle :app:assembleDebug` 与 `./scripts/check_api17_guardrails.sh` 通过。
+  - `T-S4-AUDIO-073~078` 已完成并回写实机验证清单。
 - Related Tasks:
-  - `T-S4-AUDIO-069`
-  - `T-S4-AUDIO-070`
-  - `T-S4-AUDIO-071`
-  - `T-S4-AUDIO-072`
+  - `T-S4-AUDIO-073`
+  - `T-S4-AUDIO-074`
+  - `T-S4-AUDIO-075`
+  - `T-S4-AUDIO-076`
+  - `T-S4-AUDIO-077`
+  - `T-S4-AUDIO-078`
 - Priority: P0
-- Status: Done（本地收口，待实机观察点）
+- Status: Done（本地实现与验证完成，待 API17 实机验证结果）
 - Risks:
-  - 车机 ROM 可能忽略系统会话广播，导致“有接线无听感变化”。
-  - 系统不可用判定若过于激进，可能导致误报。
+  - API17 ROM 可能对高序号 band 抛异常或无效，需靠实机确认。
+  - 部分成功/部分失败会让“当前配置”语义复杂，必须明确持久化规则。
+  - 页面空间有限，10 段窄滑杆与右侧预设按钮需要压缩但不能影响触控。
 - Suitable For Module Execution?: Yes
-- Progress Update (2026-05-27):
-  - `T-S4-AUDIO-069~072` 已完成本地闭环：
-    - 系统 EQ 会话 open/close 已按 audio session 生命周期接线。
-    - 启动默认“系统优先 + 应用 EQ 关闭”；系统不可用时可手动开启应用 EQ 兜底。
-    - 设置页结构保持不变，补齐不可用 toast 与反馈文案。
-    - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补系统接线观察项（I7~I9）。
-  - 本地验证：
-    - `gradle :app:compileDebugKotlin --no-daemon` 通过（2026-05-27）。
-  - 后续：
-    - 转入 `T-S4-REG-022 / T-S4-VAL-033` 执行 API17 实机留证。
+
+## Historical EQ Modules Summary
+- `M-S4-AUDIO-009`: Equalizer MVP 能力接线，Done。
+- `M-S4-AUDIO-011`: EQ UI 规划，Done。
+- `M-S4-AUDIO-012`: EQ 全屏子页与动态 bands UI，Done but superseded by fixed 10-band requirement。
+- `M-S4-AUDIO-013`: 系统 EQ 继承接线，Done locally but superseded by实机结论（系统 EQ 不可用）。
+
+
+## Progress Update (2026-05-29)
+- `M-S4-AUDIO-014` 本地闭环完成：
+  - 固定 10 段 EQ 模型与中文预设已落地。
+  - `EqualizerManager` 已改为 band `0..9` 逐段直写，真实失败逐段返回，不预先禁用。
+  - `MainActivity` 已改为先应用后保存，真实失败 band 回退到上一次持久化值并跳过落盘。
+  - EQ 子页已固定为 10 段窄竖滑杆 + 右侧固定中文预设。
+  - 真实失败提示基于 apply result 汇总失败频点。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补固定 10 段实机观察项。
+- 本地验证：
+  - `gradle :app:assembleDebug` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+- 剩余：
+  - `T-S4-AUDIO-079` 等待 API17 实机证据后决策是否保留 10 段直写。

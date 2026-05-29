@@ -89,23 +89,23 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - [ ] H3 浮窗权限不可用时，通知控制条仍可兜底。
 
 ### I. Equalizer MVP Fail-Open
-- [ ] I1 设置页可见 EQ 开关、预设切换与状态文本。
+- [ ] I1 设置页可见 EQ 开关与进入 EQ 子页入口。
 - [ ] I2 切换 EQ 开关不会导致当前播放暂停、卡死或切歌。
-- [ ] I3 预设切换后重进应用仍保留上次配置（开关 + preset index）。
-- [ ] I4 切歌或播放器重建后（session 变化）仍可自动重绑或安全降级。
-- [ ] I5 在 ROM 不支持 `audiofx` / 初始化失败场景，播放主链路不受影响（fail-open）。
-- [ ] I6 运行日志包含 EQ 关键路径：
+- [ ] I3 EQ 子页固定显示 10 段：`31/62/125/250/500/1k/2k/4k/8k/16k`，不展示 ROM preset/band 数。
+- [ ] I4 预设固定中文：默认/流行/摇滚/爵士/古典/舞曲/人声/低音增强/高音增强/自定义。
+- [ ] I5 切换预设后 10 个滑杆立即变化；拖动任一滑杆后进入“自定义”。
+- [ ] I6 切换 EQ 开关、预设或滑杆不会导致当前播放暂停、卡死或切歌。
+- [ ] I7 运行日志包含 EQ 关键路径：
   - `eq config update`
   - `eq init ok` / `eq init fail`
-  - `eq apply preset`（或 `no-presets` 降级日志）
+  - `eq apply fixed10 success=<n> fail=<n>`
+  - 单 band 失败时：`eq apply fixed10 band=<index> fail`
+  - `eq persist skip failed band=<index>`
   - `eq release`
-- [ ] I7 启动后默认“系统均衡器优先 + 应用EQ关闭”，播放不中断。
-- [ ] I8 播放 session 建立后可见系统 EQ 会话日志：
-  - `system-eq open session=<id>`
-  - 释放/切换时 `system-eq close session=<id>`
-- [ ] I9 系统 EQ 不可用时有明确提示：
-  - toast：`系统均衡器不可用，可手动开启应用 EQ`
-  - 并且用户可手动打开应用 EQ 兜底，不影响播放。
+- [ ] I8 若某些 band 真实写入失败，只提示失败频段并跳过本次写入；其它成功 band 继续生效。
+- [ ] I9 失败 band 不写入持久化配置；重启后不会因失败配置循环触发问题。
+- [ ] I10 在 ROM 不支持 `audiofx` / 初始化失败场景，播放主链路不受影响（fail-open）。
+- [ ] I11 切歌或播放器重建后（session 变化）仍可自动重绑或安全降级。
 
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
@@ -122,7 +122,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - [ ] EVD3 至少 1 条失败样本（含复现步骤 + 日志关键片段）。
 - [ ] EVD4 更新链路样本（至少 1 次检测结果；若失败附 `failed_stage`）。
 - [ ] EVD5 至少 1 份截图或短视频说明关键现象。
-- [ ] EVD6 EQ fail-open 样本（至少 1 条 `eq init fail` 或 `no-presets` 日志 + 对应播放不中断证据）。
+- [ ] EVD6 EQ fail-open 样本（至少 1 条 `eq init fail` 或 `eq apply fixed10 band=<index> fail` 日志 + 对应播放不中断证据）。
 
 ### 4.3 Acceptance Decision
 - `PASS`: 无 Blocker，且 A~I 关键项通过。

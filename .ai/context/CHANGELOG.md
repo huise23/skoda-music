@@ -229,3 +229,11 @@
   - added `PlaybackEngine.seekTo` and wired draggable `SeekBar` interaction in Home page.
   - restructured Home playback module to reference target frame (`cover entry + info + progress + Prev/Play/Next`), while keeping existing glass colors/styles unchanged.
   - synced `.ai/context` execution files (`CURRENT_STATUS/NEXT_STEPS/HANDOFF/TASK_QUEUE`) and appended new decision notes.
+
+## 2026-05-29 - App EQ fixed 10-band trial
+- Reworked app EQ to a fixed 10-band model with fixed Chinese presets.
+- Changed Equalizer application to direct band `0..9` writes with per-band try/catch result reporting.
+- Changed EQ persistence to skip real failed bands and keep previous persisted values for failed indexes.
+- Reworked EQ page to fixed narrow vertical sliders and fixed preset buttons.
+- Updated API17 regression checklist for fixed 10-band real-device validation.
+- Local validation passed: `gradle :app:assembleDebug`, `./scripts/check_api17_guardrails.sh`, `git diff --check`.

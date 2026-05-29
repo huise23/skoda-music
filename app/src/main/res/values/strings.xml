@@ -69,7 +69,7 @@
     <string name="feedback_lrcapi_testing">动作反馈：正在测试 LrcApi 连接</string>
     <string name="feedback_lrcapi_autosaved">动作反馈：LrcApi 测试通过，配置已自动保存</string>
     <string name="feedback_lrcapi_failed">动作反馈：LrcApi 测试失败，配置未保存</string>
-    <string name="label_equalizer">音效（Equalizer MVP）</string>
+    <string name="label_equalizer">音效（Equalizer）</string>
     <string name="eq_enable_label">均衡器</string>
     <string name="eq_entry_value_disabled">关闭（点击进入 EQ 子页）</string>
     <string name="eq_entry_value_system_follow">优先系统均衡器（可手动开启应用 EQ）</string>
@@ -78,7 +78,7 @@
     <string name="eq_entry_value_enabled_format">%1$s · %2$s</string>
     <string name="eq_mode_preset">预设</string>
     <string name="eq_mode_custom">自定义</string>
-    <string name="eq_note_fail_open">说明：若设备不支持或初始化失败，会自动降级，不影响播放。</string>
+    <string name="eq_note_fail_open">说明：均衡器写入失败会自动跳过，不影响播放。</string>
     <string name="eq_dialog_title">均衡器设置</string>
     <string name="eq_dialog_status_on">状态：已开启</string>
     <string name="eq_dialog_status_off">状态：关闭（选预设或滑杆会自动开启）</string>
@@ -93,6 +93,9 @@
     <string name="eq_page_state_fallback">状态：已回退（不影响播放）</string>
     <string name="eq_page_state_system_follow">状态：系统均衡器优先</string>
     <string name="eq_page_state_system_unavailable">状态：系统均衡器不可用（可手动兜底）</string>
+    <string name="eq_page_state_partial_format">部分频段失败：%1$s</string>
+    <string name="eq_band_apply_failed_note">提示：%1$s 本次写入失败，已跳过。</string>
+    <string name="toast_eq_band_apply_failed">%1$s 本次写入失败，已跳过</string>
     <string name="eq_page_bands_empty">当前设备未返回频段信息</string>
     <string name="eq_page_presets_empty">当前设备未返回预设</string>
     <string name="eq_preset_default_name">默认</string>

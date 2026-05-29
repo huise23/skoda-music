@@ -23,6 +23,28 @@ class EqualizerManager(
         val bands: List<EqBandInfo>
     )
 
+    data class EqBandApplyResult(
+        val index: Int,
+        val requestedLevelMillibel: Int,
+        val appliedLevelMillibel: Int?,
+        val success: Boolean,
+        val errorType: String? = null,
+        val errorMessage: String? = null
+    )
+
+    data class EqApplyResult(
+        val enabled: Boolean,
+        val attempted: Boolean,
+        val activeSessionId: Int,
+        val successBands: List<EqBandApplyResult> = emptyList(),
+        val failedBands: List<EqBandApplyResult> = emptyList(),
+        val fatalErrorType: String? = null,
+        val fatalErrorMessage: String? = null
+    ) {
+        val hasFailures: Boolean
+            get() = fatalErrorType != null || failedBands.isNotEmpty()
+    }
+
     private data class EqConfig(
         val enabled: Boolean,
         val presetIndex: Int,
@@ -42,6 +64,7 @@ class EqualizerManager(
 
     private var capabilityPresetNames: List<String> = emptyList()
     private var capabilityBands: List<EqBandInfo> = emptyList()
+    private var lastApplyResult = EqApplyResult(enabled = false, attempted = false, activeSessionId = -1)
 
     fun capabilitiesSnapshot(): EqCapabilities {
         return EqCapabilities(
@@ -52,13 +75,15 @@ class EqualizerManager(
 
     fun lastKnownPresetCount(): Int = capabilityPresetNames.size
 
+    fun lastApplyResult(): EqApplyResult = lastApplyResult
+
     fun updateConfig(
         enabled: Boolean,
         presetIndex: Int,
         mode: EqMode = EqMode.PRESET,
         customBandLevels: List<Int> = emptyList(),
         source: String
-    ) {
+    ): EqApplyResult {
         val normalizedPreset = presetIndex.coerceAtLeast(0)
         val next = EqConfig(
             enabled = enabled,
@@ -67,7 +92,11 @@ class EqualizerManager(
             customBandLevels = customBandLevels.map { it }
         )
         if (next == config) {
-            return
+            if (config.enabled && activeSessionId > 0) {
+                lastApplyResult = applyToActiveSession("$source-retry")
+                return lastApplyResult
+            }
+            return lastApplyResult
         }
         config = next
         log(
@@ -75,16 +104,21 @@ class EqualizerManager(
         )
         if (!config.enabled) {
             releaseInternal("disabled")
-            return
+            lastApplyResult = EqApplyResult(enabled = false, attempted = false, activeSessionId = activeSessionId)
+            return lastApplyResult
         }
-        if (activeSessionId > 0) {
+        lastApplyResult = if (activeSessionId > 0) {
             applyToActiveSession("$source-reapply")
+        } else {
+            EqApplyResult(enabled = true, attempted = false, activeSessionId = activeSessionId)
         }
+        return lastApplyResult
     }
 
-    fun onSessionChanged(sessionId: Int, source: String) {
+    fun onSessionChanged(sessionId: Int, source: String): EqApplyResult {
         if (sessionId <= 0) {
-            return
+            lastApplyResult = EqApplyResult(enabled = config.enabled, attempted = false, activeSessionId = sessionId)
+            return lastApplyResult
         }
         val changed = sessionId != activeSessionId
         activeSessionId = sessionId
@@ -93,66 +127,96 @@ class EqualizerManager(
         }
         if (!config.enabled) {
             releaseInternal("session-disabled")
-            return
+            lastApplyResult = EqApplyResult(enabled = false, attempted = false, activeSessionId = sessionId)
+            return lastApplyResult
         }
-        if (changed || equalizer == null) {
+        lastApplyResult = if (changed || equalizer == null) {
             bindSession(sessionId, source)
         } else {
             applyToActiveSession(source)
         }
+        return lastApplyResult
     }
 
     fun onPlayerReleased(source: String) {
         releaseInternal("player-released:$source")
         activeSessionId = -1
+        lastApplyResult = EqApplyResult(enabled = config.enabled, attempted = false, activeSessionId = -1)
     }
 
-    private fun bindSession(sessionId: Int, source: String) {
+    private fun bindSession(sessionId: Int, source: String): EqApplyResult {
         if (sessionId <= 0 || !config.enabled) {
-            return
+            return EqApplyResult(enabled = config.enabled, attempted = false, activeSessionId = sessionId)
         }
         if (fusedSessionId == sessionId) {
             log("eq session fused session=$sessionId source=$source")
-            return
+            return EqApplyResult(
+                enabled = true,
+                attempted = false,
+                activeSessionId = sessionId,
+                fatalErrorType = "FUSED_SESSION",
+                fatalErrorMessage = "session fused"
+            )
         }
 
         releaseInternal("rebind:$source")
-        try {
+        return try {
             val created = Equalizer(0, sessionId)
             equalizer = created
             refreshCapabilities(created, source)
-            applyConfigToEqualizer(created, source)
+            val result = applyConfigToEqualizer(created, source)
             created.enabled = true
             log("eq init ok session=$sessionId source=$source")
+            result
         } catch (e: Exception) {
             fusedSessionId = sessionId
             releaseInternal("init-failed:$source")
             log("eq init fail session=$sessionId source=$source type=${e.javaClass.simpleName} msg=${e.message}")
+            EqApplyResult(
+                enabled = true,
+                attempted = true,
+                activeSessionId = sessionId,
+                fatalErrorType = e.javaClass.simpleName,
+                fatalErrorMessage = e.message
+            )
         }
     }
 
-    private fun applyToActiveSession(source: String) {
+    private fun applyToActiveSession(source: String): EqApplyResult {
         val sessionId = activeSessionId
         if (sessionId <= 0 || !config.enabled) {
-            return
+            return EqApplyResult(enabled = config.enabled, attempted = false, activeSessionId = sessionId)
         }
         if (fusedSessionId == sessionId) {
             log("eq session fused session=$sessionId source=$source")
-            return
+            return EqApplyResult(
+                enabled = true,
+                attempted = false,
+                activeSessionId = sessionId,
+                fatalErrorType = "FUSED_SESSION",
+                fatalErrorMessage = "session fused"
+            )
         }
         val current = equalizer
         if (current == null) {
-            bindSession(sessionId, source)
-            return
+            return bindSession(sessionId, source)
         }
-        try {
-            applyConfigToEqualizer(current, source)
+        return try {
+            val result = applyConfigToEqualizer(current, source)
             current.enabled = true
-            log("eq apply ok session=$sessionId source=$source")
+            log("eq apply ok session=$sessionId source=$source success=${result.successBands.size} fail=${result.failedBands.size}")
+            result
         } catch (e: Exception) {
             fusedSessionId = sessionId
             releaseInternal("apply-failed:$source")
             log("eq apply fail session=$sessionId source=$source type=${e.javaClass.simpleName} msg=${e.message}")
+            EqApplyResult(
+                enabled = true,
+                attempted = true,
+                activeSessionId = sessionId,
+                fatalErrorType = e.javaClass.simpleName,
+                fatalErrorMessage = e.message
+            )
         }
     }
 
@@ -167,8 +231,8 @@ class EqualizerManager(
 
             val bandCount = target.numberOfBands.toInt().coerceAtLeast(0)
             val levelRange = runCatching { target.bandLevelRange }.getOrNull()
-            val minLevel = levelRange?.getOrNull(0)?.toInt() ?: -1500
-            val maxLevel = levelRange?.getOrNull(1)?.toInt() ?: 1500
+            val minLevel = levelRange?.getOrNull(0)?.toInt() ?: DEFAULT_MIN_LEVEL_MB
+            val maxLevel = levelRange?.getOrNull(1)?.toInt() ?: DEFAULT_MAX_LEVEL_MB
             val bands = mutableListOf<EqBandInfo>()
             for (i in 0 until bandCount) {
                 val centerMilliHz = runCatching { target.getCenterFreq(i.toShort()) }.getOrDefault(0)
@@ -192,54 +256,53 @@ class EqualizerManager(
         }
     }
 
-    private fun applyConfigToEqualizer(target: Equalizer, source: String) {
-        when (config.mode) {
-            EqMode.CUSTOM -> applyCustomBands(target, source)
-            EqMode.PRESET -> applyPreset(target, source)
-        }
-    }
-
-    private fun applyPreset(target: Equalizer, source: String) {
-        val count = capabilityPresetNames.size.coerceAtLeast(0)
-        if (count <= 0) {
-            log("eq apply preset skip reason=no-presets source=$source")
-            return
-        }
-        val preset = config.presetIndex.coerceIn(0, count - 1).toShort()
-        target.usePreset(preset)
-        syncCurrentBandLevels(target)
-        log("eq apply preset=$preset source=$source")
-    }
-
-    private fun applyCustomBands(target: Equalizer, source: String) {
-        if (capabilityBands.isEmpty()) {
-            log("eq apply custom skip reason=no-bands source=$source")
-            return
-        }
+    private fun applyConfigToEqualizer(target: Equalizer, source: String): EqApplyResult {
         val levels = config.customBandLevels
-        capabilityBands.forEach { band ->
-            val raw = levels.getOrNull(band.index) ?: 0
-            val clamped = raw.coerceIn(band.minLevelMillibel, band.maxLevelMillibel)
-            target.setBandLevel(band.index.toShort(), clamped.toShort())
+        if (levels.isEmpty()) {
+            log("eq apply fixed10 skip reason=no-levels source=$source")
+            return EqApplyResult(enabled = true, attempted = false, activeSessionId = activeSessionId)
         }
-        syncCurrentBandLevels(target)
-        log("eq apply custom bands=${capabilityBands.size} source=$source")
+        return applyFixedBands(target, levels, source)
     }
 
-    private fun syncCurrentBandLevels(target: Equalizer) {
-        if (capabilityBands.isEmpty()) {
-            return
-        }
-        capabilityBands = capabilityBands.map { band ->
-            band.copy(
-                currentLevelMillibel = readBandLevel(
-                    target = target,
-                    bandIndex = band.index,
-                    minLevel = band.minLevelMillibel,
-                    maxLevel = band.maxLevelMillibel
+    private fun applyFixedBands(target: Equalizer, levels: List<Int>, source: String): EqApplyResult {
+        val success = mutableListOf<EqBandApplyResult>()
+        val failed = mutableListOf<EqBandApplyResult>()
+        for (index in 0 until FIXED_BAND_COUNT) {
+            val requested = (levels.getOrNull(index) ?: 0).coerceIn(DEFAULT_MIN_LEVEL_MB, DEFAULT_MAX_LEVEL_MB)
+            try {
+                target.setBandLevel(index.toShort(), requested.toShort())
+                val applied = readBandLevel(target, index, DEFAULT_MIN_LEVEL_MB, DEFAULT_MAX_LEVEL_MB)
+                success.add(
+                    EqBandApplyResult(
+                        index = index,
+                        requestedLevelMillibel = requested,
+                        appliedLevelMillibel = applied,
+                        success = true
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                failed.add(
+                    EqBandApplyResult(
+                        index = index,
+                        requestedLevelMillibel = requested,
+                        appliedLevelMillibel = null,
+                        success = false,
+                        errorType = e.javaClass.simpleName,
+                        errorMessage = e.message
+                    )
+                )
+                log("eq apply fixed10 band=$index fail source=$source type=${e.javaClass.simpleName} msg=${e.message}")
+            }
         }
+        log("eq apply fixed10 success=${success.size} fail=${failed.size} source=$source")
+        return EqApplyResult(
+            enabled = true,
+            attempted = true,
+            activeSessionId = activeSessionId,
+            successBands = success,
+            failedBands = failed
+        )
     }
 
     private fun readBandLevel(
@@ -263,5 +326,11 @@ class EqualizerManager(
         } finally {
             equalizer = null
         }
+    }
+
+    private companion object {
+        const val FIXED_BAND_COUNT = 10
+        const val DEFAULT_MIN_LEVEL_MB = -1200
+        const val DEFAULT_MAX_LEVEL_MB = 1200
     }
 }

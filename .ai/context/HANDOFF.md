@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-05-27
+Last Updated: 2026-05-29
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@5dfe1dc`
+- 当前主干: `master@c6e173c`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -18,7 +18,7 @@ Last Updated: 2026-05-27
 - 新增需求：每次冷启动自动检测更新；设置页支持手动检测更新；下载增加 GitHub 镜像加速。
 - 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
 - EQ 页面改为全屏横屏子页：左侧动态 bands 滑杆，右侧 preset 按钮网格；保留玻璃态风格，fail-open 提示只在回退/降级时显示。
-- EQ 需求已更新：优先系统 EQ 继承接线（Option B），应用内 EQ 默认不自动介入但保留手动兜底。
+- EQ 需求已更新：系统 EQ 继承实机不可用，应用内 EQ 切回主线；页面固定 10 段窄滑杆，底层逐 band 直写试验并 fail-open。
 
 ## Technical Strategy (Confirmed)
 - 采用 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`。
@@ -30,6 +30,17 @@ Last Updated: 2026-05-27
 2. `T-S4-AUDIO-070`：启动默认系统优先 + 手动应用 EQ 兜底联动。
 3. `T-S4-AUDIO-071`：系统不可用 toast 与反馈文案收口（设置页结构不变）。
 4. `T-S4-AUDIO-072`：本地回归 + API17 观察点补齐，再转 `T-S4-REG-022/VAL-033` 留证链。
+
+## Latest Delta (Requirement Refresh, 2026-05-29)
+- 实机结论：系统 EQ 继承不可用，应用内 EQ 重新成为主线。
+- 用户确认固定 10 段试验口径：
+  - UI 固定常见 10 段与常见中文预设，不再读取/展示 ROM 内置 bands/presets。
+  - 滑杆必须接近系统 EQ 截图，细轨道、窄滑块，不使用当前粗滑块。
+  - 底层先强制写 Android Equalizer band `0..9`，用于实机验证。
+  - band 写入必须逐段 try/catch，不能一段失败就整体不可用。
+  - 不预先禁用 band；只有用户实际改动/预设写入触发底层真实异常后才提示。
+  - 真实成功的段继续生效，真实失败段仅跳过本次写入；失败段不保存到持久化配置。
+- 当前入口：先执行 `ai-planning`，为固定 10 段 UI、预设曲线、逐 band 写入结果模型、安全持久化拆任务。
 
 ## Latest Delta (EQ Full-screen Redesign, 2026-05-26)
 - 用户确认 EQ 子页重做方向：
@@ -250,3 +261,31 @@ Last Updated: 2026-05-27
 - 任务队列调整：
   - `T-S4-AUDIO-054/055` -> Done。
   - 新增 `T-S4-AUDIO-057/058/059/060` 进入后续实现链。
+
+## Latest Delta (Planning Refresh, 2026-05-29)
+- 已完成固定 10 段应用内 EQ 的 planning 回写。
+- 新增模块 `M-S4-AUDIO-014`：应用内 EQ 固定 10 段直写试验。
+- 新任务链：
+  - `T-S4-AUDIO-073` 固定 10 段模型、预设曲线与结果契约。
+  - `T-S4-AUDIO-074` EqualizerManager 逐 band 10 段直写与 fail-open 结果返回。
+  - `T-S4-AUDIO-075` EQ 配置安全持久化与提交顺序改造。
+  - `T-S4-AUDIO-076` EQ 子页固定 10 段系统式窄滑杆 UI 重做。
+  - `T-S4-AUDIO-077` 预设/自定义/真实失败提示联动收口。
+  - `T-S4-AUDIO-078` 固定 10 段 EQ 本地验证与 API17 实机清单更新。
+- 下一轮建议：直接用 `$ai-execution` Module Mode 执行 `M-S4-AUDIO-014`。
+
+
+## Latest Delta (Execution Refresh, 2026-05-29)
+- `M-S4-AUDIO-014` 已完成 Full Plan 本地执行。
+- 代码结果：
+  - 固定 10 段 EQ 模型与中文预设已落地。
+  - `EqualizerManager` 改为 band `0..9` 逐段直写并返回逐段结果。
+  - UI 操作改为先应用后保存；真实失败 band 不落盘。
+  - EQ 子页改为固定 10 段窄竖滑杆 + 右侧固定中文预设。
+  - 真实失败提示基于底层异常汇总频点。
+- 验证：
+  - `gradle :app:assembleDebug` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `git diff --check` 通过。
+- 下一步：
+  - 推送版本后执行 API17 实机验证；回传成功/失败 band 列表，再处理 `T-S4-AUDIO-079`。

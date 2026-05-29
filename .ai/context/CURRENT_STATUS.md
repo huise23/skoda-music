@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-27
+Last Updated: 2026-05-29
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@5dfe1dc`
+- 当前主干: `master@c6e173c`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -22,10 +22,22 @@ Last Updated: 2026-05-27
   - 增加 API17 违规守卫（`8afea55`）。
   - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
 
+## Requirement Refresh (App EQ Fixed 10-band Trial, 2026-05-29)
+- 实机已确认系统 EQ 继承不可用，EQ 主线切回应用内 EQ。
+- 用户确认新口径：
+  - EQ 页面固定常见 10 段，不再读取/展示 ROM 内置 bands/presets。
+  - 视觉按系统 EQ 截图重做：横屏、一排很窄的竖滑杆、右侧中文预设按钮。
+  - 底层先强制尝试 Android Equalizer band `0..9` 直接写入，用于实机验证。
+  - 10 段必须分开处理：单 band 独立 try/catch、独立提示，不能一段失败就整体不可用。
+  - 不预先禁用 band；只有实际改动/预设写入时底层真实抛错才提示。
+  - 真实写入失败的 band 不写入持久化配置，避免下次启动反复失败或无法启动。
+- 状态:
+  - `Pending Planning`：已写入 scope，下一步进入 planning 拆任务。
+
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 并行焦点：EQ 目标从“应用内 UI 重做”切换为“系统 EQ 继承接线”。
+- 并行焦点：EQ 目标切回“应用内固定 10 段直写试验 + 系统式窄滑杆 UI”。
 
 ## Requirement Refresh (System EQ Inherit, 2026-05-27)
 - 用户确认新口径（Option B）：
@@ -336,3 +348,29 @@ Last Updated: 2026-05-27
 ## Follow-up Backlog (Confirmed)
 - 长标题滚动异常修复。
 - 均衡器/音效优化。
+
+## Planning Refresh (App EQ Fixed 10-band Trial, 2026-05-29)
+- 已按新 scope 完成规划重排：
+  - 新增模块 `M-S4-AUDIO-014`（应用内 EQ 固定 10 段直写试验）。
+  - 新任务链：`T-S4-AUDIO-073 -> 074 -> 075/076 -> 077 -> 078`。
+  - Ready 入口切换为 `T-S4-AUDIO-073`，推荐后续用 Module Mode 连续推进 `073~078`。
+- 当前状态：
+  - `Done`: 需求确认 + planning 回写。
+  - `Ready`: 固定 10 段模型、逐 band 直写、安全持久化、窄滑杆 UI、验证清单。
+
+
+## Module Execution Progress (App EQ Fixed 10-band Trial, 2026-05-29)
+- `M-S4-AUDIO-014` 已完成本地闭环（`T-S4-AUDIO-073~078`）：
+  - EQ UI 固定 10 段，不再读取/展示 ROM bands/presets。
+  - 预设固定中文，切换预设会同步 10 个滑杆。
+  - 滑杆视觉改为窄轨道/窄 thumb，接近系统 EQ 形态。
+  - `EqualizerManager` 已改为 band `0..9` 逐段直写，单段失败不影响其它段。
+  - 不预先禁用 band；只有真实写入异常后才提示。
+  - 真实失败 band 回退到上一次持久化值，不写入失败配置。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补固定 10 段实机观察项。
+- 本地验证：
+  - `gradle :app:assembleDebug` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `git diff --check` 通过。
+- 当前边界：
+  - 是否长期保留 10 段直写，等待 API17 实机验证后进入 `T-S4-AUDIO-079` 决策。

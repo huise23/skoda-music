@@ -1,179 +1,224 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-05-29
+Last Updated: 2026-06-01
 
-## Active Stage
-- S4 子阶段（应用内 EQ 固定 10 段直写试验）
+## Active Stage: S4 音效子阶段 - 应用内保真 DSP 引擎
 
-## T-S4-AUDIO-073
-- Task ID: `T-S4-AUDIO-073`
+## Execution Snapshot (2026-06-01)
+- Done: `T-S4-AUDIO-080`, `081`, `082`, `083`, `084`, `085`, `086`
+- Blocked: `T-S4-AUDIO-087`（等待 API17 实机听感与稳定性验证）
+
+## T-S4-AUDIO-080
+- Task ID: `T-S4-AUDIO-080`
 - Module ID: `M-S4-AUDIO-014`
-- Title: 固定 10 段 EQ 模型、预设曲线与结果契约
-- Goal: 定义固定 10 段频点、dB 范围、中文预设曲线、逐 band 应用结果结构，为实现层提供稳定契约。
-- Why: 当前代码依赖 ROM 返回 bands/presets；不先建立应用自己的 EQ 模型，后续 UI 与底层会继续被设备能力牵引。
+- Title: ExoPlayer DSP 接入落点确认
+- Goal: 确认并固定 ExoPlayer 2.17.1 中自定义 `AudioProcessor` 的接入方式。
+- Why: 后续 DSP 需要在 PCM 输出前处理，必须先保证接入点 API17 可用且不破坏播放。
 - Dependencies: 无
 - Inputs:
+  - `app/src/main/java/com/skodamusic/app/player/PlaybackEngine.kt`
+  - ExoPlayer 2.17.1 `DefaultRenderersFactory` / `DefaultAudioSink` API
   - `.ai/context/SCOPE.md`
-  - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/values/strings.xml`
 - Expected Outputs:
-  - 固定 10 段频点常量与显示名。
-  - 固定预设列表与每个预设的 10 段 level 曲线。
-  - `ApplyResult` / band result 契约：成功、真实失败、跳过、错误信息、失败频点名。
-  - 安全持久化策略说明：哪些 level 可以落盘，哪些失败 level 不能落盘。
+  - 明确实现方案：自定义 renderers factory + audio sink + processor chain。
+  - 明确哪些播放路径受影响，哪些保持不变。
+  - 明确 fail-open 策略和日志字段。
 - Done Criteria:
-  - 后续任务无需再讨论频点、预设名称、预设曲线、结果语义。
-  - 明确“不预先禁用 band，真实写入异常才提示”。
+  - 形成可直接实现的代码落点说明。
+  - 不引入高 API 依赖。
+  - 不需要修改播放数据源策略。
 - Risks:
-  - 预设曲线主观性强，但本轮目标是常见可用而非精细调音。
+  - 低版本 ExoPlayer API 与预期差异。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S4-AUDIO-074
-- Task ID: `T-S4-AUDIO-074`
-- Module ID: `M-S4-AUDIO-014`
-- Title: EqualizerManager 逐 band 10 段直写与 fail-open 结果返回
-- Goal: 改造 `EqualizerManager`，支持按 fixed 10-band 配置逐段尝试 `setBandLevel(0..9)`，并返回真实写入结果。
-- Why: 这是本轮实机验证的核心，必须知道每个 band 是真实成功还是底层抛错。
-- Dependencies: `T-S4-AUDIO-073`
+## T-S4-AUDIO-081
+- Task ID: `T-S4-AUDIO-081`
+- Module ID: `M-S4-AUDIO-016`
+- Title: 音效模式状态模型与配置迁移
+- Goal: 定义替代旧 EQ 配置的音效状态模型和 SharedPreferences 迁移策略。
+- Why: 旧配置围绕 `eqEnabled/eqPresetIndex/eqCustomBandLevels`，继续复用会混淆 audiofx 与 DSP 主线。
+- Dependencies: 无
 - Inputs:
-  - `EqualizerManager.kt`
-  - 现有 session 绑定与 `applyToActiveSession` 逻辑
+  - `MainActivity` 现有 EQ keys：`KEY_EQ_ENABLED/KEY_EQ_PRESET_INDEX/KEY_EQ_MODE/KEY_EQ_CUSTOM_LEVELS`
+  - 新模式：`原声 / 保真 / 清晰 / 动感 / 柔和`
 - Expected Outputs:
-  - 新的 fixed 10-band 配置应用入口。
-  - 每个 band 独立 try/catch，不因单段失败影响其他段。
-  - 真实异常被记录到 log/result，供 UI toast/提示区消费。
-  - 初始化失败仍整体 fail-open，不影响播放。
+  - 新配置 key 设计。
+  - 旧 EQ 配置安全迁移规则。
+  - 默认模式：`保真`。
+  - 关闭状态语义：关闭时等同 `原声/旁路`。
 - Done Criteria:
-  - 预设或自定义写入时，band `0..9` 逐段尝试。
-  - 单段失败不会抛出到 UI 主流程，不会导致闪退/停播。
-  - 不做预判禁用，不持久化“永久不可用 band”。
+  - 重启不会触发旧 audiofx 写入。
+  - 旧配置存在时能安全落到新模式。
+  - 状态模型可供 UI 和 DSP backend 共用。
 - Risks:
-  - `Equalizer` 可能在某些异常后进入不可用状态；实现需尽量隔离异常并必要时安全释放当前实例。
+  - 状态迁移不完整导致设置页显示和实际音效不一致。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S4-AUDIO-082
+- Task ID: `T-S4-AUDIO-082`
+- Module ID: `M-S4-AUDIO-014`
+- Title: Fail-open DSP AudioProcessor 骨架实现
+- Goal: 接入一个默认旁路的自定义 `AudioProcessor`，证明播放链路可安全承载 DSP。
+- Why: 先验证管线，再调音；避免算法和接入问题混在一起。
+- Dependencies: `T-S4-AUDIO-080`
+- Inputs:
+  - `PlaybackEngine.kt`
+  - 新增 `app/src/main/java/com/skodamusic/app/audio/dsp/` 包
+- Expected Outputs:
+  - `HiFiAudioProcessor` 或等价骨架。
+  - `HiFiDspController` / 共享配置对象。
+  - ExoPlayer 创建时注入 processor。
+  - 关闭/原声/异常/格式不支持全部旁路。
+- Done Criteria:
+  - App 编译通过。
+  - 原声模式播放不变。
+  - processor 异常不会闪退或停播。
+  - 日志能看出 DSP enabled/bypass/unsupported/error。
+- Risks:
+  - `queueInput()` 高频路径若分配过多会卡顿。
 - Size: M
 - Execution Mode: Module
-- Minimal Loop: No
+- Minimal Loop: Yes
 
-## T-S4-AUDIO-075
-- Task ID: `T-S4-AUDIO-075`
-- Module ID: `M-S4-AUDIO-014`
-- Title: EQ 配置安全持久化与提交顺序改造
-- Goal: 将 EQ 操作改为先尝试应用，再保存成功/有效配置；真实失败 band 不落盘。
-- Why: 当前路径存在先 `persistEqualizerConfig()` 再 `applyEqualizerConfig()` 的行为，若失败配置落盘，可能导致下次启动反复失败。
-- Dependencies: `T-S4-AUDIO-074`
+## T-S4-AUDIO-083
+- Task ID: `T-S4-AUDIO-083`
+- Module ID: `M-S4-AUDIO-015`
+- Title: 轻量保真 DSP 模式引擎实现
+- Goal: 实现五种音质模式的克制 DSP 参数和处理逻辑。
+- Why: 用户目标是自然还原和层次，不能继续做夸张预设 EQ。
+- Dependencies: `T-S4-AUDIO-082`
 - Inputs:
-  - `MainActivity.kt` 中 `persistEqualizerConfig/applyEqualizerConfig/applyPresetSelectionFromEqPage/applyCustomBandSelectionFromEqPage`
-  - `SharedPreferences` 现有 EQ keys
+  - DSP processor 骨架
+  - 音质模式定义
 - Expected Outputs:
-  - 预设切换、滑杆拖动、开关切换都走安全提交路径。
-  - 应用成功或部分成功后再保存有效配置。
-  - 真实失败 band 不写入持久化配置；UI 保持上次有效值或本次成功值。
-  - 设置页开关与子页状态保持一致。
+  - `原声`: 完全旁路。
+  - `保真`: 轻微降低浑浊、补足清晰度和空气感。
+  - `清晰`: 轻微提升人声/乐器存在感。
+  - `动感`: 轻微提升鼓点弹性并控制低频轰头。
+  - `柔和`: 降低刺耳高频。
+  - 前级降增益与防削波保护。
 - Done Criteria:
-  - 人为触发 band 写入失败时，下次启动不会重复应用失败值。
-  - 开启/关闭 EQ 不破坏默认值恢复逻辑。
+  - 模式切换能更新 processor 配置。
+  - 无明显削波爆音风险。
+  - 处理逻辑避免高频对象分配。
+  - `原声` 与关闭状态一致。
 - Risks:
-  - 部分成功时 UI 当前值、持久化值和实际音效值容易不一致，需要明确以“真实成功写入值”为准。
+  - 固定参数需要实机微调。
+  - 车机喇叭限制可能导致差异不明显。
 - Size: M
 - Execution Mode: Module
-- Minimal Loop: No
+- Minimal Loop: Yes
 
-## T-S4-AUDIO-076
-- Task ID: `T-S4-AUDIO-076`
-- Module ID: `M-S4-AUDIO-014`
-- Title: EQ 子页固定 10 段系统式窄滑杆 UI 重做
-- Goal: 将 EQ 子页左侧改为固定 10 段窄竖滑杆，右侧固定中文预设按钮，视觉接近系统 EQ 截图。
-- Why: 当前滑块太粗，且 UI 分区仍带明显应用卡片感，不符合用户期望的系统 EQ 形态。
-- Dependencies: `T-S4-AUDIO-073`
+## T-S4-AUDIO-084
+- Task ID: `T-S4-AUDIO-084`
+- Module ID: `M-S4-AUDIO-016`
+- Title: 音效子页与设置页 UI 替换
+- Goal: 将现有 EQ 子页改为音质模式页。
+- Why: 现有 10 段 EQ UI 与“保真模式优先”的目标冲突。
+- Dependencies: `T-S4-AUDIO-081`, `T-S4-AUDIO-083`
 - Inputs:
   - `activity_main.xml`
-  - `MainActivity.kt` 中 `renderEqualizerFullscreenPage/renderEqualizerBandRows/renderEqualizerPresetButtons/VerticalSeekBar`
-  - drawable 资源：seekbar/eq panel/button
-- Expected Outputs:
-  - 固定 10 段渲染，不再按 `capabilities.bands` 生成。
-  - 窄轨道、窄 thumb、底部频点标签、左侧 dB 标尺或等价视觉。
-  - 右侧固定中文预设按钮，选中态清晰。
-  - 移除/隐藏设备 bands/presets 空态文案。
-- Done Criteria:
-  - 1024x600 横屏下 10 段与右侧预设可同时显示，不明显拥挤。
-  - 滑块宽度明显小于当前实现，接近系统 EQ 细滑杆观感。
-- Risks:
-  - 触控面积和视觉细度存在冲突；可保留较宽触控列，但可见轨道必须窄。
-- Size: M
-- Execution Mode: Module
-- Minimal Loop: No
-
-## T-S4-AUDIO-077
-- Task ID: `T-S4-AUDIO-077`
-- Module ID: `M-S4-AUDIO-014`
-- Title: 预设/自定义/真实失败提示联动收口
-- Goal: 接通固定预设、滑杆拖动、自定义状态、真实失败 toast/提示区与设置页状态。
-- Why: 只完成 UI 和底层还不够，用户验收点集中在“切预设滑杆变化、拖动变自定义、真实失败才提示”。
-- Dependencies:
-  - `T-S4-AUDIO-074`
-  - `T-S4-AUDIO-075`
-  - `T-S4-AUDIO-076`
-- Inputs:
   - `MainActivity.kt`
   - `strings.xml`
-  - `EqualizerManager` apply result
+  - 现有玻璃态资源
 - Expected Outputs:
-  - 切换预设后 10 个滑杆立即同步到预设曲线。
-  - 拖动任一滑杆后进入“自定义”。
-  - 真实失败时 toast/提示区汇总失败频点，不预先提示、不预先禁用。
-  - 设置页入口值显示当前预设/自定义状态。
+  - 设置页文案：音效/音质增强。
+  - 子页按钮：`原声 / 保真 / 清晰 / 动感 / 柔和`。
+  - 每个模式显示一句听感说明。
+  - 选中态与开关状态同步。
+  - 旧 10 段滑杆不作为第一入口展示。
 - Done Criteria:
-  - 用户可通过 UI 明确看到当前预设、当前自定义状态与真实失败提示。
-  - 失败提示不刷屏，推荐单次操作汇总失败频点。
+  - 横屏车机可读、可点。
+  - 开关关闭时为原声旁路。
+  - 选择模式自动开启音效并同步设置页。
+  - 不再出现 `Preset #N`、band 写入失败等主线文案。
 - Risks:
-  - 拖动滑杆会高频触发写入，需避免每个 move 都 toast；失败提示应节流或在 stop/preset 操作后汇总。
+  - MainActivity 内 EQ UI 代码较多，迁移需避免残留旧逻辑。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S4-AUDIO-085
+- Task ID: `T-S4-AUDIO-085`
+- Module ID: `M-S4-AUDIO-016`
+- Title: 模式切换联动与旧 audiofx 主线下线
+- Goal: 将 UI 模式选择联动到 DSP controller，并让旧 `EqualizerManager` 不再默认运行。
+- Why: 只改 UI 不改后端会继续走不可靠的 Android audiofx。
+- Dependencies: `T-S4-AUDIO-082`, `T-S4-AUDIO-084`
+- Inputs:
+  - `MainActivity.kt`
+  - `EqualizerManager.kt`
+  - DSP controller
+- Expected Outputs:
+  - 旧 system EQ open/close 和 audiofx 写入不再作为默认路径触发。
+  - 新模式选择实时更新 DSP 配置。
+  - release/player lifecycle 不泄漏 processor 状态。
+  - 旧代码可保留但被明确隔离。
+- Done Criteria:
+  - 启动、切歌、seek、暂停恢复时 DSP 状态一致。
+  - 关闭音效时完全旁路。
+  - 不再因旧 EQ 配置触发 audiofx 失败提示。
+- Risks:
+  - 旧 EQ 状态变量仍被多个 UI 分支引用，可能遗漏清理。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: No
 
-## T-S4-AUDIO-078
-- Task ID: `T-S4-AUDIO-078`
-- Module ID: `M-S4-AUDIO-014`
-- Title: 固定 10 段 EQ 本地验证与 API17 实机清单更新
-- Goal: 完成本地构建/护栏验证，并把 10 段直写实机观察点补入回归清单。
-- Why: 本轮核心价值是实机确认 band `0..9` 哪些真实可写，必须有现场可执行检查项。
-- Dependencies: `T-S4-AUDIO-077`
+## T-S4-AUDIO-086
+- Task ID: `T-S4-AUDIO-086`
+- Module ID: `M-S4-AUDIO-017`
+- Title: 本地回归与 API17 清单更新
+- Goal: 更新回归文档并执行本地校验。
+- Why: DSP 是播放链路级改动，必须有明确验证入口。
+- Dependencies: `T-S4-AUDIO-085`
 - Inputs:
-  - `gradle :app:assembleDebug`
-  - `./scripts/check_api17_guardrails.sh`
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `scripts/check_api17_guardrails.sh`
+  - Gradle 构建入口
 - Expected Outputs:
-  - 本地验证结论。
-  - 回归清单新增固定 10 段 EQ 观察项。
-  - 明确实机需要记录：成功频段、失败频段、toast/log、播放是否不中断、重启后是否安全。
+  - DSP 回归条目：开关、模式切换、旁路、异常、长播、切歌/seek。
+  - 本地构建/guardrails 结果。
+  - 需要实机观察的日志字段。
 - Done Criteria:
-  - 构建通过，guardrails 通过。
-  - 实机测试人员可以按清单直接验证，无需再问开发“要看什么”。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - 回归清单可直接用于车机验证。
 - Risks:
-  - 本地无法证明车机真实 band 写入效果，只能完成可测性准备。
+  - 本地无法判断听感，只能覆盖构建和行为稳定性。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## Blocked / Future Candidates
-
-## T-S4-AUDIO-079
-- Task ID: `T-S4-AUDIO-079`
-- Module ID: `M-S4-AUDIO-014`
-- Title: 实机结果后决策：保留 10 段直写或切换映射方案
-- Goal: 基于 API17 实机结果决定最终产品策略。
-- Why: 如果 band `5..9` 大量失败，最终产品版可能需要回到最近频点/插值映射，而不是长期保留直写试验。
-- Dependencies: `T-S4-AUDIO-078` + 用户实机证据
+## T-S4-AUDIO-087
+- Task ID: `T-S4-AUDIO-087`
+- Module ID: `M-S4-AUDIO-017`
+- Title: API17 实机听感与稳定性验证
+- Goal: 在目标车机验证保真 DSP 的听感、稳定性和性能。
+- Why: 最终目标是车机实听自然，必须依赖实机反馈调音。
+- Dependencies: `T-S4-AUDIO-086`
 - Inputs:
-  - API17 实机验证记录
+  - Debug/release APK
+  - API17 回归清单
+  - 用户听感反馈
 - Expected Outputs:
-  - 最终策略决策：保留直写 / 部分回退 / 最近频点映射 / 插值映射。
+  - 五种模式听感反馈。
+  - 长播稳定性结果。
+  - 是否爆音/破音/卡顿/停播。
+  - 下一轮参数微调建议。
 - Done Criteria:
-  - 有真实证据支撑下一阶段方向。
+  - 至少完成 `原声/保真/清晰/动感/柔和` 对比。
+  - 至少连续播放 30 分钟无阻断问题。
+  - 若失败，能回传日志与复现路径。
 - Risks:
-  - 无实机证据时无法做产品化判断。
-- Size: S
+  - 听感主观，需要多首不同风格歌曲交叉判断。
+- Size: M
 - Execution Mode: Single
-- Minimal Loop: Yes
+- Minimal Loop: No
+
+## Deferred / Historical
+- `T-S4-AUDIO-079`: 固定 10 段 Android audiofx 直写长期决策。当前因新 scope 下沉为 Deferred，不进入 Ready。

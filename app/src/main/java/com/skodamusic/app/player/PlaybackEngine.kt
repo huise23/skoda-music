@@ -8,6 +8,9 @@ import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
+import com.skodamusic.app.audio.dsp.HiFiAudioProcessor
+import com.skodamusic.app.audio.dsp.HiFiDspController
+import com.skodamusic.app.audio.dsp.HiFiRenderersFactory
 import com.google.android.exoplayer2.audio.AudioAttributes as ExoAudioAttributes
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
 import com.google.android.exoplayer2.upstream.DataSource
@@ -35,6 +38,8 @@ interface PlaybackEngine {
 class ExoPlaybackEngine(
     private val context: Context,
     private val dataSourceFactory: DataSource.Factory,
+    private val hiFiDspController: HiFiDspController,
+    private val log: (String) -> Unit,
     private val minBufferMs: Int = 8_000,
     private val maxBufferMs: Int = 50_000,
     private val playbackBufferMs: Int = 3_000,
@@ -52,7 +57,14 @@ class ExoPlaybackEngine(
                 rebufferMs
             )
             .build()
-        val player = SimpleExoPlayer.Builder(context)
+        val renderersFactory = HiFiRenderersFactory(
+            context = context,
+            processor = HiFiAudioProcessor(
+                controller = hiFiDspController,
+                log = log
+            )
+        )
+        val player = SimpleExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()

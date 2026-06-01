@@ -1,10 +1,10 @@
 # HANDOFF
 
-Last Updated: 2026-05-29
+Last Updated: 2026-06-01
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@c6e173c`
+- 当前主干: `master@7cf36f3`
 - 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
 
 ## User-Confirmed Requirements (Must Keep)
@@ -15,22 +15,39 @@ Last Updated: 2026-05-29
 - 第一版必须同时满足：后台服务 + 后台方向盘按键 + 浮窗控制。
 - 接受前台服务常驻通知（稳定性优先）。
 - 命令执行策略固定为“失败即失败”：不记录待执行命令，不做延迟重放/重试。
-- 新增需求：每次冷启动自动检测更新；设置页支持手动检测更新；下载增加 GitHub 镜像加速。
-- 当前并行问题已记录：长标题滚动异常、删除入口需上主屏、均衡器优化。
-- EQ 页面改为全屏横屏子页：左侧动态 bands 滑杆，右侧 preset 按钮网格；保留玻璃态风格，fail-open 提示只在回退/降级时显示。
-- EQ 需求已更新：系统 EQ 继承实机不可用，应用内 EQ 切回主线；页面固定 10 段窄滑杆，底层逐 band 直写试验并 fail-open。
+- 音效需求已更新：系统 EQ 继承与 Android `audiofx.Equalizer` 固定 10 段直写均不再作为主线；新方向为应用内保真 DSP 音效，引擎失败必须旁路原声。
 
-## Technical Strategy (Confirmed)
-- 采用 `ForegroundService + ACTION_MEDIA_BUTTON Receiver + AudioManager/RemoteControlClient`。
-- 不把 MediaSession 作为本阶段主链路（保持 API17/车机稳定优先）。
-- 命令入口统一：前台按钮 / 通知按钮 / 浮窗按钮 / 方向盘按键全部进入 Service 统一分发。
+## Latest Delta (Execution Refresh, 2026-06-01)
+- Full Plan Mode 已完成本地实现与验证：
+  - 新增 `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiDspMode.kt`。
+  - 新增 `HiFiDspController.kt`。
+  - 新增 `HiFiAudioProcessor.kt`。
+  - 新增 `HiFiRenderersFactory.kt`。
+  - `ExoPlaybackEngine` 通过自定义 renderers factory 注入 DSP processor。
+  - `MainActivity` 设置页/子页改为“保真音效 / 音质模式”。
+  - 新状态键：`sound_effect_enabled / sound_effect_mode`。
+  - 旧 `EqualizerManager` 代码保留，但默认播放路径不再触发 Android `audiofx` 写入。
+- 本地验证：
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
 
 ## Execution Entry
-1. `T-S4-AUDIO-069`：系统 EQ 会话接线实现（open/close）。
-2. `T-S4-AUDIO-070`：启动默认系统优先 + 手动应用 EQ 兜底联动。
-3. `T-S4-AUDIO-071`：系统不可用 toast 与反馈文案收口（设置页结构不变）。
-4. `T-S4-AUDIO-072`：本地回归 + API17 观察点补齐，再转 `T-S4-REG-022/VAL-033` 留证链。
+1. 当前无本地 Ready 任务。
+2. 下一步为 `T-S4-AUDIO-087`：API17 实机听感与稳定性验证。
+3. 若用户要求推送，直接提交并推送当前实现。
+4. 实机反馈后再进入调音/修复；不要在无设备反馈前继续扩大 DSP 功能。
 
+## Device Validation Focus
+- 设置页“保真音效”开关与子页入口可用。
+- 子页显示 `原声 / 保真 / 清晰 / 动感 / 柔和`。
+- `原声` 接近关闭音效；`保真` 更清楚不糊；其它模式有方向差异但不过度。
+- 连续播放 30 分钟无卡顿、爆音、破音、闪退。
+- 切歌、seek、暂停恢复后模式保持一致。
+- 日志包含 `hifi-dsp config/format/active/bypass`。
+
+## Historical Context
 ## Latest Delta (Requirement Refresh, 2026-05-29)
 - 实机结论：系统 EQ 继承不可用，应用内 EQ 重新成为主线。
 - 用户确认固定 10 段试验口径：

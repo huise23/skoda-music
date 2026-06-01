@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-05-29
+Last Updated: 2026-06-01
 
 ## Stage
 - 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@c6e173c`
+- 当前主干: `master@7cf36f3`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -12,6 +12,7 @@ Last Updated: 2026-05-29
 - 浮窗策略锁定：播放/暂停均显示；手动关闭后“进应用再切出”再次显示。
 - 自动续播体验差，当前口径改为“先移除自动续播”。
 - 接受前台服务常驻通知。
+- 音效主线切换为应用内保真 DSP：`原声 / 保真 / 清晰 / 动感 / 柔和`。
 
 ## Already Completed (Baseline)
 - API17 红线与构建护栏已建立（含 CI guardrails）。
@@ -22,6 +23,28 @@ Last Updated: 2026-05-29
   - 增加 API17 违规守卫（`8afea55`）。
   - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
 
+## Execution Progress (App Hi-Fi DSP Engine, 2026-06-01)
+- Full Plan Mode 已推进 `T-S4-AUDIO-080~086` 本地闭环：
+  - `T-S4-AUDIO-080` Done：确认 ExoPlayer 2.17.1 通过 `RenderersFactory + DefaultAudioSink.setAudioProcessors` 接入 DSP。
+  - `T-S4-AUDIO-081` Done：新增 `sound_effect_enabled/sound_effect_mode` 状态与旧 `eq_enabled` 迁移兜底。
+  - `T-S4-AUDIO-082` Done：新增 fail-open `HiFiAudioProcessor` 骨架。
+  - `T-S4-AUDIO-083` Done：实现 `原声 / 保真 / 清晰 / 动感 / 柔和` 五种轻量 DSP 模式。
+  - `T-S4-AUDIO-084` Done：设置页与子页切换为“保真音效 / 音质模式”体验。
+  - `T-S4-AUDIO-085` Done：模式选择实时更新 DSP controller，默认路径不再触发 Android `audiofx` 写入。
+  - `T-S4-AUDIO-086` Done：API17 回归清单已更新为 Hi-Fi DSP Sound Mode。
+- 本地验证：
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 剩余：
+  - `T-S4-AUDIO-087` Blocked：等待 API17 实机听感、长播、切歌/seek/暂停恢复验证。
+
+## Current Focus
+- 本地可执行内容已完成，下一步应推送版本供 API17 车机实测。
+- 实机重点：自然听感、无爆音破音、长播稳定、模式切换实时性、日志 `hifi-dsp config/format/active/bypass`。
+
+## Historical Notes
 ## Requirement Refresh (App EQ Fixed 10-band Trial, 2026-05-29)
 - 实机已确认系统 EQ 继承不可用，EQ 主线切回应用内 EQ。
 - 用户确认新口径：
@@ -37,7 +60,7 @@ Last Updated: 2026-05-29
 ## Current Focus
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
-- 并行焦点：EQ 目标切回“应用内固定 10 段直写试验 + 系统式窄滑杆 UI”。
+- 并行焦点：音效目标切到“应用内保真 DSP 引擎”，不再沿 Android `audiofx` 10 段直写作为主线推进。
 
 ## Requirement Refresh (System EQ Inherit, 2026-05-27)
 - 用户确认新口径（Option B）：

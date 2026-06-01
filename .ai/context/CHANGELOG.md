@@ -237,3 +237,10 @@
 - Reworked EQ page to fixed narrow vertical sliders and fixed preset buttons.
 - Updated API17 regression checklist for fixed 10-band real-device validation.
 - Local validation passed: `gradle :app:assembleDebug`, `./scripts/check_api17_guardrails.sh`, `git diff --check`.
+
+## 2026-06-01
+- Completed T-S4-AUDIO-080~086: implemented app-side Hi-Fi DSP sound mode pipeline.
+- Added ExoPlayer `AudioProcessor` injection via custom renderers factory and fail-open DSP processing.
+- Added sound modes: 原声 / 保真 / 清晰 / 动感 / 柔和, with lightweight biquad filters, preamp reduction, and soft limiting.
+- Migrated Settings/EQ page copy and behavior to 保真音效 / 音质模式; default path no longer writes Android `audiofx.Equalizer`.
+- Updated API17 regression checklist for Hi-Fi DSP validation and verified local build/guardrails.

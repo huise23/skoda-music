@@ -1,81 +1,133 @@
 # MODULES
 
-Last Updated: 2026-05-29
+Last Updated: 2026-06-01
 
-## Active Module
+## Active Stage
+- S4 音效子阶段 - 应用内保真 DSP 引擎
 
 ## M-S4-AUDIO-014
 - Module ID: `M-S4-AUDIO-014`
-- Name: 应用内 EQ 固定 10 段直写试验
-- Goal: 将应用内 EQ 从“设备能力动态 UI”改为“固定 10 段系统式 UI + 逐 band 直写试验”，并保证失败不影响播放、不写入失败配置。
-- Why It Matters: 实机已确认系统 EQ 继承不可用，应用内 EQ 必须成为可用主线；当前动态 bands UI 与用户期望的系统 EQ 形态不一致，且无法验证厂商 10 段能力是否对第三方开放。
+- Name: ExoPlayer DSP Pipeline
+- Goal: 在 ExoPlayer 2.17.1 播放链路中接入自定义 `AudioProcessor`，并提供安全旁路机制。
+- Why it matters: 这是绕开 ROM/system EQ/audiofx 的核心前置；没有稳定接入点，后续音效模式都无意义。
 - In Scope:
-  - 固定 10 段频点与固定中文预设。
-  - 窄竖滑杆横屏 UI，接近系统 EQ 截图。
-  - Android Equalizer band `0..9` 逐段直写试验。
-  - 每个 band 独立 try/catch，真实失败才提示，不预先禁用。
-  - 可写入 band 继续生效，真实失败 band 跳过本次写入。
-  - 先应用后保存，真实失败 band 不落盘。
-  - 设置页开关与子页自动开启同步保持。
-  - 本地验证与 API17 实机清单更新。
+  - 确认 `DefaultRenderersFactory` + `DefaultAudioSink.Builder.setAudioProcessors(...)` 接入方式。
+  - 新增可共享配置的 DSP processor 骨架。
+  - 支持 PCM 16-bit stereo/mono 的最小安全处理路径。
+  - 格式不支持、异常、关闭状态自动旁路。
+  - 日志输出：启用、旁路、格式不支持、异常。
 - Out of Scope:
-  - 系统 EQ 继承继续推进。
-  - 最近频点/插值映射。
-  - 读取或展示 ROM bands/presets。
-  - BassBoost/Virtualizer/Reverb/LoudnessEnhancer。
-  - 多套自定义曲线保存和复杂音效中心。
-- Dependencies:
-  - `M-S4-AUDIO-009` 已完成：session 能力与 `EqualizerManager` fail-open 基线。
-  - `M-S4-AUDIO-012` 已完成：EQ 全屏子页与竖滑杆基础。
-  - `M-S4-AUDIO-013` 已完成但实机否定：系统 EQ 继承不可作为当前主线。
-- Related Files / Areas:
-  - `app/src/main/java/com/skodamusic/app/audio/EqualizerManager.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/values/strings.xml`
-  - `app/src/main/res/drawable/*eq*` / `*seekbar*`
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 复杂 DSP 调音。
+  - UI 重做。
+  - 重写播放器或替换 ExoPlayer。
+- Dependencies: 当前 `ExoPlaybackEngine` 与 ExoPlayer 2.17.1 基线。
 - Milestone / Done Criteria:
-  - EQ 子页固定显示 10 段窄竖滑杆和固定中文预设。
-  - UI 不再依赖 ROM bands/presets，也不出现设备能力空态。
-  - 预设切换和滑杆拖动都会逐 band 尝试真实写入。
-  - 任一 band 写入失败不闪退、不停播、不导致整体不可用。
-  - 失败提示只由真实写入异常触发，不预先禁用 band。
-  - 真实失败 band 不写入持久化配置，下次启动安全。
-  - `gradle :app:assembleDebug` 与 `./scripts/check_api17_guardrails.sh` 通过。
-  - `T-S4-AUDIO-073~078` 已完成并回写实机验证清单。
-- Related Tasks:
-  - `T-S4-AUDIO-073`
-  - `T-S4-AUDIO-074`
-  - `T-S4-AUDIO-075`
-  - `T-S4-AUDIO-076`
-  - `T-S4-AUDIO-077`
-  - `T-S4-AUDIO-078`
+  - App 可构建。
+  - 播放链路可带 processor 启动。
+  - 关闭音效时与原声路径一致。
+  - processor 异常不闪退、不停播。
+- Related Tasks: `T-S4-AUDIO-080`, `T-S4-AUDIO-082`
 - Priority: P0
-- Status: Done（本地实现与验证完成，待 API17 实机验证结果）
+- Status: Done
+- Result:
+  - `HiFiRenderersFactory` 注入 `HiFiAudioProcessor`。
+  - `HiFiDspController` 提供共享配置和日志。
+  - 不支持格式与异常路径均旁路原声。
 - Risks:
-  - API17 ROM 可能对高序号 band 抛异常或无效，需靠实机确认。
-  - 部分成功/部分失败会让“当前配置”语义复杂，必须明确持久化规则。
-  - 页面空间有限，10 段窄滑杆与右侧预设按钮需要压缩但不能影响触控。
-- Suitable For Module Execution?: Yes
+  - 实机仍需确认 API17 音频格式和 CPU 压力。
+- Suitable For Module Execution?: No (completed)
 
-## Historical EQ Modules Summary
-- `M-S4-AUDIO-009`: Equalizer MVP 能力接线，Done。
-- `M-S4-AUDIO-011`: EQ UI 规划，Done。
-- `M-S4-AUDIO-012`: EQ 全屏子页与动态 bands UI，Done but superseded by fixed 10-band requirement。
-- `M-S4-AUDIO-013`: 系统 EQ 继承接线，Done locally but superseded by实机结论（系统 EQ 不可用）。
+## M-S4-AUDIO-015
+- Module ID: `M-S4-AUDIO-015`
+- Name: Hi-Fi DSP Mode Engine
+- Goal: 实现五种音质模式的轻量 DSP 参数和处理逻辑。
+- Why it matters: 用户要的是自然还原和层次，而不是 10 段 EQ 专家调节；模式引擎决定实际听感。
+- In Scope:
+  - 模式：`原声 / 保真 / 清晰 / 动感 / 柔和`。
+  - 默认推荐：`保真`。
+  - 轻量 biquad 滤波器与前级降增益。
+  - 防削波/限幅保护。
+  - 参数克制，避免重低音、人声过分突出或刺耳。
+  - 模式切换实时更新共享配置。
+- Out of Scope:
+  - 10 段高级 EQ。
+  - 强度滑杆。
+  - 混响/环绕/空间音频。
+- Dependencies: `M-S4-AUDIO-014`
+- Milestone / Done Criteria:
+  - 五种模式均有明确参数。
+  - `原声` 为完全旁路。
+  - 其它模式听感方向可区分且不明显失真。
+  - 处理过程低分配、轻 CPU。
+- Related Tasks: `T-S4-AUDIO-083`
+- Priority: P0
+- Status: Done (pending device tuning)
+- Result:
+  - 已实现五种模式、前级降增益、biquad 滤波和软限幅。
+  - 参数保持克制，实机反馈后再微调。
+- Risks:
+  - 听感必须以目标车机为准，当前只能完成工程实现。
+- Suitable For Module Execution?: No (completed locally)
 
+## M-S4-AUDIO-016
+- Module ID: `M-S4-AUDIO-016`
+- Name: Sound Mode UI & State Migration
+- Goal: 将当前 EQ UI/状态/文案迁移为音质模式体验，并保留安全配置恢复。
+- Why it matters: 现有 UI 围绕 10 段 EQ 和 audiofx 失败设计，已经不符合新目标。
+- In Scope:
+  - 设置页文案从“均衡器”迁移为“音效/音质增强”。
+  - 子页改为模式按钮：`原声 / 保真 / 清晰 / 动感 / 柔和`。
+  - 展示每个模式的简短听感说明。
+  - 开关、模式选择、持久化状态同步。
+  - 旧 EQ 配置迁移：默认安全落到 `保真` 或 `原声`，不再触发 audiofx 写入。
+  - 旧 `EqualizerManager` 代码可先保留，但不作为默认主线。
+- Out of Scope:
+  - 高级 10 段 EQ 入口。
+  - 多套自定义曲线。
+  - 大规模视觉主题重做。
+- Dependencies: `M-S4-AUDIO-014`, `M-S4-AUDIO-015`
+- Milestone / Done Criteria:
+  - 设置页和子页显示新音效模式。
+  - 当前播放切换模式后能更新 DSP 配置。
+  - 重启后配置安全恢复。
+  - 旧 EQ 失败提示不再作为主提示出现。
+- Related Tasks: `T-S4-AUDIO-081`, `T-S4-AUDIO-084`, `T-S4-AUDIO-085`
+- Priority: P1
+- Status: Done
+- Result:
+  - 设置页显示“保真音效”。
+  - 子页左侧显示当前听感说明，右侧显示五个模式按钮。
+  - 新配置 `sound_effect_enabled/sound_effect_mode` 已接线。
+  - 模式选择实时更新 DSP controller；默认路径不再触发 Android `audiofx` 写入。
+- Risks:
+  - 实机需确认横屏触控与文案可读性。
+- Suitable For Module Execution?: No (completed)
 
-## Progress Update (2026-05-29)
-- `M-S4-AUDIO-014` 本地闭环完成：
-  - 固定 10 段 EQ 模型与中文预设已落地。
-  - `EqualizerManager` 已改为 band `0..9` 逐段直写，真实失败逐段返回，不预先禁用。
-  - `MainActivity` 已改为先应用后保存，真实失败 band 回退到上一次持久化值并跳过落盘。
-  - EQ 子页已固定为 10 段窄竖滑杆 + 右侧固定中文预设。
-  - 真实失败提示基于 apply result 汇总失败频点。
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补固定 10 段实机观察项。
-- 本地验证：
-  - `gradle :app:assembleDebug` 通过。
-  - `./scripts/check_api17_guardrails.sh` 通过。
-- 剩余：
-  - `T-S4-AUDIO-079` 等待 API17 实机证据后决策是否保留 10 段直写。
+## M-S4-AUDIO-017
+- Module ID: `M-S4-AUDIO-017`
+- Name: DSP Validation & API17 Evidence
+- Goal: 建立应用内 DSP 的本地与 API17 实机验证闭环。
+- Why it matters: 音效是否“更自然”必须依赖目标车机实测；本地构建通过不代表听感可用。
+- In Scope:
+  - 更新 API17 回归清单。
+  - 增加 DSP 日志观察点。
+  - 本地构建与 guardrails。
+  - 实机听感与稳定性报告模板。
+  - 基于实机反馈形成下一轮调音输入。
+- Out of Scope:
+  - 代替人工听感判断。
+  - 大规模自动化音频质量评测。
+- Dependencies: `M-S4-AUDIO-014`, `M-S4-AUDIO-015`, `M-S4-AUDIO-016`
+- Milestone / Done Criteria:
+  - 本地校验通过。
+  - 回归文档覆盖 DSP 开关、模式切换、旁路、长播、切歌/seek。
+  - API17 实机能给出 PASS/FAIL 与调音反馈。
+- Related Tasks: `T-S4-AUDIO-086`, `T-S4-AUDIO-087`
+- Priority: P1
+- Status: Partial / Blocked by API17 device
+- Result:
+  - 本地校验完成：`git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug` 均通过。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已更新为 Hi-Fi DSP Sound Mode 验证。
+- Risks:
+  - 听感验收和长播稳定性仍需目标车机验证。
+- Suitable For Module Execution?: No (remaining task is external validation)

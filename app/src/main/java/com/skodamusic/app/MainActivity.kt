@@ -40,6 +40,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.audio.EqualizerManager
+import com.skodamusic.app.audio.dsp.HiFiDspController
+import com.skodamusic.app.audio.dsp.HiFiDspMode
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
@@ -250,6 +252,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var embySessionCache: EmbySessionCache
     private lateinit var embyApi: EmbyApi
     private lateinit var equalizerManager: EqualizerManager
+    private lateinit var hiFiDspController: HiFiDspController
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
     private var lastObservedAudioSessionId: Int = -1
@@ -261,6 +264,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var systemEqSessionId: Int = -1
     private var lastSystemEqUnavailableToastAtMs: Long = 0L
     private var systemEqFallbackHintShown: Boolean = false
+    private var soundEffectEnabled: Boolean = false
+    private var soundEffectMode: HiFiDspMode = HiFiDspMode.FIDELITY
 
     private data class FixedEqBand(
         val index: Int,
@@ -271,6 +276,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private data class FixedEqPreset(
         val name: String,
         val levels: IntArray
+    )
+
+    private data class SoundModeOption(
+        val mode: HiFiDspMode,
+        @StringRes val titleRes: Int,
+        @StringRes val descriptionRes: Int
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -295,6 +306,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             keyRecommendCacheJson = KEY_RECOMMEND_CACHE_JSON
         )
         embyApi = EmbyApi { message -> appendRuntimeLog(message) }
+        hiFiDspController = HiFiDspController { message -> appendRuntimeLog(message) }
         equalizerManager = EqualizerManager { message -> appendRuntimeLog(message) }
         equalizerManager.updateConfig(
             enabled = false,
@@ -685,43 +697,28 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             if (suppressEqSwitchListener) {
                 return@setOnCheckedChangeListener
             }
-            if (eqEnabled == isChecked) {
+            if (soundEffectEnabled == isChecked) {
                 return@setOnCheckedChangeListener
             }
             if (isChecked) {
-                eqEnabled = true
-                closeSystemEqualizerSession("ui_toggle_enable_app_eq")
-            } else {
-                resetEqualizerToDefaults()
-                if (USE_SYSTEM_EQ_INHERIT_MODE) {
-                    openSystemEqualizerSessionIfPossible(
-                        sessionId = lastObservedAudioSessionId,
-                        source = "ui_toggle_disable_app_eq"
-                    )
+                soundEffectEnabled = true
+                if (soundEffectMode == HiFiDspMode.ORIGINAL) {
+                    soundEffectMode = HiFiDspMode.FIDELITY
                 }
+            } else {
+                soundEffectEnabled = false
             }
-            val result = applyEqualizerConfig("ui_toggle")
-            commitEqualizerConfigAfterApply(result, "ui_toggle")
+            applySoundEffectConfig("ui_toggle")
+            persistSoundEffectConfig()
             refreshEqualizerSettingsUi()
             updateState {
                 it.copy(
-                    feedbackText = when {
-                        isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> getString(R.string.feedback_eq_app_fallback_enabled)
-                        !isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> getString(R.string.feedback_eq_system_follow)
-                        else -> getString(
-                            if (isChecked) R.string.feedback_eq_enabled else R.string.feedback_eq_disabled
-                        )
-                    }
+                    feedbackText = getString(
+                        if (isChecked) R.string.feedback_sound_enabled else R.string.feedback_sound_disabled
+                    )
                 )
             }
-            showToast(
-                when {
-                    isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> R.string.toast_eq_app_fallback_enabled
-                    !isChecked && USE_SYSTEM_EQ_INHERIT_MODE -> R.string.toast_eq_system_follow
-                    isChecked -> R.string.toast_eq_enabled
-                    else -> R.string.toast_eq_disabled
-                }
-            )
+            showToast(if (isChecked) R.string.toast_sound_enabled else R.string.toast_sound_disabled)
         }
         eqEntryRow.setOnClickListener {
             switchPage(PAGE_EQ)
@@ -2034,9 +2031,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun observePlaybackAudioSession(source: String) {
-        if (!this::equalizerManager.isInitialized) {
-            return
-        }
         val engine = playbackEngine ?: return
         val sessionId = engine.audioSessionId()
         if (sessionId <= 0) {
@@ -2047,13 +2041,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             lastObservedAudioSessionId = sessionId
             appendRuntimeLog("audio session observed id=$sessionId source=$source")
         }
-        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
-            openSystemEqualizerSessionIfPossible(sessionId = sessionId, source = source)
-            return
-        }
-        closeSystemEqualizerSession("$source-app-eq")
-        val result = equalizerManager.onSessionChanged(sessionId = sessionId, source = source)
-        commitEqualizerConfigAfterApply(result, "session:$source")
+        applySoundEffectConfig("session:$source")
     }
 
     private fun openSystemEqualizerSessionIfPossible(sessionId: Int, source: String) {
@@ -3630,6 +3618,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val created = ExoPlaybackEngine(
             context = this,
             dataSourceFactory = defaultDataSourceFactory,
+            hiFiDspController = hiFiDspController,
+            log = { message -> appendRuntimeLog(message) },
             minBufferMs = LOAD_CONTROL_MIN_BUFFER_MS,
             maxBufferMs = LOAD_CONTROL_MAX_BUFFER_MS,
             playbackBufferMs = LOAD_CONTROL_PLAYBACK_MS,
@@ -4230,23 +4220,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
         embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
         lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
-        eqEnabled = prefs.getBoolean(KEY_EQ_ENABLED, false)
-        eqPresetIndex = prefs.getInt(KEY_EQ_PRESET_INDEX, 0).coerceAtLeast(0)
-        eqMode = parseEqualizerMode(
-            raw = prefs.getString(KEY_EQ_MODE, EqualizerManager.EqMode.PRESET.name),
-            fallback = EqualizerManager.EqMode.PRESET
-        )
-        eqCustomBandLevels.clear()
-        eqCustomBandLevels.addAll(
-            parseBandLevelsCsv(prefs.getString(KEY_EQ_CUSTOM_LEVELS, "").orEmpty())
-        )
-        ensureCustomBandLevelsSize(FIXED_EQ_BANDS.size)
-        normalizeEqualizerPresetState()
-        if (USE_SYSTEM_EQ_INHERIT_MODE) {
-            eqEnabled = false
+        val hasNewSoundConfig = prefs.contains(KEY_SOUND_EFFECT_ENABLED) || prefs.contains(KEY_SOUND_EFFECT_MODE)
+        soundEffectEnabled = if (hasNewSoundConfig) {
+            prefs.getBoolean(KEY_SOUND_EFFECT_ENABLED, false)
+        } else {
+            prefs.getBoolean(KEY_EQ_ENABLED, false)
         }
-        val result = applyEqualizerConfig("prefs_load")
-        commitEqualizerConfigAfterApply(result, "prefs_load")
+        soundEffectMode = HiFiDspMode.fromCode(
+            raw = prefs.getString(KEY_SOUND_EFFECT_MODE, null),
+            fallback = HiFiDspMode.FIDELITY
+        )
+        if (soundEffectEnabled && soundEffectMode == HiFiDspMode.ORIGINAL) {
+            soundEffectMode = HiFiDspMode.FIDELITY
+        }
+        applySoundEffectConfig("prefs_load")
+        persistSoundEffectConfig()
         refreshEqualizerSettingsUi()
     }
 
@@ -4267,99 +4255,42 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .apply()
     }
 
-    private fun persistEqualizerConfig() {
+    private fun persistSoundEffectConfig() {
         getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
             .edit()
-            .putBoolean(KEY_EQ_ENABLED, eqEnabled)
-            .putInt(KEY_EQ_PRESET_INDEX, eqPresetIndex.coerceAtLeast(0))
-            .putString(KEY_EQ_MODE, eqMode.name)
-            .putString(KEY_EQ_CUSTOM_LEVELS, eqCustomBandLevels.joinToString(","))
+            .putBoolean(KEY_SOUND_EFFECT_ENABLED, soundEffectEnabled)
+            .putString(KEY_SOUND_EFFECT_MODE, soundEffectMode.code)
             .apply()
     }
 
-    private fun applyEqualizerConfig(source: String): EqualizerManager.EqApplyResult {
-        if (!this::equalizerManager.isInitialized) {
-            return EqualizerManager.EqApplyResult(
-                enabled = eqEnabled,
-                attempted = false,
-                activeSessionId = lastObservedAudioSessionId
-            )
+    private fun applySoundEffectConfig(source: String) {
+        if (!this::hiFiDspController.isInitialized) {
+            return
         }
-        ensureCustomBandLevelsSize(FIXED_EQ_BANDS.size)
-        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
-            return equalizerManager.updateConfig(
-                enabled = false,
-                presetIndex = 0,
-                mode = EqualizerManager.EqMode.PRESET,
-                customBandLevels = FIXED_EQ_FLAT_LEVELS.toList(),
-                source = "$source-system-inherit"
-            )
-        }
-        return equalizerManager.updateConfig(
-            enabled = eqEnabled,
-            presetIndex = eqPresetIndex,
-            mode = eqMode,
-            customBandLevels = eqCustomBandLevels.toList(),
+        val dspEnabled = soundEffectEnabled && soundEffectMode != HiFiDspMode.ORIGINAL
+        hiFiDspController.update(
+            enabled = dspEnabled,
+            mode = soundEffectMode,
             source = source
         )
-    }
-
-    private fun resetEqualizerToDefaults() {
-        eqEnabled = false
-        eqPresetIndex = 0
-        eqMode = EqualizerManager.EqMode.PRESET
-        eqCustomBandLevels.clear()
-        eqCustomBandLevels.addAll(FIXED_EQ_FLAT_LEVELS.toList())
     }
 
     private fun refreshEqualizerSettingsUi() {
         if (!this::eqEnableSwitch.isInitialized) {
             return
         }
-        if (USE_SYSTEM_EQ_INHERIT_MODE) {
-            suppressEqSwitchListener = true
-            eqEnableSwitch.isChecked = eqEnabled
-            suppressEqSwitchListener = false
-            eqEnableSwitch.isEnabled = true
-            eqEntryValue.text = if (eqEnabled) {
-                getString(R.string.eq_entry_value_app_eq_fallback)
-            } else if (systemEqFallbackHintShown) {
-                getString(R.string.eq_entry_value_system_unavailable)
-            } else {
-                getString(R.string.eq_entry_value_system_follow)
-            }
-            eqNoteValue.visibility = View.GONE
-            eqEntryRow.alpha = 1f
-            if (selectedPage == PAGE_EQ) {
-                renderEqualizerFullscreenPage()
-            }
-            return
-        }
-        eqEnableSwitch.isEnabled = true
-        normalizeEqualizerPresetState()
         suppressEqSwitchListener = true
-        eqEnableSwitch.isChecked = eqEnabled
+        eqEnableSwitch.isChecked = soundEffectEnabled
         suppressEqSwitchListener = false
-        val modeLabelRes = if (eqMode == EqualizerManager.EqMode.CUSTOM) {
-            R.string.eq_mode_custom
+        eqEnableSwitch.isEnabled = true
+        eqEntryValue.text = if (soundEffectEnabled) {
+            getString(R.string.sound_entry_value_enabled_format, resolveSoundModeName(soundEffectMode))
         } else {
-            R.string.eq_mode_preset
+            getString(R.string.sound_entry_value_disabled)
         }
-        val presetLabel = resolveActivePresetName()
-        eqEntryValue.text = if (eqEnabled) {
-            getString(R.string.eq_entry_value_enabled_format, presetLabel, getString(modeLabelRes))
-        } else {
-            getString(R.string.eq_entry_value_disabled)
-        }
-        val result = equalizerManager.lastApplyResult()
-        val failedLabels = formatFailedEqBandLabels(result)
-        eqNoteValue.text = if (failedLabels.isNotBlank()) {
-            getString(R.string.eq_band_apply_failed_note, failedLabels)
-        } else {
-            getString(R.string.eq_note_fail_open)
-        }
-        eqNoteValue.visibility = if (eqEnabled && failedLabels.isNotBlank()) View.VISIBLE else View.GONE
-        eqEntryRow.alpha = if (eqEnabled) 1f else 0.88f
+        eqNoteValue.text = getString(R.string.sound_note_fail_open)
+        eqNoteValue.visibility = View.VISIBLE
+        eqEntryRow.alpha = if (soundEffectEnabled) 1f else 0.88f
         if (selectedPage == PAGE_EQ) {
             renderEqualizerFullscreenPage()
         }
@@ -4369,123 +4300,69 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::eqBandsContainer.isInitialized || !this::eqPresetsContainer.isInitialized) {
             return
         }
-        normalizeEqualizerPresetState()
-        ensureCustomBandLevelsSize(FIXED_EQ_BANDS.size)
-        renderEqualizerBandRows()
-        renderEqualizerPresetButtons()
+        renderSoundModeDetails()
+        renderSoundModeButtons()
         refreshEqualizerFullscreenHeader()
     }
 
-    private fun renderEqualizerBandRows() {
+    private fun renderSoundModeDetails() {
         eqBandsContainer.removeAllViews()
-        eqBandsContainer.orientation = LinearLayout.HORIZONTAL
+        eqBandsContainer.orientation = LinearLayout.VERTICAL
         eqBandsContainer.gravity = Gravity.CENTER_VERTICAL
-        ensureCustomBandLevelsSize(FIXED_EQ_BANDS.size)
+        eqBandsContainer.minimumWidth = dpToPx(360)
+        eqBandsContainer.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
 
-        val scale = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dpToPx(28), dpToPx(8), dpToPx(26))
-        }
-        listOf("+12", "+6", "0", "-6", "-12").forEach { label ->
-            scale.addView(
-                TextView(this).apply {
-                    text = label
-                    setTextColor(resources.getColor(R.color.text_muted))
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 0, 1f)
-            )
+        val title = TextView(this).apply {
+            text = resolveSoundModeName(soundEffectMode)
+            setTextColor(resources.getColor(R.color.text_primary))
+            textSize = 28f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
         eqBandsContainer.addView(
-            scale,
-            LinearLayout.LayoutParams(dpToPx(34), LinearLayout.LayoutParams.MATCH_PARENT)
+            title,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         )
 
-        FIXED_EQ_BANDS.forEach { band ->
-            val column = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(dpToPx(3), dpToPx(4), dpToPx(3), dpToPx(4))
-            }
-            val topSpacer = Space(this)
-            column.addView(topSpacer, LinearLayout.LayoutParams(1, dpToPx(6)))
-
-            val slider = VerticalSeekBar(this).apply {
-                max = EQ_LEVEL_RANGE_MB
-                progress = eqLevelToProgress(eqCustomBandLevels[band.index])
-                progressDrawable = resources.getDrawable(R.drawable.seekbar_eq_thin_track)
-                thumb = resources.getDrawable(R.drawable.seekbar_eq_thin_thumb)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    splitTrack = false
-                }
-                setPadding(0, dpToPx(4), 0, dpToPx(4))
-            }
-            column.addView(
-                slider,
-                LinearLayout.LayoutParams(
-                    dpToPx(28),
-                    0,
-                    1f
-                ).apply {
-                    topMargin = dpToPx(4)
-                    bottomMargin = dpToPx(4)
-                }
-            )
-
-            val level = TextView(this).apply {
-                text = formatBandLevelLabel(eqCustomBandLevels[band.index])
-                setTextColor(resources.getColor(R.color.brand_primary))
-                textSize = 10f
-                gravity = Gravity.CENTER
-                maxLines = 1
-            }
-            column.addView(level, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(18)))
-
-            val freq = TextView(this).apply {
-                text = band.label
-                setTextColor(resources.getColor(R.color.text_secondary))
-                textSize = 11f
-                gravity = Gravity.CENTER
-                maxLines = 1
-            }
-            column.addView(freq, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(22)))
-
-            slider.onUserProgressChanged = { progress ->
-                val nextLevel = progressToEqLevel(progress)
-                eqCustomBandLevels[band.index] = nextLevel
-                level.text = formatBandLevelLabel(nextLevel)
-                applyCustomBandSelectionFromEqPage(showFeedback = false, refreshPage = false)
-            }
-            slider.onUserStopTracking = {
-                applyCustomBandSelectionFromEqPage(showFeedback = true, refreshPage = true)
-            }
-
-            eqBandsContainer.addView(
-                column,
-                LinearLayout.LayoutParams(dpToPx(54), LinearLayout.LayoutParams.MATCH_PARENT)
-            )
+        val description = TextView(this).apply {
+            text = getString(resolveSoundModeDescriptionRes(soundEffectMode))
+            setTextColor(resources.getColor(R.color.text_secondary))
+            textSize = 18f
+            setLineSpacing(0f, 1.16f)
+            setPadding(0, dpToPx(12), 0, 0)
         }
+        eqBandsContainer.addView(
+            description,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        )
+
+        val chain = TextView(this).apply {
+            text = getString(R.string.sound_page_chain_note)
+            setTextColor(resources.getColor(R.color.text_muted))
+            textSize = 15f
+            setLineSpacing(0f, 1.14f)
+            setPadding(0, dpToPx(18), 0, 0)
+        }
+        eqBandsContainer.addView(
+            chain,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        )
     }
 
-    private fun renderEqualizerPresetButtons() {
+    private fun renderSoundModeButtons() {
         eqPresetsContainer.removeAllViews()
-        FIXED_EQ_PRESETS.forEachIndexed { index, preset ->
+        SOUND_MODE_OPTIONS.forEachIndexed { index, option ->
+            val active = (soundEffectEnabled && soundEffectMode == option.mode) ||
+                (!soundEffectEnabled && option.mode == HiFiDspMode.ORIGINAL)
             val button = Button(this).apply {
-                text = preset.name
+                text = getString(option.titleRes)
                 isAllCaps = false
-                textSize = 15f
-                minHeight = dpToPx(42)
-                setPadding(dpToPx(10), dpToPx(7), dpToPx(10), dpToPx(7))
-                val active = eqEnabled && (
-                    (eqMode == EqualizerManager.EqMode.PRESET && eqPresetIndex == index) ||
-                        (eqMode == EqualizerManager.EqMode.CUSTOM && index == FIXED_EQ_CUSTOM_PRESET_INDEX)
-                    )
+                textSize = 16f
+                minHeight = dpToPx(46)
+                setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
                 setBackgroundResource(if (active) R.drawable.button_eq_preset_active else R.drawable.button_eq_preset_inactive)
                 setTextColor(resources.getColor(if (active) R.color.white else R.color.text_primary))
                 setOnClickListener {
-                    applyPresetSelectionFromEqPage(index)
+                    applySoundModeSelection(option.mode)
                 }
             }
             eqPresetsContainer.addView(
@@ -4503,205 +4380,41 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::eqPageStateValue.isInitialized) {
             return
         }
-        if (USE_SYSTEM_EQ_INHERIT_MODE && !eqEnabled) {
-            eqPageStateValue.text = if (systemEqFallbackHintShown) {
-                getString(R.string.eq_page_state_system_unavailable)
-            } else {
-                getString(R.string.eq_page_state_system_follow)
-            }
-            eqPageStateValue.setTextColor(resources.getColor(R.color.text_secondary))
-            return
-        }
-        val result = equalizerManager.lastApplyResult()
-        val failedLabels = formatFailedEqBandLabels(result)
-        if (eqEnabled && failedLabels.isNotBlank()) {
-            eqPageStateValue.text = getString(R.string.eq_page_state_partial_format, failedLabels)
-            eqPageStateValue.setTextColor(resources.getColor(R.color.brand_primary))
-            return
-        }
-        val modeLabelRes = if (eqMode == EqualizerManager.EqMode.CUSTOM) {
-            R.string.eq_mode_custom
-        } else {
-            R.string.eq_mode_preset
-        }
-        val presetName = resolveActivePresetName()
-        if (eqEnabled) {
-            eqPageStateValue.text = getString(R.string.eq_page_state_on_format, presetName, getString(modeLabelRes))
+        if (soundEffectEnabled) {
+            eqPageStateValue.text = getString(R.string.sound_page_state_on_format, resolveSoundModeName(soundEffectMode))
             eqPageStateValue.setTextColor(resources.getColor(R.color.text_primary))
         } else {
-            eqPageStateValue.text = getString(R.string.eq_page_state_off)
+            eqPageStateValue.text = getString(R.string.sound_page_state_off)
             eqPageStateValue.setTextColor(resources.getColor(R.color.text_secondary))
         }
     }
 
-    private fun applyPresetSelectionFromEqPage(presetIndex: Int) {
-        val preset = FIXED_EQ_PRESETS.getOrNull(presetIndex) ?: FIXED_EQ_PRESETS.first()
-        eqPresetIndex = presetIndex.coerceIn(0, FIXED_EQ_PRESETS.lastIndex)
-        eqMode = if (preset.name == getString(R.string.eq_mode_custom)) {
-            EqualizerManager.EqMode.CUSTOM
-        } else {
-            EqualizerManager.EqMode.PRESET
-        }
-        eqCustomBandLevels.clear()
-        eqCustomBandLevels.addAll(preset.levels.toList())
-        if (!eqEnabled) {
-            eqEnabled = true
-            closeSystemEqualizerSession("eq_page_preset_enable_app_eq")
-        }
-        val result = applyEqualizerConfig("eq_page_preset")
-        commitEqualizerConfigAfterApply(result, "eq_page_preset")
+    private fun applySoundModeSelection(mode: HiFiDspMode) {
+        soundEffectMode = mode
+        soundEffectEnabled = mode != HiFiDspMode.ORIGINAL
+        applySoundEffectConfig("sound_page_mode")
+        persistSoundEffectConfig()
         refreshEqualizerSettingsUi()
         renderEqualizerFullscreenPage()
-        val failedLabels = formatFailedEqBandLabels(result)
         updateState {
-            it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, resolveActivePresetName()))
+            it.copy(feedbackText = getString(R.string.feedback_sound_mode_changed, resolveSoundModeName(mode)))
         }
-        if (failedLabels.isNotBlank()) {
-            showToastMessage(getString(R.string.toast_eq_band_apply_failed, failedLabels))
-        } else {
-            showToast(
-                if (USE_SYSTEM_EQ_INHERIT_MODE) R.string.toast_eq_app_fallback_enabled
-                else R.string.toast_eq_enabled
-            )
-        }
+        showToastMessage(getString(R.string.toast_sound_mode_changed, resolveSoundModeName(mode)))
     }
 
-    private fun applyCustomBandSelectionFromEqPage(showFeedback: Boolean, refreshPage: Boolean) {
-        eqMode = EqualizerManager.EqMode.CUSTOM
-        eqPresetIndex = FIXED_EQ_CUSTOM_PRESET_INDEX
-        if (!eqEnabled) {
-            eqEnabled = true
-            closeSystemEqualizerSession("eq_page_custom_enable_app_eq")
-        }
-        val result = applyEqualizerConfig("eq_page_custom")
-        commitEqualizerConfigAfterApply(result, "eq_page_custom")
-        if (refreshPage) {
-            refreshEqualizerSettingsUi()
-            renderEqualizerFullscreenPage()
-        }
-        if (showFeedback) {
-            val failedLabels = formatFailedEqBandLabels(result)
-            updateState {
-                it.copy(feedbackText = getString(R.string.feedback_eq_custom_applied))
-            }
-            if (failedLabels.isNotBlank()) {
-                showToastMessage(getString(R.string.toast_eq_band_apply_failed, failedLabels))
-            } else if (USE_SYSTEM_EQ_INHERIT_MODE) {
-                showToast(R.string.toast_eq_app_fallback_enabled)
-            }
-        }
+    private fun resolveSoundModeName(mode: HiFiDspMode): String {
+        return getString(resolveSoundModeTitleRes(mode))
     }
 
-    private fun commitEqualizerConfigAfterApply(result: EqualizerManager.EqApplyResult, source: String) {
-        if (!eqEnabled || !result.attempted) {
-            persistEqualizerConfig()
-            return
-        }
-        if (result.successBands.isNotEmpty()) {
-            result.successBands.forEach { band ->
-                if (band.index in eqCustomBandLevels.indices) {
-                    eqCustomBandLevels[band.index] = band.appliedLevelMillibel ?: band.requestedLevelMillibel
-                }
-            }
-        }
-        val previousSavedLevels = parseBandLevelsCsv(
-            getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-                .getString(KEY_EQ_CUSTOM_LEVELS, "")
-                .orEmpty()
-        )
-        result.failedBands.forEach { band ->
-            if (band.index in eqCustomBandLevels.indices) {
-                eqCustomBandLevels[band.index] = previousSavedLevels.getOrNull(band.index) ?: 0
-            }
-            appendRuntimeLog("eq persist skip failed band=${band.index} source=$source type=${band.errorType}")
-        }
-        persistEqualizerConfig()
+    @StringRes
+    private fun resolveSoundModeTitleRes(mode: HiFiDspMode): Int {
+        return SOUND_MODE_OPTIONS.firstOrNull { it.mode == mode }?.titleRes ?: R.string.sound_mode_fidelity
     }
 
-    private fun resolveActivePresetName(): String {
-        if (eqMode == EqualizerManager.EqMode.CUSTOM) {
-            return getString(R.string.eq_mode_custom)
-        }
-        return FIXED_EQ_PRESETS.getOrNull(eqPresetIndex)?.name ?: getString(R.string.eq_preset_default_name)
-    }
-
-    private fun normalizeEqualizerPresetState() {
-        eqPresetIndex = normalizePresetIndex(eqPresetIndex, FIXED_EQ_PRESETS.size)
-        ensureCustomBandLevelsSize(FIXED_EQ_BANDS.size)
-        if (eqMode == EqualizerManager.EqMode.PRESET) {
-            val preset = FIXED_EQ_PRESETS.getOrNull(eqPresetIndex) ?: FIXED_EQ_PRESETS.first()
-            if (eqCustomBandLevels.size != FIXED_EQ_BANDS.size || eqCustomBandLevels.all { it == 0 }) {
-                eqCustomBandLevels.clear()
-                eqCustomBandLevels.addAll(preset.levels.toList())
-            }
-        }
-    }
-
-    private fun ensureCustomBandLevelsSize(targetSize: Int) {
-        if (targetSize <= 0) {
-            eqCustomBandLevels.clear()
-            return
-        }
-        while (eqCustomBandLevels.size < targetSize) {
-            eqCustomBandLevels.add(0)
-        }
-        while (eqCustomBandLevels.size > targetSize) {
-            eqCustomBandLevels.removeAt(eqCustomBandLevels.lastIndex)
-        }
-    }
-
-    private fun normalizePresetIndex(index: Int, presetCount: Int): Int {
-        if (presetCount <= 0) {
-            return 0
-        }
-        return index.coerceAtLeast(0) % presetCount
-    }
-
-    private fun parseEqualizerMode(raw: String?, fallback: EqualizerManager.EqMode): EqualizerManager.EqMode {
-        val normalized = raw?.trim().orEmpty()
-        if (normalized.isEmpty()) {
-            return fallback
-        }
-        return try {
-            EqualizerManager.EqMode.valueOf(normalized)
-        } catch (_: IllegalArgumentException) {
-            fallback
-        }
-    }
-
-    private fun parseBandLevelsCsv(raw: String): List<Int> {
-        if (raw.isBlank()) {
-            return emptyList()
-        }
-        val output = mutableListOf<Int>()
-        raw.split(',').forEach { token ->
-            val level = token.trim().toIntOrNull() ?: return@forEach
-            output.add(level.coerceIn(EQ_LEVEL_MIN_MB, EQ_LEVEL_MAX_MB))
-        }
-        return output
-    }
-
-    private fun eqLevelToProgress(levelMillibel: Int): Int {
-        return (levelMillibel.coerceIn(EQ_LEVEL_MIN_MB, EQ_LEVEL_MAX_MB) - EQ_LEVEL_MIN_MB)
-            .coerceIn(0, EQ_LEVEL_RANGE_MB)
-    }
-
-    private fun progressToEqLevel(progress: Int): Int {
-        return (EQ_LEVEL_MIN_MB + progress).coerceIn(EQ_LEVEL_MIN_MB, EQ_LEVEL_MAX_MB)
-    }
-
-    private fun formatBandLevelLabel(levelMillibel: Int): String {
-        val db = levelMillibel / 100f
-        return String.format(Locale.US, "%+.0f", db)
-    }
-
-    private fun formatFailedEqBandLabels(result: EqualizerManager.EqApplyResult): String {
-        if (result.failedBands.isEmpty()) {
-            return ""
-        }
-        return result.failedBands.joinToString("/") { failed ->
-            FIXED_EQ_BANDS.getOrNull(failed.index)?.label ?: "#${failed.index}"
-        }
+    @StringRes
+    private fun resolveSoundModeDescriptionRes(mode: HiFiDspMode): Int {
+        return SOUND_MODE_OPTIONS.firstOrNull { it.mode == mode }?.descriptionRes
+            ?: R.string.sound_mode_fidelity_desc
     }
 
     private fun appendRuntimeLog(message: String) {
@@ -5112,6 +4825,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_EQ_PRESET_INDEX = "eq_preset_index"
         const val KEY_EQ_MODE = "eq_mode"
         const val KEY_EQ_CUSTOM_LEVELS = "eq_custom_levels"
+        const val KEY_SOUND_EFFECT_ENABLED = "sound_effect_enabled"
+        const val KEY_SOUND_EFFECT_MODE = "sound_effect_mode"
         const val USE_SYSTEM_EQ_INHERIT_MODE = false
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000
@@ -5175,6 +4890,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             FixedEqPreset("低音增强", intArrayOf(800, 700, 500, 250, 0, -100, -100, 0, 100, 150)),
             FixedEqPreset("高音增强", intArrayOf(-150, -100, 0, 0, 100, 250, 400, 550, 700, 800)),
             FixedEqPreset("自定义", intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        )
+        val SOUND_MODE_OPTIONS = listOf(
+            SoundModeOption(HiFiDspMode.ORIGINAL, R.string.sound_mode_original, R.string.sound_mode_original_desc),
+            SoundModeOption(HiFiDspMode.FIDELITY, R.string.sound_mode_fidelity, R.string.sound_mode_fidelity_desc),
+            SoundModeOption(HiFiDspMode.CLARITY, R.string.sound_mode_clarity, R.string.sound_mode_clarity_desc),
+            SoundModeOption(HiFiDspMode.DYNAMIC, R.string.sound_mode_dynamic, R.string.sound_mode_dynamic_desc),
+            SoundModeOption(HiFiDspMode.SOFT, R.string.sound_mode_soft, R.string.sound_mode_soft_desc)
         )
         @Volatile var downloadCacheClearedAtColdStart = false
     }

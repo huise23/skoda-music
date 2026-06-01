@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4)
 
-Last Updated: 2026-05-27  
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
+Last Updated: 2026-06-01
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -9,7 +9,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - 方向盘/通知/浮窗控制链路
 - 熄火/休眠恢复自动续播
 - 更新检测与下载安装触发链路
-- Equalizer MVP fail-open 验证
+- 应用内保真 DSP 音效 fail-open 验证
 - 关键事件与日志证据回传
 
 ## 1. Preconditions
@@ -26,7 +26,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
   - 浮窗策略（播放/暂停均显示；手动关闭后“进应用再切出”重显）。
   - 恢复链路（熄火/休眠恢复后自动续播）。
   - 更新链路（检查 -> 下载 -> 安装触发）。
-  - EQ MVP（开关/预设/持久化/session 重绑/fail-open）。
+  - 应用内保真 DSP 音效（开关/模式/持久化/PCM 处理/fail-open）。
 - Out of Scope:
   - 新需求（长标题滚动/主屏删除入口）
   - 静默安装/root 安装
@@ -88,24 +88,24 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - [ ] H2 网络断开时播放/更新失败路径可见，恢复网络后可继续操作。
 - [ ] H3 浮窗权限不可用时，通知控制条仍可兜底。
 
-### I. Equalizer MVP Fail-Open
-- [ ] I1 设置页可见 EQ 开关与进入 EQ 子页入口。
-- [ ] I2 切换 EQ 开关不会导致当前播放暂停、卡死或切歌。
-- [ ] I3 EQ 子页固定显示 10 段：`31/62/125/250/500/1k/2k/4k/8k/16k`，不展示 ROM preset/band 数。
-- [ ] I4 预设固定中文：默认/流行/摇滚/爵士/古典/舞曲/人声/低音增强/高音增强/自定义。
-- [ ] I5 切换预设后 10 个滑杆立即变化；拖动任一滑杆后进入“自定义”。
-- [ ] I6 切换 EQ 开关、预设或滑杆不会导致当前播放暂停、卡死或切歌。
-- [ ] I7 运行日志包含 EQ 关键路径：
-  - `eq config update`
-  - `eq init ok` / `eq init fail`
-  - `eq apply fixed10 success=<n> fail=<n>`
-  - 单 band 失败时：`eq apply fixed10 band=<index> fail`
-  - `eq persist skip failed band=<index>`
-  - `eq release`
-- [ ] I8 若某些 band 真实写入失败，只提示失败频段并跳过本次写入；其它成功 band 继续生效。
-- [ ] I9 失败 band 不写入持久化配置；重启后不会因失败配置循环触发问题。
-- [ ] I10 在 ROM 不支持 `audiofx` / 初始化失败场景，播放主链路不受影响（fail-open）。
-- [ ] I11 切歌或播放器重建后（session 变化）仍可自动重绑或安全降级。
+### I. Hi-Fi DSP Sound Mode Fail-Open
+- [ ] I1 设置页可见“保真音效”开关与进入音效子页入口。
+- [ ] I2 切换音效开关不会导致当前播放暂停、卡死或切歌。
+- [ ] I3 音效子页显示音质模式：`原声 / 保真 / 清晰 / 动感 / 柔和`，不展示 ROM preset/band 数。
+- [ ] I4 进入子页后，左侧展示当前听感说明，右侧展示模式按钮，整体仍保持玻璃态横屏风格。
+- [ ] I5 选择 `保真 / 清晰 / 动感 / 柔和` 后开关同步开启；选择 `原声` 后进入旁路。
+- [ ] I6 切换模式时当前播放尽量实时生效，不重建队列、不切歌、不停播。
+- [ ] I7 运行日志包含 DSP 关键路径：
+  - `hifi-dsp config enabled=<...> mode=<...>`
+  - `hifi-dsp format sr=<...> ch=<...>`
+  - `hifi-dsp active mode=<...>`
+  - `hifi-dsp bypass mode=<...>`
+  - 异常时：`hifi-dsp process fail ... bypass frame`
+- [ ] I8 若当前音频格式不支持 DSP，必须自动旁路原声并记录 `hifi-dsp bypass unsupported format`。
+- [ ] I9 重启后音效配置安全恢复；旧 EQ 配置存在时不得触发 Android `audiofx` 写入失败循环。
+- [ ] I10 连续播放 30 分钟无明显卡顿、爆音、破音、闪退。
+- [ ] I11 切歌、seek、暂停/恢复后音效模式保持一致。
+- [ ] I12 听感对比：`原声` 接近无处理；`保真` 更清楚不糊；`清晰/动感/柔和` 有方向差异但不过度。
 
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
@@ -122,7 +122,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - [ ] EVD3 至少 1 条失败样本（含复现步骤 + 日志关键片段）。
 - [ ] EVD4 更新链路样本（至少 1 次检测结果；若失败附 `failed_stage`）。
 - [ ] EVD5 至少 1 份截图或短视频说明关键现象。
-- [ ] EVD6 EQ fail-open 样本（至少 1 条 `eq init fail` 或 `eq apply fixed10 band=<index> fail` 日志 + 对应播放不中断证据）。
+- [ ] EVD6 DSP fail-open 样本（至少 1 条 `hifi-dsp bypass` 或 `hifi-dsp process fail` 日志 + 对应播放不中断证据）。
 
 ### 4.3 Acceptance Decision
 - `PASS`: 无 Blocker，且 A~I 关键项通过。
@@ -150,7 +150,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - F Update Chain: PASS/FAIL
 - G Observability: PASS/FAIL
 - H Failure/Degrade: PASS/FAIL
-- I Equalizer MVP: PASS/FAIL
+- I Hi-Fi DSP Sound Mode: PASS/FAIL
 
 ### Section 4 Decision
 - Risk Gate Triggered: YES/NO
@@ -167,7 +167,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - playback_error: <error_code/stage/request_id>
 - update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
-- equalizer: <eq config/update/init/apply/release 日志样本>
+- hifi_dsp: <hifi-dsp config/format/active/bypass/fail 日志样本>
 - screenshot/video: <说明或路径>
 
 ### Conclusion
@@ -176,12 +176,12 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072`
 - Notes: <补充>
 ```
 
-## 6. Local Validation Snapshot (T-S4-AUDIO-060, 2026-05-22)
+## 6. Local Validation Snapshot (T-S4-AUDIO-086, 2026-06-01)
 - 构建验证:
   - `gradle :app:compileDebugKotlin --no-daemon` 通过
 - 本地回归结论:
-  - EQ 设置入口已接线（开关 + 预设 + 持久化）
-  - session 观测与重绑链路已接线（prepared + progress tick）
-  - 失败策略保持 fail-open：EQ 初始化/应用失败仅记日志，不中断播放
+  - 音效主线已切换为应用内保真 DSP，不再默认触发 Android `audiofx`。
+  - ExoPlayer 2.17.1 通过自定义 `AudioProcessor` 接入 PCM 处理链。
+  - 失败策略保持 fail-open：DSP 关闭/原声/格式不支持/运行异常均旁路原始 PCM，不中断播放。
 - 待外部验证:
-  - API17 目标车机 ROM 的 `audiofx` 实际支持差异需现场留证（重点 I5/I6）
+  - API17 目标车机需要验证五种模式听感差异、长播稳定性、切歌/seek 后状态一致性。

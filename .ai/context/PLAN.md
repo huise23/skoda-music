@@ -1,106 +1,114 @@
 # PLAN
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
 
 ## Current Stage
-- Stage Name: S4 音效子阶段 - 应用内保真 DSP 引擎
-- Scope Source: `.ai/context/SCOPE.md`（2026-06-01）
+- Stage Name: S4 子阶段 - AC83xx Native Hi-Fi DSP 性能优化
+- Scope Source: `.ai/context/SCOPE.md`（2026-06-02）
 
 ## Stage Goal
-- 将音效主线从系统 EQ / Android `audiofx.Equalizer` 切换为 App 播放链路内的保真 DSP。
-- 基于 ExoPlayer 2.17.1 自定义 `AudioProcessor`，在 PCM 输出前做轻量处理。
-- 第一版目标是自然、还原、低失真、可旁路，不追求夸张 EQ。
-- 保持 API17 兼容与播放稳定：DSP 失败必须 fail-open 自动旁路原声播放。
+- 将当前 Kotlin sample-by-sample DSP 热路径迁移到 C++ native buffer 级处理。
+- 保留 `原声 / 保真 / 清晰 / 动感 / 柔和` 五种音质模式与高音效目标。
+- 在 AC83xx / Android 4.2.2 / API17 上优先保证不卡顿、不断播、不闪退。
+- 通过 `quality / balanced / safe` 自动性能档位实现“高音效优先 + 自动保护”。
 
 ## Scope Validation
 
 ### In Scope
-- 音质模式：`原声 / 保真 / 清晰 / 动感 / 柔和`。
-- 默认推荐模式：`保真`。
-- 设置页保留音效开关和进入子页入口。
-- 子页改为“音质模式优先”，不再以 10 段滑杆为第一入口。
-- ExoPlayer 音频链路接入自定义 `AudioProcessor`。
-- 轻量 DSP：前级降增益、少量 biquad 滤波器、防削波/限幅保护。
-- DSP fail-open：初始化、格式、运行异常时旁路原声。
-- 日志与 API17 实机回归清单更新。
+- 复用现有 `app/src/main/cpp/CMakeLists.txt` 与 `native-playback` so。
+- 新增 native DSP JNI 接口，按 PCM16 `ByteBuffer` 整块处理，不做 per-sample JNI。
+- Kotlin `HiFiAudioProcessor` 保留为 ExoPlayer `AudioProcessor` 接入层、状态同步层、fail-open 包装层。
+- C++ 管理模式参数、滤波器状态、系数预计算、buffer 处理、耗时统计与降档状态。
+- 支持 PCM 16-bit mono/stereo；其它格式自动旁路。
+- native 初始化失败、配置失败、处理失败、直接 buffer 不可用时必须旁路原声。
+- 日志补齐 native enabled、mode、tier、cost、degrade reason、bypass reason。
+- 更新 API17 / AC83xx 验证清单。
 
 ### Out of Scope
-- 系统 EQ 继承继续推进。
-- Android `audiofx.Equalizer` 固定 10 段直写作为主线。
-- 系统全局音效或影响其它 App 声音。
-- 重写播放器为自研解码 + `AudioTrack` 输出。
-- 第一版高级 10 段 EQ、强度滑杆、多套用户自定义曲线。
-- 混响、环绕、空间音频、复杂动态压缩器。
-- 改变 Emby-only、IPv4-only、download-only 播放策略。
+- 通过默认关闭 DSP 或默认原声规避性能问题。
+- 恢复系统 EQ 继承或 Android `audiofx.Equalizer` 作为主线。
+- 高级 10 段 EQ 页面、强度滑杆、多套用户曲线。
+- 空间音频、环绕、混响、复杂动态压缩器。
+- 重写播放器为自研解码 + `AudioTrack`。
+- 引入要求 `minSdk > 17` 的音频库或系统能力。
 
 ## Workstreams
 
-### W1 Audio Pipeline 接入
-- 目标: 在 ExoPlayer 2.17.1 中接入自定义 `AudioProcessor`，并保证旁路路径稳定。
-- 输出: 可配置的 DSP 处理链、旁路状态、日志。
+### W1 Native Bridge & Build Integration
+- 目标: 固定 JNI API、native 生命周期、CMake 接线和 fail-open 契约。
+- 输出: 可构建的 native DSP bridge，先支持 no-op/bypass buffer 处理。
 
-### W2 DSP 模式引擎
-- 目标: 实现轻量保真 DSP 参数模型和模式曲线。
-- 输出: `原声/保真/清晰/动感/柔和` 对应的稳定处理参数。
+### W2 Native DSP Engine & Performance Tiers
+- 目标: 将现有五种模式迁入 C++，并实现 quality/balanced/safe 三档。
+- 输出: native 模式参数、预计算系数、低开销 limiter、耗时统计和自动降档。
 
-### W3 UI 与状态迁移
-- 目标: 将现有 EQ UI/文案/持久化迁移为音质模式体验。
-- 输出: 设置页入口、音效子页、模式持久化、旧 EQ 配置安全降级。
+### W3 Kotlin AudioProcessor Migration
+- 目标: 将 `HiFiAudioProcessor.queueInput()` 热路径改为 native 整块调用。
+- 输出: Kotlin 不再执行逐 sample DSP；异常与不支持路径继续 fail-open。
 
-### W4 验证与回归
-- 目标: 建立本地构建、API17 guardrails、实机听感与稳定性验证闭环。
-- 输出: 回归清单、日志观察项、实机报告模板。
+### W4 Validation & AC83xx Evidence
+- 目标: 建立本地构建、API17 guardrails、实机性能日志和长播验证闭环。
+- 输出: 更新验证清单、日志观察项、实机报告模板与调优输入。
 
 ## Dependency Graph
 - `W1 -> W2 -> W3 -> W4`
-- `W3` 可在 `W1` 骨架稳定后并行推进。
-- `W4` 依赖前三者，但回归清单可先行更新。
+- `W2` 可在 `W1` no-op bridge 可构建后推进。
+- `W4` 文档可提前更新，但实机结论依赖 `W2/W3` 完成。
 
 ## Recommended Order
-1. `T-S4-AUDIO-080`: ExoPlayer DSP 接入方案落点确认。
-2. `T-S4-AUDIO-081`: 音效状态模型与持久化迁移设计落地。
-3. `T-S4-AUDIO-082`: Fail-open `AudioProcessor` 骨架接入。
-4. `T-S4-AUDIO-083`: 轻量 DSP 模式引擎实现。
-5. `T-S4-AUDIO-084`: 音效子页与设置页体验替换。
-6. `T-S4-AUDIO-085`: 模式切换联动与旧 EQ 主线下线。
-7. `T-S4-AUDIO-086`: 本地构建、guardrails、回归文档更新。
-8. `T-S4-AUDIO-087`: API17 实机验证与调音反馈闭环。
+1. `T-S4-AUDIO-088`: Native DSP JNI API 与 fail-open 契约。
+2. `T-S4-AUDIO-089`: 三档性能策略、预算阈值与日志字段契约。
+3. `T-S4-AUDIO-090`: native bridge scaffold + no-op/bypass buffer 处理。
+4. `T-S4-AUDIO-091`: C++ DSP 模式引擎与系数预计算。
+5. `T-S4-AUDIO-092`: 自动降档、耗时统计、throttled logs。
+6. `T-S4-AUDIO-093`: Kotlin `HiFiAudioProcessor` 热路径迁移到 native。
+7. `T-S4-AUDIO-094`: 本地构建、guardrails、API17 清单更新。
+8. `T-S4-AUDIO-095`: AC83xx 实机长播与听感验证。
 
 ## Milestones
-- M1: ExoPlayer 自定义 `AudioProcessor` 可构建、可旁路、不会影响播放。`Done locally`
-- M2: 五种音质模式在本地可切换，处理异常自动旁路。`Done locally`
-- M3: UI 从 EQ 专家页切换为音质模式页，配置可安全持久化。`Done locally`
-- M4: API17 实机验证确认无闪退、无停播、无明显爆音破音，并能听出保真/清晰/动感/柔和差异。`Blocked by device`
+- M1: native bridge 可构建，可处理整块 PCM buffer，失败时旁路原声。`Done locally`
+- M2: 五种音质模式在 native 中实现，Kotlin 热路径不再逐 sample 处理。`Done locally`
+- M3: 自动档位和耗时日志可观察，超预算先降档再旁路。`Done locally`
+- M4: AC83xx 实机开启 `保真` 连续播放不再出现广播感卡顿。`Blocked by device`
 
 ## Validation Strategy
 - 本地:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
-  - 必要时 `gradle :app:assembleDebug`
+  - `gradle :app:assembleDebug --no-daemon`
 - 代码审查重点:
-  - 不引入 `minSdk > 17` 依赖。
-  - `AudioProcessor.queueInput()` 不做高频分配。
-  - 格式不支持和异常路径必须旁路。
-  - 模式切换不应要求重建播放主链路，优先通过共享配置实时生效。
+  - JNI 不跨 sample 调用。
+  - `queueInput()` 不做高频分配，不吞 buffer，不破坏 position/limit。
+  - `ByteBuffer` direct 地址不可用时必须旁路。
+  - native handle 生命周期与 `onFlush/onReset` 一致。
+  - 所有 native/JNI 异常路径 fail-open。
 - 实机:
-  - 连续播放 30 分钟，无卡顿、爆音、破音、闪退。
-  - 对比 `原声/保真/清晰/动感/柔和` 的可感知差异。
-  - 重点观察低端 CPU 压力与 seek/切歌/暂停恢复。
+  - AC83xx 连续播放 30 分钟，无卡顿、爆音、破音、闪退。
+  - 切歌、seek、暂停/恢复后 mode/tier/state 正常。
+  - 对比 `原声/保真/清晰/动感/柔和`，保留可感知差异。
+  - 日志能解释正常处理、降档、旁路三类状态。
 
-## Execution Snapshot (2026-06-01)
-- `T-S4-AUDIO-080~086` 已完成。
-- 本地验证通过：
+## Risks & Assumptions
+- 风险: AC83xx 浮点性能不足，optimized float 仍可能超预算，需要 fixed-point 或进一步降滤波器数量。
+- 风险: ExoPlayer 输出 buffer 是否始终 direct 需实测；非 direct 必须有安全旁路或低频复制兜底。
+- 风险: native 崩溃不可被 Kotlin catch 捕获，因此 C++ 代码必须避免越界、空指针、未校验 handle。
+- 风险: 自动降档过激会削弱听感，阈值需要实机调优。
+- 假设: 现有 `native-playback` so 可继续承载 DSP JNI，不需要新 so。
+- 假设: 当前 PCM 格式以 16-bit mono/stereo 为主，足够覆盖目标播放链路。
+
+## Execution Snapshot (2026-06-02)
+- Full Plan Mode 已完成本地可执行链 `T-S4-AUDIO-088~094`。
+- 代码结果:
+  - 新增 `NativeHiFiDspBridge.kt`，封装 native create/release/configure/setMode/flush/processPcm16。
+  - 新增 `native_hifi_dsp.cpp`，实现五种音质模式、预计算 biquad、`quality/balanced/safe` 三档和耗时统计。
+  - `HiFiAudioProcessor` 热路径已从 Kotlin sample loop 切换为 native direct `ByteBuffer` 整块处理。
+  - `CMakeLists.txt` 已将 native DSP 编入 `native-playback`。
+  - API17 回归清单已补充 native DSP 性能日志与降档/旁路证据字段。
+- 本地验证通过:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
   - `gradle :app:assembleDebug --no-daemon`
-- 剩余 `T-S4-AUDIO-087` 等待 API17 实机窗口。
-
-## Risks & Assumptions
-- 风险: ExoPlayer 2.17.1 的 `AudioProcessor` 接入需要自定义 `DefaultRenderersFactory` / `DefaultAudioSink`，改错会影响播放。
-- 风险: API17 设备 CPU 弱，DSP 必须极轻量并避免每帧对象分配。
-- 风险: 车机喇叭/功放染色明显，固定模式参数需要实机调音，不能仅靠本地判断。
-- 风险: 当前 `MainActivity` EQ 代码较集中，UI 迁移要避免引入状态错乱。
-- 假设: 当前 ExoPlayer 2.17.1 在项目内已稳定播放，适合作为 DSP 接入基座。
-- 假设: 第一版不做强度滑杆，可降低状态和调音复杂度。
+- 剩余:
+  - `T-S4-AUDIO-095` AC83xx 实机长播与听感验证。

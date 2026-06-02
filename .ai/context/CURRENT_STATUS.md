@@ -1,10 +1,10 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
 
 ## Stage
-- 当前阶段: S4（车机后台控制落地）
-- 当前主干: `master@7cf36f3`
+- 当前阶段: S4 子阶段（AC83xx Native Hi-Fi DSP 性能优化）
+- 当前主干: `master@bb12c6b`
 
 ## Latest Confirmed (User)
 - 路线锁定为“方案1（Legacy 稳态）”。
@@ -22,6 +22,56 @@ Last Updated: 2026-06-01
   - 移除不稳定媒体会话实现（`ff52815`）。
   - 增加 API17 违规守卫（`8afea55`）。
   - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
+
+## Requirement Refresh (AC83xx Native Hi-Fi DSP, 2026-06-02)
+- 实机反馈：AC83xx 上 Kotlin DSP 播放时有轻微卡顿，听感类似广播不稳。
+- 用户确认新口径：
+  - 不接受简单低配降级或默认关闭 DSP。
+  - 目标是保留高音效，通过工程优化解决性能问题。
+  - 直接采用 C++ Native DSP，把 PCM 热路径从 Kotlin 迁移到 native。
+  - 允许空间换时间：预计算、查表、fixed-point、整块处理、自动性能档位。
+  - 超预算时优先自动降档，不直接关闭音效；最终仍必须 fail-open 保护播放。
+- 状态:
+  - `Planned`：已完成 native DSP 优化规划，Ready 入口为 `T-S4-AUDIO-088` 与 `T-S4-AUDIO-089`。
+
+## Planning Refresh (AC83xx Native Hi-Fi DSP, 2026-06-02)
+- 已按新 scope 完成规划重排：
+  - 新增模块 `M-S4-AUDIO-018`：Native DSP Bridge & Build Integration。
+  - 新增模块 `M-S4-AUDIO-019`：Native DSP Engine & Performance Tiers。
+  - 新增模块 `M-S4-AUDIO-020`：Kotlin AudioProcessor Native Migration。
+  - 新增模块 `M-S4-AUDIO-021`：AC83xx Validation & Regression Evidence。
+- 新任务链：
+  - `T-S4-AUDIO-088` Native DSP JNI API 与 fail-open 契约。
+  - `T-S4-AUDIO-089` 性能档位、预算阈值与日志字段契约。
+  - `T-S4-AUDIO-090` Native bridge scaffold 与 no-op/bypass buffer 处理。
+  - `T-S4-AUDIO-091` C++ DSP 模式引擎与系数预计算。
+  - `T-S4-AUDIO-092` 自动降档、耗时统计与节流日志。
+  - `T-S4-AUDIO-093` `HiFiAudioProcessor` 热路径迁移到 native。
+  - `T-S4-AUDIO-094` 本地验证、guardrails 与 API17 清单更新。
+  - `T-S4-AUDIO-095` AC83xx 实机长播与听感验证。
+- Planning 当时队列状态:
+  - Initial ready: `T-S4-AUDIO-088`, `T-S4-AUDIO-089`。
+  - Initial pending: `T-S4-AUDIO-090~094`。
+  - Initial blocked: `T-S4-AUDIO-095`（外部实机窗口）。
+  - Initial superseded: `T-S4-AUDIO-087`（需先完成 native 优化后再重新实机验证）。
+- 当前队列状态已由后续执行刷新：`T-S4-AUDIO-088~094` Done，`T-S4-AUDIO-095` Blocked by device。
+
+## Execution Progress (AC83xx Native Hi-Fi DSP, 2026-06-02)
+- Full Plan Mode 已完成本地可执行链 `T-S4-AUDIO-088~094`：
+  - `T-S4-AUDIO-088` Done：固定 native DSP JNI API、handle 生命周期、direct buffer 与 fail-open 契约。
+  - `T-S4-AUDIO-089` Done：固定 `quality / balanced / safe` 三档、耗时预算、降档/旁路日志字段。
+  - `T-S4-AUDIO-090` Done：新增 `NativeHiFiDspBridge.kt`、`native_hifi_dsp.cpp`，并接入 `native-playback` CMake。
+  - `T-S4-AUDIO-091` Done：五种音质模式迁入 C++，模式切换时预计算 biquad 系数。
+  - `T-S4-AUDIO-092` Done：native 层实现耗时统计、超预算计数、自动降档和最终旁路。
+  - `T-S4-AUDIO-093` Done：`HiFiAudioProcessor.queueInput()` 已改为 native direct `ByteBuffer` 整块处理，Kotlin 不再逐 sample DSP。
+  - `T-S4-AUDIO-094` Done：API17 回归清单已补 native DSP `mode/tier/costUs/flags` 观察项。
+- 本地验证：
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过（含 C++/CMake 多 ABI 构建）。
+- 剩余：
+  - `T-S4-AUDIO-095` Blocked：等待 AC83xx 实机验证是否消除广播感卡顿，并回传 native DSP 日志。
 
 ## Execution Progress (App Hi-Fi DSP Engine, 2026-06-01)
 - Full Plan Mode 已推进 `T-S4-AUDIO-080~086` 本地闭环：
@@ -41,8 +91,8 @@ Last Updated: 2026-06-01
   - `T-S4-AUDIO-087` Blocked：等待 API17 实机听感、长播、切歌/seek/暂停恢复验证。
 
 ## Current Focus
-- 本地可执行内容已完成，下一步应推送版本供 API17 车机实测。
-- 实机重点：自然听感、无爆音破音、长播稳定、模式切换实时性、日志 `hifi-dsp config/format/active/bypass`。
+- 当前焦点切换为 AC83xx Native DSP 性能优化。
+- 本地 native DSP 优化链已完成，下一步焦点是 AC83xx 实机长播与听感验证。
 
 ## Historical Notes
 ## Requirement Refresh (App EQ Fixed 10-band Trial, 2026-05-29)

@@ -1,39 +1,34 @@
 # NEXT_STEPS
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
 
 ## One-Line Summary
-- 应用内保真 DSP 音效本地实现已完成，剩余工作是 API17 车机实机听感与稳定性验证。
+- Native Hi-Fi DSP 本地实现已完成并通过构建；下一步是 AC83xx 实机验证是否解决卡顿。
 
 ## Current Highest Priority
-- `T-S4-AUDIO-087`: API17 实机听感与稳定性验证。
+- `T-S4-AUDIO-095`: AC83xx 实机长播与听感验证。
+
+## What To Validate On Device
+1. 安装本轮 APK 后开启 `保真` 模式连续播放，确认是否还存在“听广播一样”的轻微卡顿。
+2. 切换 `原声 / 保真 / 清晰 / 动感 / 柔和`，确认不断播、不切歌、不爆音。
+3. 执行 seek、切歌、暂停/恢复，确认 native DSP 状态一致。
+4. 连续播放至少 30 分钟，确认无卡顿、爆音、破音、闪退。
+5. 回传日志样本：`hifi-dsp native status=<...> mode=<...> tier=<...> costUs=<...> flags=<...>`。
+
+## Expected Log Interpretation
+- `tier=quality`: 正常高音效档。
+- `tier=balanced`: CPU 超预算后自动降一档，仍应保持可听差异。
+- `tier=safe`: CPU 压力较高，进入最低复杂度音效。
+- `status=bypass` 或 `flags=bypass`: native 保护性旁路，播放应不中断。
+- `reason=non-direct-buffer`: ExoPlayer 输出 buffer 不满足 native 直处理，需要后续改复制兜底或调整接入策略。
 
 ## Completed Locally
-1. ExoPlayer 2.17.1 已通过自定义 `RenderersFactory` 注入 `HiFiAudioProcessor`。
-2. 新增 DSP controller 与五种模式：`原声 / 保真 / 清晰 / 动感 / 柔和`。
-3. 设置页和音效子页已切换为“保真音效 / 音质模式”体验。
-4. 新配置键：`sound_effect_enabled / sound_effect_mode`；旧 `eq_enabled` 只做首次迁移参考。
-5. 默认路径不再触发 Android `audiofx.Equalizer` 写入。
-6. API17 回归清单已切换为 Hi-Fi DSP Sound Mode 验证。
-
-## Validation Already Done
-- `git diff --check` 通过。
-- `./scripts/check_api17_guardrails.sh` 通过。
+- `T-S4-AUDIO-088~094` 已完成。
 - `gradle :app:compileDebugKotlin --no-daemon` 通过。
 - `gradle :app:assembleDebug --no-daemon` 通过。
-
-## Device Validation Focus
-1. 设置页“保真音效”开关可用，进入音效子页正常。
-2. 子页显示 `原声 / 保真 / 清晰 / 动感 / 柔和`，不再显示 10 段 EQ 主界面。
-3. `原声` 与关闭音效接近。
-4. `保真` 更清楚、更不糊，但不偏重低音或突出人声。
-5. `清晰/动感/柔和` 有方向差异但不过度。
-6. 连续播放 30 分钟无卡顿、爆音、破音、闪退。
-7. 切歌、seek、暂停恢复后模式仍一致。
-8. 日志可见 `hifi-dsp config/format/active/bypass`。
-
-## Blocked / Waiting
-- `T-S4-AUDIO-087` 等待 API17 实机窗口。
+- `./scripts/check_api17_guardrails.sh` 通过。
+- `git diff --check` 通过。
 
 ## Recommended Next Action
-- 推送当前版本供实机验证；实机反馈后进入调音或修复闭环。
+- 推送/打包后执行 AC83xx 实机验证。
+- 若实机仍卡顿：带日志回到 `$ai-requirement` 或 `$ai-planning`，规划 fixed-point/NEON/更低复杂度参数二轮优化。

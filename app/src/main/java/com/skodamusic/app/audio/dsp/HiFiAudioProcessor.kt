@@ -1,15 +1,10 @@
 package com.skodamusic.app.audio.dsp
 
+import android.os.SystemClock
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.audio.AudioProcessor
 import com.google.android.exoplayer2.audio.BaseAudioProcessor
 import java.nio.ByteBuffer
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class HiFiAudioProcessor(
     private val controller: HiFiDspController,
@@ -17,14 +12,22 @@ class HiFiAudioProcessor(
 ) : BaseAudioProcessor() {
     private var sampleRate = 0
     private var channelCount = 0
+    private var nativeConfiguredSampleRate = 0
+    private var nativeConfiguredChannelCount = 0
+    private var nativeHandle = 0L
     private var appliedVersion = -1
     private var appliedMode = HiFiDspMode.ORIGINAL
     private var appliedEnabled = false
-    private var preamp = 1.0f
-    private var channelFilters: Array<Array<Biquad>> = emptyArray()
     private var unsupportedLogged = false
     private var activeLogged = false
     private var bypassLogged = false
+    private var nativeUnavailableLogged = false
+    private var directBufferBypassLogged = false
+    private var nativeConfigureFailLogged = false
+    private var lastRuntimeLogAtMs = 0L
+    private var lastRuntimeTier = -1
+    private var lastRuntimeFlags = -1
+    private var lastRuntimeStatus = -1
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val supported = inputAudioFormat.encoding == C.ENCODING_PCM_16BIT &&
@@ -45,6 +48,10 @@ class HiFiAudioProcessor(
             sampleRate = inputAudioFormat.sampleRate
             channelCount = inputAudioFormat.channelCount
             appliedVersion = -1
+            nativeConfiguredSampleRate = 0
+            nativeConfiguredChannelCount = 0
+            directBufferBypassLogged = false
+            nativeConfigureFailLogged = false
             log("hifi-dsp format sr=$sampleRate ch=$channelCount enc=${inputAudioFormat.encoding}")
         }
         return inputAudioFormat
@@ -68,248 +75,191 @@ class HiFiAudioProcessor(
             output.flip()
             return
         }
+
         val inputStart = inputBuffer.position()
-        try {
-            ensureMode(config)
-            processPcm16(inputBuffer, output)
-            output.flip()
-        } catch (e: Exception) {
-            log("hifi-dsp process fail type=${e.javaClass.simpleName} msg=${e.message}; bypass frame")
-            output.clear()
-            inputBuffer.position(inputStart)
-            output.put(inputBuffer)
-            output.flip()
-            resetFilters()
+        if (!ensureNativeReady() || !ensureNativeMode(config)) {
+            bypassFrame(inputBuffer, output, inputStart, "native-not-ready")
+            return
         }
+        if (!inputBuffer.isDirect || !output.isDirect) {
+            if (!directBufferBypassLogged) {
+                directBufferBypassLogged = true
+                log("hifi-dsp native bypass directBuffer=false input=${inputBuffer.isDirect} output=${output.isDirect}")
+            }
+            bypassFrame(inputBuffer, output, inputStart, "non-direct-buffer")
+            return
+        }
+
+        val inputView = inputBuffer.slice()
+        val outputView = output.slice()
+        val packed = NativeHiFiDspBridge.processPcm16(nativeHandle, inputView, outputView, byteCount)
+        val status = NativeHiFiDspBridge.status(packed)
+        if (status == NativeHiFiDspBridge.STATUS_ERROR) {
+            NativeHiFiDspBridge.flush(nativeHandle)
+            bypassFrame(inputBuffer, output, inputStart, "native-process-error")
+            logRuntimeStatus(config, packed, forced = true)
+            return
+        }
+
+        inputBuffer.position(inputStart + byteCount)
+        output.position(byteCount)
+        output.flip()
+        logRuntimeStatus(config, packed, forced = false)
     }
 
     override fun onFlush() {
-        resetFilters()
+        if (nativeHandle != 0L) {
+            NativeHiFiDspBridge.flush(nativeHandle)
+        }
     }
 
     override fun onReset() {
-        resetFilters()
+        if (nativeHandle != 0L) {
+            NativeHiFiDspBridge.release(nativeHandle)
+            nativeHandle = 0L
+        }
         sampleRate = 0
         channelCount = 0
+        nativeConfiguredSampleRate = 0
+        nativeConfiguredChannelCount = 0
         appliedVersion = -1
         activeLogged = false
         bypassLogged = false
         unsupportedLogged = false
+        nativeUnavailableLogged = false
+        directBufferBypassLogged = false
+        nativeConfigureFailLogged = false
+        lastRuntimeLogAtMs = 0L
+        lastRuntimeTier = -1
+        lastRuntimeFlags = -1
+        lastRuntimeStatus = -1
     }
 
-    private fun ensureMode(config: HiFiDspController.Config) {
-        if (appliedVersion == config.version && appliedMode == config.mode && appliedEnabled == config.enabled) {
-            return
+    private fun ensureNativeReady(): Boolean {
+        if (!NativeHiFiDspBridge.isAvailable()) {
+            if (!nativeUnavailableLogged) {
+                nativeUnavailableLogged = true
+                log("hifi-dsp native unavailable; bypass")
+            }
+            return false
         }
-        val spec = ModeSpec.forMode(config.mode)
-        preamp = spec.preamp
-        channelFilters = Array(channelCount) {
-            spec.filters.map { it.create(sampleRate) }.toTypedArray()
+        if (nativeHandle == 0L) {
+            nativeHandle = NativeHiFiDspBridge.create()
+            if (nativeHandle == 0L) {
+                if (!nativeUnavailableLogged) {
+                    nativeUnavailableLogged = true
+                    log("hifi-dsp native create fail; bypass")
+                }
+                return false
+            }
+        }
+        if (nativeConfiguredSampleRate == sampleRate && nativeConfiguredChannelCount == channelCount) {
+            return true
+        }
+        val status = NativeHiFiDspBridge.configure(nativeHandle, sampleRate, channelCount)
+        if (status == NativeHiFiDspBridge.STATUS_ERROR) {
+            if (!nativeConfigureFailLogged) {
+                nativeConfigureFailLogged = true
+                log("hifi-dsp native configure fail sr=$sampleRate ch=$channelCount; bypass")
+            }
+            return false
+        }
+        nativeConfiguredSampleRate = sampleRate
+        nativeConfiguredChannelCount = channelCount
+        nativeConfigureFailLogged = false
+        log("hifi-dsp native configured sr=$sampleRate ch=$channelCount")
+        return true
+    }
+
+    private fun ensureNativeMode(config: HiFiDspController.Config): Boolean {
+        if (appliedVersion == config.version && appliedMode == config.mode && appliedEnabled == config.enabled) {
+            return true
+        }
+        val status = NativeHiFiDspBridge.setMode(
+            nativeHandle,
+            enabled = config.enabled,
+            mode = config.mode,
+            version = config.version
+        )
+        if (status == NativeHiFiDspBridge.STATUS_ERROR) {
+            log("hifi-dsp native setMode fail mode=${config.mode.code} enabled=${config.enabled}; bypass frame")
+            return false
         }
         appliedVersion = config.version
         appliedMode = config.mode
         appliedEnabled = config.enabled
         bypassLogged = false
-        if (!activeLogged) {
-            activeLogged = true
-        }
-        log("hifi-dsp active mode=${config.mode.code} sr=$sampleRate ch=$channelCount filters=${spec.filters.size}")
+        activeLogged = true
+        lastRuntimeTier = -1
+        lastRuntimeFlags = -1
+        lastRuntimeStatus = -1
+        log("hifi-dsp native active mode=${config.mode.code} sr=$sampleRate ch=$channelCount tier=quality")
+        return true
     }
 
-    private fun processPcm16(input: ByteBuffer, output: ByteBuffer) {
-        val frameBytes = channelCount * 2
-        while (input.remaining() >= frameBytes) {
-            for (channel in 0 until channelCount) {
-                val lo = input.get().toInt() and 0xFF
-                val hi = input.get().toInt()
-                val raw = ((hi shl 8) or lo).toShort()
-                var sample = raw.toFloat() / 32768f
-                sample *= preamp
-                val filters = channelFilters.getOrNull(channel).orEmpty()
-                for (filter in filters) {
-                    sample = filter.process(sample)
-                }
-                sample = softLimit(sample)
-                val out = (sample * 32767f).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                output.put((out and 0xFF).toByte())
-                output.put(((out shr 8) and 0xFF).toByte())
-            }
-        }
-        while (input.hasRemaining()) {
-            output.put(input.get())
+    private fun bypassFrame(input: ByteBuffer, output: ByteBuffer, inputStart: Int, reason: String) {
+        output.clear()
+        input.position(inputStart)
+        output.put(input)
+        output.flip()
+        if (!bypassLogged) {
+            bypassLogged = true
+            activeLogged = false
+            log("hifi-dsp bypass reason=$reason")
         }
     }
 
-    private fun resetFilters() {
-        channelFilters.forEach { filters -> filters.forEach { it.reset() } }
-    }
-
-    private fun softLimit(value: Float): Float {
-        val threshold = 0.92f
-        val absolute = abs(value)
-        if (absolute <= threshold) {
-            return value
+    private fun logRuntimeStatus(config: HiFiDspController.Config, packed: Long, forced: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        val status = NativeHiFiDspBridge.status(packed)
+        val tier = NativeHiFiDspBridge.tier(packed)
+        val flags = NativeHiFiDspBridge.flags(packed)
+        val costUs = NativeHiFiDspBridge.costUs(packed)
+        val important = (flags and (
+            NativeHiFiDspBridge.FLAG_DEGRADED or
+                NativeHiFiDspBridge.FLAG_OVER_BUDGET or
+                NativeHiFiDspBridge.FLAG_BYPASS or
+                NativeHiFiDspBridge.FLAG_ERROR
+            )) != 0
+        val changed = status != lastRuntimeStatus || tier != lastRuntimeTier || flags != lastRuntimeFlags
+        if (!forced && !changed && !important && now - lastRuntimeLogAtMs < RUNTIME_LOG_INTERVAL_MS) {
+            return
         }
-        val sign = if (value < 0f) -1f else 1f
-        val compressed = threshold + (1f - threshold) * (1f - (1f / (1f + (absolute - threshold) * 8f)))
-        return (sign * compressed).coerceIn(-0.99f, 0.99f)
+        if (!forced && !changed && important && now - lastRuntimeLogAtMs < IMPORTANT_LOG_INTERVAL_MS) {
+            return
+        }
+        lastRuntimeLogAtMs = now
+        lastRuntimeStatus = status
+        lastRuntimeTier = tier
+        lastRuntimeFlags = flags
+        log(
+            "hifi-dsp native status=${statusName(status)} mode=${config.mode.code} " +
+                "tier=${NativeHiFiDspBridge.tierName(tier)} costUs=$costUs flags=${flagsText(flags)}"
+        )
     }
 
-    private data class ModeSpec(
-        val preamp: Float,
-        val filters: List<FilterSpec>
-    ) {
-        companion object {
-            fun forMode(mode: HiFiDspMode): ModeSpec {
-                return when (mode) {
-                    HiFiDspMode.ORIGINAL -> ModeSpec(1.0f, emptyList())
-                    HiFiDspMode.FIDELITY -> ModeSpec(
-                        preamp = 0.86f,
-                        filters = listOf(
-                            FilterSpec.lowShelf(85f, 0.7f, 0.8f),
-                            FilterSpec.peak(220f, 0.85f, -1.4f),
-                            FilterSpec.peak(2500f, 0.9f, 1.1f),
-                            FilterSpec.highShelf(9200f, 0.7f, 0.9f)
-                        )
-                    )
-                    HiFiDspMode.CLARITY -> ModeSpec(
-                        preamp = 0.84f,
-                        filters = listOf(
-                            FilterSpec.peak(260f, 0.9f, -1.2f),
-                            FilterSpec.peak(2100f, 0.85f, 1.8f),
-                            FilterSpec.highShelf(8800f, 0.7f, 1.2f)
-                        )
-                    )
-                    HiFiDspMode.DYNAMIC -> ModeSpec(
-                        preamp = 0.82f,
-                        filters = listOf(
-                            FilterSpec.lowShelf(75f, 0.75f, 1.6f),
-                            FilterSpec.peak(180f, 0.9f, -0.9f),
-                            FilterSpec.peak(3600f, 1.0f, 0.7f)
-                        )
-                    )
-                    HiFiDspMode.SOFT -> ModeSpec(
-                        preamp = 0.9f,
-                        filters = listOf(
-                            FilterSpec.lowShelf(100f, 0.75f, 0.3f),
-                            FilterSpec.peak(3000f, 0.9f, -1.1f),
-                            FilterSpec.highShelf(7200f, 0.7f, -1.5f)
-                        )
-                    )
-                }
-            }
+    private fun statusName(status: Int): String {
+        return when (status) {
+            NativeHiFiDspBridge.STATUS_OK -> "ok"
+            NativeHiFiDspBridge.STATUS_BYPASS -> "bypass"
+            NativeHiFiDspBridge.STATUS_ERROR -> "error"
+            else -> "unknown"
         }
     }
 
-    private data class FilterSpec(
-        val type: Type,
-        val frequencyHz: Float,
-        val q: Float,
-        val gainDb: Float
-    ) {
-        enum class Type { PEAK, LOW_SHELF, HIGH_SHELF }
-
-        fun create(sampleRate: Int): Biquad {
-            val safeFrequency = frequencyHz.coerceIn(20f, sampleRate * 0.45f)
-            val a = 10.0.pow(gainDb / 40.0)
-            val omega = 2.0 * PI * safeFrequency / sampleRate
-            val sinW = sin(omega)
-            val cosW = cos(omega)
-            return when (type) {
-                Type.PEAK -> {
-                    val alpha = sinW / (2.0 * q.coerceAtLeast(0.1f))
-                    Biquad.fromRaw(
-                        b0 = 1.0 + alpha * a,
-                        b1 = -2.0 * cosW,
-                        b2 = 1.0 - alpha * a,
-                        a0 = 1.0 + alpha / a,
-                        a1 = -2.0 * cosW,
-                        a2 = 1.0 - alpha / a
-                    )
-                }
-                Type.LOW_SHELF -> shelf(a, sinW, cosW, low = true)
-                Type.HIGH_SHELF -> shelf(a, sinW, cosW, low = false)
-            }
-        }
-
-        private fun shelf(a: Double, sinW: Double, cosW: Double, low: Boolean): Biquad {
-            val sqrtA = sqrt(a)
-            val alpha = sinW / 2.0 * sqrt(2.0)
-            return if (low) {
-                Biquad.fromRaw(
-                    b0 = a * ((a + 1.0) - (a - 1.0) * cosW + 2.0 * sqrtA * alpha),
-                    b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cosW),
-                    b2 = a * ((a + 1.0) - (a - 1.0) * cosW - 2.0 * sqrtA * alpha),
-                    a0 = (a + 1.0) + (a - 1.0) * cosW + 2.0 * sqrtA * alpha,
-                    a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cosW),
-                    a2 = (a + 1.0) + (a - 1.0) * cosW - 2.0 * sqrtA * alpha
-                )
-            } else {
-                Biquad.fromRaw(
-                    b0 = a * ((a + 1.0) + (a - 1.0) * cosW + 2.0 * sqrtA * alpha),
-                    b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cosW),
-                    b2 = a * ((a + 1.0) + (a - 1.0) * cosW - 2.0 * sqrtA * alpha),
-                    a0 = (a + 1.0) - (a - 1.0) * cosW + 2.0 * sqrtA * alpha,
-                    a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cosW),
-                    a2 = (a + 1.0) - (a - 1.0) * cosW - 2.0 * sqrtA * alpha
-                )
-            }
-        }
-
-        companion object {
-            fun peak(frequencyHz: Float, q: Float, gainDb: Float): FilterSpec {
-                return FilterSpec(Type.PEAK, frequencyHz, q, gainDb)
-            }
-
-            fun lowShelf(frequencyHz: Float, q: Float, gainDb: Float): FilterSpec {
-                return FilterSpec(Type.LOW_SHELF, frequencyHz, q, gainDb)
-            }
-
-            fun highShelf(frequencyHz: Float, q: Float, gainDb: Float): FilterSpec {
-                return FilterSpec(Type.HIGH_SHELF, frequencyHz, q, gainDb)
-            }
-        }
+    private fun flagsText(flags: Int): String {
+        val values = ArrayList<String>(5)
+        if ((flags and NativeHiFiDspBridge.FLAG_ACTIVE) != 0) values.add("active")
+        if ((flags and NativeHiFiDspBridge.FLAG_BYPASS) != 0) values.add("bypass")
+        if ((flags and NativeHiFiDspBridge.FLAG_DEGRADED) != 0) values.add("degraded")
+        if ((flags and NativeHiFiDspBridge.FLAG_OVER_BUDGET) != 0) values.add("over_budget")
+        if ((flags and NativeHiFiDspBridge.FLAG_UNSUPPORTED) != 0) values.add("unsupported")
+        if ((flags and NativeHiFiDspBridge.FLAG_ERROR) != 0) values.add("error")
+        return if (values.isEmpty()) "none" else values.joinToString(separator = ",")
     }
 
-    private class Biquad(
-        private val b0: Float,
-        private val b1: Float,
-        private val b2: Float,
-        private val a1: Float,
-        private val a2: Float
-    ) {
-        private var x1 = 0f
-        private var x2 = 0f
-        private var y1 = 0f
-        private var y2 = 0f
-
-        fun process(input: Float): Float {
-            val output = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-            x2 = x1
-            x1 = input
-            y2 = y1
-            y1 = output
-            return output
-        }
-
-        fun reset() {
-            x1 = 0f
-            x2 = 0f
-            y1 = 0f
-            y2 = 0f
-        }
-
-        companion object {
-            fun fromRaw(b0: Double, b1: Double, b2: Double, a0: Double, a1: Double, a2: Double): Biquad {
-                val safeA0 = if (abs(a0) < 1.0e-9) 1.0 else a0
-                return Biquad(
-                    b0 = (b0 / safeA0).toFloat(),
-                    b1 = (b1 / safeA0).toFloat(),
-                    b2 = (b2 / safeA0).toFloat(),
-                    a1 = (a1 / safeA0).toFloat(),
-                    a2 = (a2 / safeA0).toFloat()
-                )
-            }
-        }
+    companion object {
+        private const val RUNTIME_LOG_INTERVAL_MS = 5000L
+        private const val IMPORTANT_LOG_INTERVAL_MS = 1500L
     }
 }

@@ -1,6 +1,25 @@
 # DECISIONS
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
+
+## 2026-06-02 - AC83xx 音效性能优化方向确认（用户确认）
+- 决策: 用户不接受简单低配降级或默认关闭 DSP，目标是保留高音效并优化性能。
+- 决策: 新优化方向直接采用 C++ Native DSP，将 PCM 热路径从 Kotlin 迁移到 native。
+- 决策: 允许使用空间换时间策略，包括预计算、查表、fixed-point、整块处理、自动性能档位。
+- 决策: native DSP 必须 fail-open；超预算优先自动降档，最终旁路优先于卡顿或停播。
+- 决策: 继续保持 API17 / AC83xx 兼容，不引入高 API 音频依赖，不恢复系统 EQ/audiofx 主线。
+
+## 2026-06-02 - AC83xx Native DSP 规划决策（ai-planning）
+- 决策: 下一阶段拆为四个模块：native bridge/build、native DSP engine/tier、Kotlin AudioProcessor 迁移、AC83xx 验证闭环。
+- 决策: Ready 入口为 `T-S4-AUDIO-088`（JNI/fail-open 契约）和 `T-S4-AUDIO-089`（性能档位/预算/日志契约）。
+- 决策: 实现顺序固定为先 no-op native bridge，再迁移 DSP 算法，最后切换 Kotlin 热路径，避免算法问题和 JNI 接线问题混在一起。
+- 决策: `T-S4-AUDIO-087` 暂时被 native 优化链取代，待 native 版本本地闭环后再进行 AC83xx 听感与长播验证。
+
+## 2026-06-02 - Kotlin/C++ 职责边界确认（用户确认）
+- 决策: 后续 Kotlin 层默认只承担 UI 展示、用户交互、轻量状态同步和 Android 生命周期接线。
+- 决策: 编码、解码、音频处理、DSP、批量数据处理、耗 CPU 的热路径默认放到 C++ 实现。
+- 决策: 若未来必须在 Kotlin 做非展示型重计算，需要先说明原因、性能风险和 fail-open/降级策略。
+- 影响: 当前 native DSP 阶段只是该边界的第一步；后续类似性能敏感模块也按“C++ 核心 + Kotlin 壳”处理。
 
 ## 2026-06-01 - 应用内保真音效引擎方向确认（用户确认）
 - 决策: 放弃继续把系统 EQ 继承或 Android `audiofx.Equalizer` 固定 10 段直写作为主线。
@@ -36,6 +55,7 @@ Last Updated: 2026-06-01
 
 ## Confirmed Technical Decisions
 - 决策: 业务核心继续使用 C++ 模块，Android 壳承担打包与前台入口。
+- 决策: Kotlin 层长期定位为展示/交互/轻量调度层；编码、音频处理和耗性能热路径优先下沉 C++。
 - 决策: 目标设备基线为 Android `4.2.2`（API 17），`minSdk` 固定 `17`。
 - 决策: 首版协议维持 Emby only，网络策略维持纯在线。
 - 决策: 播放策略固定为 URL-only stream + download fallback。

@@ -244,3 +244,12 @@
 - Added sound modes: 原声 / 保真 / 清晰 / 动感 / 柔和, with lightweight biquad filters, preamp reduction, and soft limiting.
 - Migrated Settings/EQ page copy and behavior to 保真音效 / 音质模式; default path no longer writes Android `audiofx.Equalizer`.
 - Updated API17 regression checklist for Hi-Fi DSP validation and verified local build/guardrails.
+
+## 2026-06-02 - AC83xx Native Hi-Fi DSP performance optimization
+- Completed T-S4-AUDIO-088~094 locally: migrated Hi-Fi DSP hot path from Kotlin sample loop to C++ native buffer processing.
+- Added `NativeHiFiDspBridge.kt` for native DSP handle/config/mode/process lifecycle and packed status decoding.
+- Added `native_hifi_dsp.cpp` with five sound modes, precomputed biquad filters, PCM16 mono/stereo processing, low-cost limiter, `quality/balanced/safe` tiers, cost measurement, degrade and bypass flags.
+- Updated `HiFiAudioProcessor` so Kotlin only handles ExoPlayer integration, direct `ByteBuffer` transfer, state sync, throttled logs and fail-open bypass.
+- Added native DSP source to `native-playback` CMake build and updated API17 regression checklist with native mode/tier/cost/degrade/bypass evidence fields.
+- Local validation passed: `git diff --check`, `./scripts/check_api17_guardrails.sh`, `gradle :app:compileDebugKotlin --no-daemon`, `gradle :app:assembleDebug --no-daemon`.
+- Remaining validation: AC83xx real-device long playback and listening test (`T-S4-AUDIO-095`).

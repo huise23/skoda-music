@@ -1,133 +1,138 @@
 # MODULES
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
 
 ## Active Stage
-- S4 音效子阶段 - 应用内保真 DSP 引擎
+- S4 子阶段 - AC83xx Native Hi-Fi DSP 性能优化
 
-## M-S4-AUDIO-014
-- Module ID: `M-S4-AUDIO-014`
-- Name: ExoPlayer DSP Pipeline
-- Goal: 在 ExoPlayer 2.17.1 播放链路中接入自定义 `AudioProcessor`，并提供安全旁路机制。
-- Why it matters: 这是绕开 ROM/system EQ/audiofx 的核心前置；没有稳定接入点，后续音效模式都无意义。
+## M-S4-AUDIO-018
+- Module ID: `M-S4-AUDIO-018`
+- Name: Native DSP Bridge & Build Integration
+- Goal: 在现有 `native-playback` so 中接入 Hi-Fi DSP JNI bridge，并建立安全生命周期与 fail-open 契约。
+- Why it matters: 当前卡顿来自 Kotlin 热路径，native 化的第一风险是 JNI/生命周期/构建接线；这块必须先稳定。
 - In Scope:
-  - 确认 `DefaultRenderersFactory` + `DefaultAudioSink.Builder.setAudioProcessors(...)` 接入方式。
-  - 新增可共享配置的 DSP processor 骨架。
-  - 支持 PCM 16-bit stereo/mono 的最小安全处理路径。
-  - 格式不支持、异常、关闭状态自动旁路。
-  - 日志输出：启用、旁路、格式不支持、异常。
+  - 设计 `nativeCreate/nativeRelease/nativeConfigure/nativeSetMode/nativeProcessPcm16` 等 buffer 级 API。
+  - 更新 CMake 引入 native DSP 源文件。
+  - 支持 direct `ByteBuffer` 整块处理。
+  - handle 校验、格式校验、错误码返回、异常保护。
+  - no-op/bypass bridge 先行，证明播放链路稳定。
 - Out of Scope:
-  - 复杂 DSP 调音。
-  - UI 重做。
-  - 重写播放器或替换 ExoPlayer。
-- Dependencies: 当前 `ExoPlaybackEngine` 与 ExoPlayer 2.17.1 基线。
+  - 完整 DSP 调音。
+  - UI 改动。
+  - 新增独立 native so。
+- Dependencies: 现有 `app/src/main/cpp`、`NativePlaybackBridge`、ExoPlayer DSP 接入基线。
 - Milestone / Done Criteria:
-  - App 可构建。
-  - 播放链路可带 processor 启动。
-  - 关闭音效时与原声路径一致。
-  - processor 异常不闪退、不停播。
-- Related Tasks: `T-S4-AUDIO-080`, `T-S4-AUDIO-082`
+  - native bridge 可构建。
+  - Kotlin 能创建、配置、释放 native DSP handle。
+  - `queueInput()` 可调用 native 处理整块 buffer。
+  - native 不可用时原声旁路且不闪退。
+- Related Tasks: `T-S4-AUDIO-088`, `T-S4-AUDIO-090`
 - Priority: P0
 - Status: Done
 - Result:
-  - `HiFiRenderersFactory` 注入 `HiFiAudioProcessor`。
-  - `HiFiDspController` 提供共享配置和日志。
-  - 不支持格式与异常路径均旁路原声。
+  - 新增 `NativeHiFiDspBridge` Kotlin wrapper。
+  - 新增 `native_hifi_dsp.cpp` 并接入 `native-playback` CMake。
+  - JNI API 覆盖 create/release/configure/setMode/flush/processPcm16。
+  - native 失败、不可用、non-direct buffer 均由 Kotlin fail-open 旁路。
 - Risks:
-  - 实机仍需确认 API17 音频格式和 CPU 压力。
-- Suitable For Module Execution?: No (completed)
-
-## M-S4-AUDIO-015
-- Module ID: `M-S4-AUDIO-015`
-- Name: Hi-Fi DSP Mode Engine
-- Goal: 实现五种音质模式的轻量 DSP 参数和处理逻辑。
-- Why it matters: 用户要的是自然还原和层次，而不是 10 段 EQ 专家调节；模式引擎决定实际听感。
-- In Scope:
-  - 模式：`原声 / 保真 / 清晰 / 动感 / 柔和`。
-  - 默认推荐：`保真`。
-  - 轻量 biquad 滤波器与前级降增益。
-  - 防削波/限幅保护。
-  - 参数克制，避免重低音、人声过分突出或刺耳。
-  - 模式切换实时更新共享配置。
-- Out of Scope:
-  - 10 段高级 EQ。
-  - 强度滑杆。
-  - 混响/环绕/空间音频。
-- Dependencies: `M-S4-AUDIO-014`
-- Milestone / Done Criteria:
-  - 五种模式均有明确参数。
-  - `原声` 为完全旁路。
-  - 其它模式听感方向可区分且不明显失真。
-  - 处理过程低分配、轻 CPU。
-- Related Tasks: `T-S4-AUDIO-083`
-- Priority: P0
-- Status: Done (pending device tuning)
-- Result:
-  - 已实现五种模式、前级降增益、biquad 滤波和软限幅。
-  - 参数保持克制，实机反馈后再微调。
-- Risks:
-  - 听感必须以目标车机为准，当前只能完成工程实现。
+  - 仍需实机确认 ExoPlayer 输出 direct buffer 与目标车机 native so 加载行为。
 - Suitable For Module Execution?: No (completed locally)
 
-## M-S4-AUDIO-016
-- Module ID: `M-S4-AUDIO-016`
-- Name: Sound Mode UI & State Migration
-- Goal: 将当前 EQ UI/状态/文案迁移为音质模式体验，并保留安全配置恢复。
-- Why it matters: 现有 UI 围绕 10 段 EQ 和 audiofx 失败设计，已经不符合新目标。
+## M-S4-AUDIO-019
+- Module ID: `M-S4-AUDIO-019`
+- Name: Native DSP Engine & Performance Tiers
+- Goal: 将五种音质模式迁入 C++，并实现 AC83xx 友好的自动性能档位。
+- Why it matters: 仅迁 native 不够，必须控制滤波器数量、数学开销和超预算行为，才能真正消除卡顿。
 - In Scope:
-  - 设置页文案从“均衡器”迁移为“音效/音质增强”。
-  - 子页改为模式按钮：`原声 / 保真 / 清晰 / 动感 / 柔和`。
-  - 展示每个模式的简短听感说明。
-  - 开关、模式选择、持久化状态同步。
-  - 旧 EQ 配置迁移：默认安全落到 `保真` 或 `原声`，不再触发 audiofx 写入。
-  - 旧 `EqualizerManager` 代码可先保留，但不作为默认主线。
+  - C++ 实现 `原声 / 保真 / 清晰 / 动感 / 柔和` 模式参数。
+  - 模式切换时预计算 biquad 系数，不在热路径计算三角函数。
+  - `quality / balanced / safe` 三档滤波器组合。
+  - 低成本 limiter / clipping guard。
+  - buffer 处理耗时统计、超预算计数、自动降档、最终旁路。
+  - 日志节流，避免性能日志本身造成卡顿。
 - Out of Scope:
-  - 高级 10 段 EQ 入口。
-  - 多套自定义曲线。
-  - 大规模视觉主题重做。
-- Dependencies: `M-S4-AUDIO-014`, `M-S4-AUDIO-015`
+  - 10 段 EQ 直写。
+  - 混响/环绕/空间化。
+  - 离线音质分析或自动调音模型。
+- Dependencies: `M-S4-AUDIO-018`
 - Milestone / Done Criteria:
-  - 设置页和子页显示新音效模式。
-  - 当前播放切换模式后能更新 DSP 配置。
-  - 重启后配置安全恢复。
-  - 旧 EQ 失败提示不再作为主提示出现。
-- Related Tasks: `T-S4-AUDIO-081`, `T-S4-AUDIO-084`, `T-S4-AUDIO-085`
-- Priority: P1
+  - native 中完成五种模式处理。
+  - 各模式在三档下均有明确降级曲线。
+  - 耗时超预算可自动从 quality 降到 balanced/safe。
+  - 多次异常或持续超预算时 fail-open 旁路。
+- Related Tasks: `T-S4-AUDIO-089`, `T-S4-AUDIO-091`, `T-S4-AUDIO-092`
+- Priority: P0
 - Status: Done
 - Result:
-  - 设置页显示“保真音效”。
-  - 子页左侧显示当前听感说明，右侧显示五个模式按钮。
-  - 新配置 `sound_effect_enabled/sound_effect_mode` 已接线。
-  - 模式选择实时更新 DSP controller；默认路径不再触发 Android `audiofx` 写入。
+  - 五种音质模式已迁入 C++。
+  - 模式切换/配置阶段预计算 biquad 系数，热路径不再计算三角函数。
+  - 实现 `quality / balanced / safe` 三档曲线和超预算自动降档。
+  - native 返回 packed status，包含 status/tier/flags/costUs，Kotlin 节流记录日志。
 - Risks:
-  - 实机需确认横屏触控与文案可读性。
-- Suitable For Module Execution?: No (completed)
+  - AC83xx 对浮点/除法开销敏感，实机若仍卡顿，需要 fixed-point/NEON/参数二轮优化。
+  - safe 档听感必须以目标车机确认。
+- Suitable For Module Execution?: No (completed locally)
 
-## M-S4-AUDIO-017
-- Module ID: `M-S4-AUDIO-017`
-- Name: DSP Validation & API17 Evidence
-- Goal: 建立应用内 DSP 的本地与 API17 实机验证闭环。
-- Why it matters: 音效是否“更自然”必须依赖目标车机实测；本地构建通过不代表听感可用。
+## M-S4-AUDIO-020
+- Module ID: `M-S4-AUDIO-020`
+- Name: Kotlin AudioProcessor Native Migration
+- Goal: 保留 Kotlin `HiFiAudioProcessor` 壳，但将实际 PCM 处理迁移到 native。
+- Why it matters: 用户感知问题发生在播放热路径；如果 Kotlin 仍逐 sample 处理，性能问题不会根治。
 - In Scope:
-  - 更新 API17 回归清单。
-  - 增加 DSP 日志观察点。
-  - 本地构建与 guardrails。
-  - 实机听感与稳定性报告模板。
-  - 基于实机反馈形成下一轮调音输入。
+  - `HiFiAudioProcessor.queueInput()` 改为整块 native 调用。
+  - Kotlin 仅负责配置快照、buffer 准备、错误兜底、日志转发。
+  - 移除 active path 中 Kotlin `Biquad/FilterSpec/processPcm16` 逐 sample 逻辑。
+  - 保持 `onConfigure/onFlush/onReset` 状态一致。
+  - 保持关闭/原声/格式不支持时旁路。
+- Out of Scope:
+  - 大规模重构 `MainActivity` 音效 UI。
+  - 改 ExoPlayer 版本。
+- Dependencies: `M-S4-AUDIO-018`, `M-S4-AUDIO-019`
+- Milestone / Done Criteria:
+  - 开启音效时 native 是唯一 DSP 热路径。
+  - native 失败时当前 buffer 原样输出。
+  - 模式切换实时生效，不要求重建播放器。
+  - 构建与 API17 guardrails 通过。
+- Related Tasks: `T-S4-AUDIO-093`
+- Priority: P0
+- Status: Done
+- Result:
+  - `HiFiAudioProcessor.queueInput()` 已改为 direct `ByteBuffer.slice()` + native 整块调用。
+  - Kotlin active path 已移除 `Biquad/FilterSpec/processPcm16` sample loop。
+  - Kotlin 仅保留 ExoPlayer 接入、状态同步、buffer 转交、日志和 fail-open。
+  - `onFlush/onReset` 已同步 native flush/release。
+- Risks:
+  - ByteBuffer position/limit 仍需实机播放确认无杂音、吞音或播放中断。
+- Suitable For Module Execution?: No (completed locally)
+
+## M-S4-AUDIO-021
+- Module ID: `M-S4-AUDIO-021`
+- Name: AC83xx Validation & Regression Evidence
+- Goal: 建立 native DSP 的本地与实机验证闭环，确保性能优化可被复盘。
+- Why it matters: 音效优化最终必须以目标车机不卡顿和听感可接受为准，不能只看本地编译。
+- In Scope:
+  - 更新 API17 回归清单，新增 native DSP 性能/降档/旁路观察项。
+  - 本地执行构建、guardrails、diff 检查。
+  - 明确实机日志字段与证据模板。
+  - 记录 AC83xx 实测 mode/tier/cost/degrade/bypass 结果。
 - Out of Scope:
   - 代替人工听感判断。
-  - 大规模自动化音频质量评测。
-- Dependencies: `M-S4-AUDIO-014`, `M-S4-AUDIO-015`, `M-S4-AUDIO-016`
+  - 自动化音频质量评分。
+- Dependencies: `M-S4-AUDIO-018`, `M-S4-AUDIO-019`, `M-S4-AUDIO-020`
 - Milestone / Done Criteria:
-  - 本地校验通过。
-  - 回归文档覆盖 DSP 开关、模式切换、旁路、长播、切歌/seek。
-  - API17 实机能给出 PASS/FAIL 与调音反馈。
-- Related Tasks: `T-S4-AUDIO-086`, `T-S4-AUDIO-087`
+  - 本地构建验证通过。
+  - 实机清单能直接执行。
+  - 至少一次 AC83xx 30 分钟长播结果可回填。
+- Related Tasks: `T-S4-AUDIO-094`, `T-S4-AUDIO-095`
 - Priority: P1
-- Status: Partial / Blocked by API17 device
+- Status: Partial / Device validation blocked externally
 - Result:
-  - 本地校验完成：`git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug` 均通过。
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已更新为 Hi-Fi DSP Sound Mode 验证。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补 native DSP mode/tier/cost/degrade/bypass 观察项。
+  - 本地验证已通过：`git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、`gradle :app:assembleDebug --no-daemon`。
+  - 剩余 `T-S4-AUDIO-095` 依赖 AC83xx 实机。
 - Risks:
-  - 听感验收和长播稳定性仍需目标车机验证。
-- Suitable For Module Execution?: No (remaining task is external validation)
+  - 设备窗口不连续，日志必须足够自解释。
+- Suitable For Module Execution?: Yes for local validation, No for real-device execution
+
+## Historical Completed Modules
+- `M-S4-AUDIO-014~017`: 应用内保真 DSP Kotlin 版已完成本地闭环，但 AC83xx 实机反馈性能不足；本阶段以 native 优化取代后续 Kotlin 调参。

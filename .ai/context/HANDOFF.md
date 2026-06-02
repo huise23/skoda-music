@@ -1,11 +1,11 @@
 # HANDOFF
 
-Last Updated: 2026-06-01
+Last Updated: 2026-06-02
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@7cf36f3`
-- 当前阶段: S4 车机后台控制落地（方案1 / Legacy 稳态）
+- 当前主干: `master@bb12c6b`
+- 当前阶段: S4 子阶段 - AC83xx Native Hi-Fi DSP 性能优化
 
 ## User-Confirmed Requirements (Must Keep)
 - 必须有后台服务，避免车机频繁切回应用。
@@ -16,6 +16,48 @@ Last Updated: 2026-06-01
 - 接受前台服务常驻通知（稳定性优先）。
 - 命令执行策略固定为“失败即失败”：不记录待执行命令，不做延迟重放/重试。
 - 音效需求已更新：系统 EQ 继承与 Android `audiofx.Equalizer` 固定 10 段直写均不再作为主线；新方向为应用内保真 DSP 音效，引擎失败必须旁路原声。
+
+## Latest Delta (Requirement Refresh, 2026-06-02)
+- AC83xx 实机反馈：当前 Kotlin DSP 开启后有轻微卡顿，类似广播不稳。
+- 用户确认：不要简单低配降级，不要默认关闭 DSP；目标是保留高音效并优化性能。
+- 新方向：直接 C++ Native DSP。
+- 执行原则：
+  - Kotlin `AudioProcessor` 只做 ExoPlayer 接入和 fail-open 包装。
+  - Kotlin 层后续只做展示、交互、轻量状态同步和生命周期接线。
+  - 编码、解码、音频处理、DSP、批量处理和其它耗 CPU 热路径默认下沉 C++。
+  - C++ 负责 PCM16 buffer 整块处理，避免 per-sample JNI。
+  - 模式参数、滤波器状态、性能档位放到 native 层。
+  - 可用预计算、查表、fixed-point、自动 quality/balanced/safe 档位。
+  - 超预算优先自动降档，最终旁路优先于卡顿/停播。
+- 当前入口：planning 已完成，下一步进入 `ai-execution` 实现 native DSP 优化链。
+
+## Latest Delta (Planning Refresh, 2026-06-02)
+- Native DSP 优化 planning 已完成。
+- 新模块：
+  - `M-S4-AUDIO-018` Native DSP Bridge & Build Integration。
+  - `M-S4-AUDIO-019` Native DSP Engine & Performance Tiers。
+  - `M-S4-AUDIO-020` Kotlin AudioProcessor Native Migration。
+  - `M-S4-AUDIO-021` AC83xx Validation & Regression Evidence。
+- Ready 入口：
+  - `T-S4-AUDIO-088` Native DSP JNI API 与 fail-open 契约。
+  - `T-S4-AUDIO-089` 性能档位、预算阈值与日志字段契约。
+- 推荐下一轮：`$ai-execution full mode`，推进 `088 -> 094` 到本地闭环；`095` 等待 AC83xx 实机。
+
+## Latest Delta (Execution Refresh, 2026-06-02)
+- Full Plan Mode 已完成 `T-S4-AUDIO-088~094` 本地闭环。
+- 代码结果：
+  - `NativeHiFiDspBridge.kt`：新增 native DSP bridge，负责 load、handle、configure、setMode、flush、processPcm16 和 packed status 解码。
+  - `native_hifi_dsp.cpp`：新增 C++ DSP engine，包含五种模式、biquad 预计算、PCM16 mono/stereo buffer 处理、`quality/balanced/safe` 自动档位、耗时统计和旁路保护。
+  - `HiFiAudioProcessor.kt`：Kotlin active path 不再逐 sample 处理，只做 direct `ByteBuffer` 转交、状态同步、日志节流和 fail-open。
+  - `CMakeLists.txt`：`native_hifi_dsp.cpp` 已编入 `native-playback`。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`：已补 native DSP `mode/tier/costUs/flags`、降档和旁路观察项。
+- 本地验证：
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 剩余阻塞：
+  - `T-S4-AUDIO-095` 需要 AC83xx 实机确认卡顿是否消除。
 
 ## Latest Delta (Execution Refresh, 2026-06-01)
 - Full Plan Mode 已完成本地实现与验证：
@@ -34,10 +76,11 @@ Last Updated: 2026-06-01
   - `gradle :app:assembleDebug --no-daemon` 通过。
 
 ## Execution Entry
-1. 当前无本地 Ready 任务。
-2. 下一步为 `T-S4-AUDIO-087`：API17 实机听感与稳定性验证。
-3. 若用户要求推送，直接提交并推送当前实现。
-4. 实机反馈后再进入调音/修复；不要在无设备反馈前继续扩大 DSP 功能。
+1. 当前本地可执行 native DSP 任务已完成。
+2. 下一步优先打包/推送并执行 `T-S4-AUDIO-095` AC83xx 实机验证。
+3. 重点回传 `hifi-dsp native status=<...> mode=<...> tier=<...> costUs=<...> flags=<...>` 日志。
+4. 若仍卡顿，基于日志判断是 `tier=safe/bypass`、`costUs` 超预算，还是 `non-direct-buffer` 旁路，再规划 fixed-point/NEON/复制兜底二轮优化。
+5. 暂不要继续推 Kotlin DSP 参数调音。
 
 ## Device Validation Focus
 - 设置页“保真音效”开关与子页入口可用。
@@ -45,7 +88,8 @@ Last Updated: 2026-06-01
 - `原声` 接近关闭音效；`保真` 更清楚不糊；其它模式有方向差异但不过度。
 - 连续播放 30 分钟无卡顿、爆音、破音、闪退。
 - 切歌、seek、暂停恢复后模式保持一致。
-- 日志包含 `hifi-dsp config/format/active/bypass`。
+- 日志包含 native DSP `mode/tier/cost/degrade/bypass`。
+- 若日志出现 `reason=non-direct-buffer`，说明目标设备/ExoPlayer 输出无法 direct native 处理，需要后续专项处理。
 
 ## Historical Context
 ## Latest Delta (Requirement Refresh, 2026-05-29)

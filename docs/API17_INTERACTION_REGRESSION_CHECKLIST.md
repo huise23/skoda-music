@@ -95,17 +95,20 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - [ ] I4 进入子页后，左侧展示当前听感说明，右侧展示模式按钮，整体仍保持玻璃态横屏风格。
 - [ ] I5 选择 `保真 / 清晰 / 动感 / 柔和` 后开关同步开启；选择 `原声` 后进入旁路。
 - [ ] I6 切换模式时当前播放尽量实时生效，不重建队列、不切歌、不停播。
-- [ ] I7 运行日志包含 DSP 关键路径：
+- [ ] I7 运行日志包含 Native DSP 关键路径：
   - `hifi-dsp config enabled=<...> mode=<...>`
   - `hifi-dsp format sr=<...> ch=<...>`
-  - `hifi-dsp active mode=<...>`
+  - `hifi-dsp native configured sr=<...> ch=<...>`
+  - `hifi-dsp native active mode=<...> ... tier=quality`
+  - `hifi-dsp native status=<ok|bypass|error> mode=<...> tier=<quality|balanced|safe> costUs=<...> flags=<...>`
   - `hifi-dsp bypass mode=<...>`
-  - 异常时：`hifi-dsp process fail ... bypass frame`
+  - 异常时：`hifi-dsp bypass reason=native-process-error`
 - [ ] I8 若当前音频格式不支持 DSP，必须自动旁路原声并记录 `hifi-dsp bypass unsupported format`。
 - [ ] I9 重启后音效配置安全恢复；旧 EQ 配置存在时不得触发 Android `audiofx` 写入失败循环。
 - [ ] I10 连续播放 30 分钟无明显卡顿、爆音、破音、闪退。
 - [ ] I11 切歌、seek、暂停/恢复后音效模式保持一致。
 - [ ] I12 听感对比：`原声` 接近无处理；`保真` 更清楚不糊；`清晰/动感/柔和` 有方向差异但不过度。
+- [ ] I13 若 AC83xx CPU 超预算，应先看到 `tier=balanced` 或 `tier=safe` 的降档日志；仍超预算时允许 `status=bypass`，但播放不能中断。
 
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
@@ -122,7 +125,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - [ ] EVD3 至少 1 条失败样本（含复现步骤 + 日志关键片段）。
 - [ ] EVD4 更新链路样本（至少 1 次检测结果；若失败附 `failed_stage`）。
 - [ ] EVD5 至少 1 份截图或短视频说明关键现象。
-- [ ] EVD6 DSP fail-open 样本（至少 1 条 `hifi-dsp bypass` 或 `hifi-dsp process fail` 日志 + 对应播放不中断证据）。
+- [ ] EVD6 DSP fail-open 样本（至少 1 条 `hifi-dsp bypass` / `hifi-dsp native status=... flags=...` 日志 + 对应播放不中断证据）。
+- [ ] EVD7 Native DSP 性能样本（至少 3 条不同时间点 `mode/tier/costUs/flags` 日志，覆盖长播或模式切换）。
 
 ### 4.3 Acceptance Decision
 - `PASS`: 无 Blocker，且 A~I 关键项通过。

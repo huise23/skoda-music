@@ -39,39 +39,72 @@
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:background="@drawable/button_nav_icon_active"
-            android:contentDescription="@string/nav_home"
+            android:contentDescription="@string/nav_kugou_recommended_songs"
             android:padding="16dp"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_menu_view" />
 
         <ImageButton
+            android:id="@+id/nav_kugou_radio"
+            android:layout_width="62dp"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/button_nav_icon_inactive"
+            android:contentDescription="@string/nav_kugou_recommended_radio"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_upload" />
+
+        <ImageButton
+            android:id="@+id/nav_kugou_discover"
+            android:layout_width="62dp"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/button_nav_icon_inactive"
+            android:contentDescription="@string/nav_kugou_discover_playlists"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_search" />
+
+        <ImageButton
             android:id="@+id/nav_queue"
             android:layout_width="62dp"
             android:layout_height="62dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/button_nav_icon_inactive"
-            android:contentDescription="@string/nav_queue"
+            android:contentDescription="@string/nav_playback_queue"
             android:padding="16dp"
             android:scaleType="centerInside"
-            android:src="@android:drawable/ic_menu_sort_by_size"
-            android:visibility="gone" />
+            android:src="@android:drawable/ic_menu_sort_by_size" />
+
+        <ImageButton
+            android:id="@+id/nav_like_status"
+            android:layout_width="62dp"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/button_nav_icon_inactive"
+            android:contentDescription="@string/nav_like_status"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_save" />
 
         <ImageButton
             android:id="@+id/nav_library"
             android:layout_width="62dp"
             android:layout_height="62dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/button_nav_icon_inactive"
             android:contentDescription="@string/nav_library"
             android:padding="16dp"
             android:scaleType="centerInside"
-            android:src="@android:drawable/ic_menu_agenda" />
+            android:src="@android:drawable/ic_menu_agenda"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/nav_settings"
             android:layout_width="62dp"
             android:layout_height="62dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/button_nav_icon_inactive"
             android:contentDescription="@string/nav_settings"
             android:padding="16dp"
@@ -276,7 +309,8 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:background="@drawable/panel_tab_bar"
-                            android:orientation="horizontal">
+                            android:orientation="horizontal"
+                            android:visibility="gone">
 
                             <Button
                                 android:id="@+id/btn_home_tab_lyrics"
@@ -314,6 +348,66 @@
                             android:layout_weight="1"
                             android:layout_marginTop="10dp"
                             android:orientation="vertical">
+
+                            <LinearLayout
+                                android:id="@+id/kugou_home_login_panel"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/field_surface"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="sans-serif-medium"
+                                    android:text="@string/kugou_login_title"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="18sp" />
+
+                                <TextView
+                                    android:id="@+id/kugou_home_status_value"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="6dp"
+                                    android:text="@string/kugou_status_not_logged_in"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="14sp" />
+
+                                <ImageView
+                                    android:id="@+id/kugou_qr_image"
+                                    android:layout_width="160dp"
+                                    android:layout_height="160dp"
+                                    android:layout_gravity="center_horizontal"
+                                    android:layout_marginTop="10dp"
+                                    android:background="@drawable/panel_card"
+                                    android:contentDescription="@string/kugou_qr_image_desc"
+                                    android:padding="8dp"
+                                    android:scaleType="fitCenter" />
+
+                                <TextView
+                                    android:id="@+id/kugou_qr_url_value"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:ellipsize="end"
+                                    android:maxLines="2"
+                                    android:text="@string/kugou_qr_waiting"
+                                    android:textColor="@color/text_muted"
+                                    android:textSize="12sp" />
+
+                                <Button
+                                    android:id="@+id/btn_kugou_refresh_qr"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="42dp"
+                                    android:layout_marginTop="10dp"
+                                    android:background="@drawable/button_secondary"
+                                    android:fontFamily="sans-serif-medium"
+                                    android:text="@string/action_kugou_refresh_qr"
+                                    android:textAllCaps="false"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="15sp" />
+                            </LinearLayout>
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -425,6 +519,105 @@
         </FrameLayout>
 
         <ScrollView
+            android:id="@+id/page_kugou_radio"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_card"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/kugou_radio_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:id="@+id/kugou_radio_status_value"
+                        android:text="@string/kugou_login_required_state"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="18sp" />
+
+                    <LinearLayout
+                        android:id="@+id/kugou_radio_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/page_kugou_discover"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_card"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/kugou_discover_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:id="@+id/kugou_discover_status_value"
+                        android:text="@string/kugou_discover_category_state"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="18sp" />
+
+                    <LinearLayout
+                        android:id="@+id/kugou_discover_tag_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+
+                    <LinearLayout
+                        android:id="@+id/kugou_discover_playlist_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
             android:id="@+id/page_queue"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -488,6 +681,51 @@
 
                     <LinearLayout
                         android:id="@+id/queue_tracks_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/page_like_status"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_card"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/like_status_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/like_status_blocked_state"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="18sp" />
+
+                    <LinearLayout
+                        android:id="@+id/like_status_list"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
@@ -586,6 +824,133 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/label_emby"
                         android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/kugou_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/label_kugou"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+
+                    <EditText
+                        android:id="@+id/kugou_webapi_base_url_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/field_surface"
+                        android:fontFamily="sans-serif"
+                        android:hint="@string/hint_kugou_webapi_base_url"
+                        android:imeOptions="actionNext"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:padding="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/kugou_status_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/kugou_status_not_logged_in"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="17sp" />
+
+                    <TextView
+                        android:id="@+id/kugou_qr_status_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/kugou_qr_waiting"
+                        android:textColor="@color/text_muted"
+                        android:textSize="15sp" />
+
+                    <EditText
+                        android:id="@+id/kugou_mobile_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/field_surface"
+                        android:fontFamily="sans-serif"
+                        android:hint="@string/hint_kugou_mobile"
+                        android:imeOptions="actionNext"
+                        android:inputType="phone"
+                        android:maxLines="1"
+                        android:padding="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted"
+                        android:textSize="18sp" />
+
+                    <EditText
+                        android:id="@+id/kugou_code_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/field_surface"
+                        android:fontFamily="sans-serif"
+                        android:hint="@string/hint_kugou_code"
+                        android:imeOptions="actionDone"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:padding="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted"
+                        android:textSize="18sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_kugou_send_sms"
+                            android:layout_width="0dp"
+                            android:layout_height="46dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/button_secondary"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/action_kugou_send_sms"
+                            android:textAllCaps="false"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+
+                        <Space
+                            android:layout_width="8dp"
+                            android:layout_height="1dp" />
+
+                        <Button
+                            android:id="@+id/btn_kugou_sms_login"
+                            android:layout_width="0dp"
+                            android:layout_height="46dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/button_primary"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/action_kugou_sms_login"
+                            android:textAllCaps="false"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btn_kugou_logout"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/button_secondary"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/action_kugou_logout"
+                        android:textAllCaps="false"
+                        android:textColor="@color/text_primary"
                         android:textSize="16sp" />
 
                     <EditText

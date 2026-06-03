@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 2026-06-03
+- Completed `T-S4-AUDIO-096`: added Native DSP runtime state and play/pause button border indicator for active/degraded/fail-open states.
+- Completed `T-S5-KG-096`: added `docs/KUGOU_MUSIC_NET_INTERFACE_MAP.md` mapping S5 Kugou features to `KugouMusic.NET`.
+- Completed `T-S5-SRC-097`: added minimal source-aware models and `docs/MULTI_SOURCE_NAV_CONTRACT.md`.
+- Completed `T-S5-KG-098`: added `docs/KUGOU_AUTH_SESSION_CONTRACT.md`.
+- Completed `T-S5-SRC-099`: added `docs/SOURCE_AWARE_PLAYBACK_QUEUE_CONTRACT.md`.
+- Verified `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`.
+- Completed `T-S5-UI-100`: added left navigation entries for Kugou recommended songs/radio/discover, playback queue, like status and settings; default route now enters the recommended songs shell.
+- Verified UI skeleton with `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`.
+- Completed `T-S5-KG-101`: added Kugou WebApi login UI, QR polling, SMS login, logout, session key cache and startup refresh.
+- Completed `T-S5-KG-102`: loaded Kugou recommended songs from `GET /recommend/songs` into source-aware tracks.
+- Completed `T-S5-KG-103`: loaded recommended radio and radio songs from `GET /fm/recommend` and `GET /fm/songs`.
+- Completed `T-S5-KG-104`: loaded discover playlist tags, playlists and playlist songs from `.NET` WebApi routes.
+- Completed `T-S5-LIKE-105`: added source-aware like status store, Kugou like add via `/playlist/tracks/add`, and like/ingest status page with Emby ingest blocked state.
+- Verified S5 Kugou execution with `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`.
+- Completed `T-S5-VAL-106`: upgraded API17 regression checklist with S5 Kugou login/content/like/playback/cache validation items and local validation snapshot.
+- Completed `T-S5-PLAY-107`: added Kugou `/song/url` resolver, direct ExoPlayer playback for Kugou tracks, and 100MB playback cache guard across Emby/Kugou cache files.
+- Final S5 local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`.
+
 ## 2026-04-13
 - Initialized AI collaboration memory files.
 

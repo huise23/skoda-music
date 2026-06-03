@@ -1,7 +1,7 @@
-# API17 Interaction Regression Checklist (S4)
+# API17 Interaction Regression Checklist (S4/S5)
 
-Last Updated: 2026-06-01
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
+Last Updated: 2026-06-03
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -10,13 +10,14 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - 熄火/休眠恢复自动续播
 - 更新检测与下载安装触发链路
 - 应用内保真 DSP 音效 fail-open 验证
+- 酷狗默认来源模式、登录/session、推荐内容、点赞状态验证
 - 关键事件与日志证据回传
 
 ## 1. Preconditions
 - 设备: Android `4.2.2`（API 17），目标车机分辨率 `1024x600`。
 - 构建: 标注 commit/build（建议 `master@6ed0fca` 或更新构建）。
-- 网络: 可访问 Emby；可访问 GitHub（允许镜像回退）。
-- 账号: 可用 Emby 账号。
+- 网络: 可访问 Emby；可访问 GitHub（允许镜像回退）；可访问配置的 Kugou WebApi。
+- 账号: 可用 Emby 账号；可用酷狗账号（扫码或手机号验证码）。
 - 开关: 允许前台服务通知、允许悬浮窗权限。
 
 ## 2. Scope Boundaries
@@ -27,9 +28,12 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
   - 恢复链路（熄火/休眠恢复后自动续播）。
   - 更新链路（检查 -> 下载 -> 安装触发）。
   - 应用内保真 DSP 音效（开关/模式/持久化/PCM 处理/fail-open）。
+  - S5 酷狗来源模式（登录、推荐歌曲、推荐电台、发现歌单、点赞/入库状态）。
 - Out of Scope:
   - 新需求（长标题滚动/主屏删除入口）
   - 静默安装/root 安装
+  - 点赞后播放缓存上传到 Emby 并入库
+  - 酷狗播放 URL 解析与 100MB 缓存守卫（由 `T-S5-PLAY-107` 跟踪）
 
 ## 3. Checklist
 
@@ -110,6 +114,36 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - [ ] I12 听感对比：`原声` 接近无处理；`保真` 更清楚不糊；`清晰/动感/柔和` 有方向差异但不过度。
 - [ ] I13 若 AC83xx CPU 超预算，应先看到 `tier=balanced` 或 `tier=safe` 的降档日志；仍超预算时允许 `status=bypass`，但播放不能中断。
 
+### J. Kugou Source Mode Login / Session
+- [ ] J1 冷启动默认进入左侧“推荐歌曲”入口，不显示 Home 二级 tab。
+- [ ] J2 未登录时推荐歌曲页展示酷狗扫码登录面板，不后台请求推荐内容。
+- [ ] J3 设置页可填写 Kugou WebApi Base URL，并可见酷狗登录状态。
+- [ ] J4 点击“刷新扫码登录”后出现二维码或二维码图片 URL，日志包含 `kugou qr key`。
+- [ ] J5 扫码轮询约 2 秒一次；等待扫码、等待确认、成功、过期状态文案可区分。
+- [ ] J6 扫码成功后调用 `/login/token`，缓存 `X-Kg-Session-Id`，重启后优先复用。
+- [ ] J7 手机号验证码路径可发送验证码并提交登录；失败时停留在登录状态，不崩溃。
+- [ ] J8 session 失效或内容接口失败时清理本地 session，并回到登录面板。
+- [ ] J9 登出后清理 session、二维码和酷狗内容状态。
+
+### K. Kugou Content Pages
+- [ ] K1 登录后推荐歌曲页可加载 `GET /recommend/songs` 并展示歌曲名、歌手/专辑。
+- [ ] K2 推荐歌曲点击播放时当前提示“酷狗播放解析将在后续任务接入”，不破坏 Emby 播放队列。
+- [ ] K3 推荐电台页可加载 `GET /fm/recommend`，展示电台名称和描述。
+- [ ] K4 点击电台后可加载 `GET /fm/songs` 并展示电台歌曲。
+- [ ] K5 发现歌单页可加载 `GET /playlist/tags`，分类/标签来自接口返回，不手写固定标签。
+- [ ] K6 点击标签后可加载 `GET /top/playlist` 并展示歌单。
+- [ ] K7 点击歌单后可加载 `GET /playlist/track/all` 并展示歌单歌曲。
+- [ ] K8 三个酷狗内容页遇到网络失败、空结果或未登录时有明确反馈，不闪退。
+- [ ] K9 1024x600 横屏下左侧一级导航、登录面板、列表行、点赞按钮不重叠。
+
+### L. Kugou Like / Ingest Status
+- [ ] L1 酷狗歌曲行可见点赞按钮。
+- [ ] L2 点赞调用 `/playlist/tracks/add`，目标列表 ID 为 `2`（我喜欢），成功后记录 `liked`。
+- [ ] L3 点赞失败记录 `failed` 和失败原因。
+- [ ] L4 点赞/入库状态页展示歌曲、来源、远端状态、入库状态和失败原因。
+- [ ] L5 Emby 入库状态显示 `blocked_ingest` 或等价阻塞文案，不误报已入库。
+- [ ] L6 重启后点赞历史仍可查看。
+
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
 ### 4.1 Risk Gates（任一命中即 Blocker）
@@ -118,6 +152,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - [ ] R3 熄火/休眠恢复后无法自动续播且无可诊断降级路径。
 - [ ] R4 更新链路在主流网络场景下持续失败且无回退解释。
 - [ ] R5 回归过程中出现崩溃/ANR/连续卡死。
+- [ ] R6 酷狗未登录状态仍请求内容或出现不可操作空白页。
+- [ ] R7 酷狗 session 失效后没有回登录，导致持续失败刷屏。
 
 ### 4.2 Evidence Minimum（最小回传集）
 - [ ] EVD1 设备信息 + 构建号（`#versionCode`）。
@@ -127,9 +163,12 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - [ ] EVD5 至少 1 份截图或短视频说明关键现象。
 - [ ] EVD6 DSP fail-open 样本（至少 1 条 `hifi-dsp bypass` / `hifi-dsp native status=... flags=...` 日志 + 对应播放不中断证据）。
 - [ ] EVD7 Native DSP 性能样本（至少 3 条不同时间点 `mode/tier/costUs/flags` 日志，覆盖长播或模式切换）。
+- [ ] EVD8 Kugou 登录样本（扫码或验证码路径，含 session 复用/失效观察）。
+- [ ] EVD9 Kugou 内容样本（推荐歌曲、电台、发现歌单各至少 1 张截图或日志）。
+- [ ] EVD10 点赞状态样本（成功或失败均可，需包含状态页截图/日志）。
 
 ### 4.3 Acceptance Decision
-- `PASS`: 无 Blocker，且 A~I 关键项通过。
+- `PASS`: 无 Blocker，且 A~L 关键项通过。
 - `PASS with Risks`: 无 Blocker，但存在可接受风险并已有追踪项。
 - `FAIL`: 命中任一 Blocker，或关键链路不可复现/不可诊断。
 
@@ -155,6 +194,9 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - G Observability: PASS/FAIL
 - H Failure/Degrade: PASS/FAIL
 - I Hi-Fi DSP Sound Mode: PASS/FAIL
+- J Kugou Login/Session: PASS/FAIL
+- K Kugou Content Pages: PASS/FAIL
+- L Kugou Like/Status: PASS/FAIL
 
 ### Section 4 Decision
 - Risk Gate Triggered: YES/NO
@@ -172,6 +214,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
 - update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
 - hifi_dsp: <hifi-dsp config/format/active/bypass/fail 日志样本>
+- kugou: <qr/session/content/like 日志样本>
 - screenshot/video: <说明或路径>
 
 ### Conclusion
@@ -189,3 +232,16 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086`
   - 失败策略保持 fail-open：DSP 关闭/原声/格式不支持/运行异常均旁路原始 PCM，不中断播放。
 - 待外部验证:
   - API17 目标车机需要验证五种模式听感差异、长播稳定性、切歌/seek 后状态一致性。
+
+## 7. Local Validation Snapshot (T-S5-VAL-106, 2026-06-03)
+- 构建验证:
+  - `git diff --check` 通过
+  - `./scripts/check_api17_guardrails.sh` 通过
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过
+  - `gradle :app:assembleDebug --no-daemon` 通过
+- 本地回归结论:
+  - 酷狗登录、session cache、推荐歌曲、电台、发现歌单、点赞状态页均已完成编译级闭环。
+  - 酷狗内容接口字段均按 `docs/KUGOU_MUSIC_NET_INTERFACE_MAP.md` 和 `KugouMusic.NET/` 对应 controller/client/model 映射。
+  - 点赞后 Emby 入库保持阻塞状态，不执行上传。
+- 待外部验证:
+  - 真实 Kugou WebApi 地址、扫码/验证码账号、session 失效和内容接口返回需在目标设备或同网环境验证。

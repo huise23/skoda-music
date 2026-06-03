@@ -1,114 +1,145 @@
 # PLAN
 
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
 
 ## Current Stage
-- Stage Name: S4 子阶段 - AC83xx Native Hi-Fi DSP 性能优化
-- Scope Source: `.ai/context/SCOPE.md`（2026-06-02）
+- Stage Name: S5 子阶段 - Kugou Source Mode & Multi-Source Discovery
+- Scope Source: `.ai/context/SCOPE.md`（2026-06-03）
 
 ## Stage Goal
-- 将当前 Kotlin sample-by-sample DSP 热路径迁移到 C++ native buffer 级处理。
-- 保留 `原声 / 保真 / 清晰 / 动感 / 柔和` 五种音质模式与高音效目标。
-- 在 AC83xx / Android 4.2.2 / API17 上优先保证不卡顿、不断播、不闪退。
-- 通过 `quality / balanced / safe` 自动性能档位实现“高音效优先 + 自动保护”。
+- 将 App 从 Emby-only 内容入口演进为多来源内容模式。
+- 默认进入酷狗模式，并通过左侧一级导航快速切换推荐歌曲、推荐电台、发现歌单、播放队列、点赞/入库状态和设置。
+- 酷狗模式必须登录后可用，默认扫码登录，同时支持手机号验证码登录和 session 缓存复用。
+- 酷狗相关实现严格参考 `KugouMusic.NET/` 已有接口、模型与流程；没有依据则停止并向用户确认。
+- 点赞能力先完成抽象和酷狗本地状态记录，Emby 上传入库作为阻塞项后续处理。
+- 并行完成 S4 Native DSP 播放页状态指示：播放/暂停按钮通过有色边框展示 native 正常、降级和 fail-open 状态，UI 刷新走低频节流。
 
 ## Scope Validation
 
 ### In Scope
-- 复用现有 `app/src/main/cpp/CMakeLists.txt` 与 `native-playback` so。
-- 新增 native DSP JNI 接口，按 PCM16 `ByteBuffer` 整块处理，不做 per-sample JNI。
-- Kotlin `HiFiAudioProcessor` 保留为 ExoPlayer `AudioProcessor` 接入层、状态同步层、fail-open 包装层。
-- C++ 管理模式参数、滤波器状态、系数预计算、buffer 处理、耗时统计与降档状态。
-- 支持 PCM 16-bit mono/stereo；其它格式自动旁路。
-- native 初始化失败、配置失败、处理失败、直接 buffer 不可用时必须旁路原声。
-- 日志补齐 native enabled、mode、tier、cost、degrade reason、bypass reason。
-- 更新 API17 / AC83xx 验证清单。
+- 多来源抽象与现有 Emby 模型解耦。
+- 酷狗接口清单与 `KugouMusic.NET` 源码映射。
+- 酷狗登录、session 缓存、失效跳转登录。
+- 推荐歌曲、推荐电台、发现歌单三个内容入口。
+- 左侧一级导航重排，默认酷狗推荐歌曲页。
+- 酷狗歌曲点赞抽象与本地历史/状态页。
+- API17 兼容验证与回归清单更新。
+- Native DSP 播放页状态指示热修：播放按钮边框显示 DSP runtime 状态，状态读取不按 audio frame 刷新。
 
 ### Out of Scope
-- 通过默认关闭 DSP 或默认原声规避性能问题。
-- 恢复系统 EQ 继承或 Android `audiofx.Equalizer` 作为主线。
-- 高级 10 段 EQ 页面、强度滑杆、多套用户曲线。
-- 空间音频、环绕、混响、复杂动态压缩器。
-- 重写播放器为自研解码 + `AudioTrack`。
-- 引入要求 `minSdk > 17` 的音频库或系统能力。
+- 播放缓存上传到 Emby 并真正入库。
+- Emby 入库失败的真实网络空闲重试队列。
+- 非酷狗来源点赞实现。
+- 未在 `KugouMusic.NET` 中找到依据的酷狗能力。
+- 搜索、排行榜、歌手、专辑、MV、听书、评论等完整客户端扩展。
+
+## Reality Check
+- 当前 Android 端:
+  - `MainActivity` 仍以 `EmbyTrack`、`loadedTracks`、`libraryTracks` 为核心模型。
+  - 左侧导航已有 86dp 竖向导航栏，但入口为 Home/Library/Settings，Queue 当前隐藏。
+  - Home 内仍存在“歌词/推荐”二级 tab，需要后续改造为一级内容入口，不再新增二级 tab。
+  - 已有 `AppBackgroundExecutor`、Emby session/cache、download-only 播放与 100MB 缓存约束可复用思路。
+- Native DSP:
+  - `HiFiAudioProcessor` 已记录 native runtime status/tier/flags，但状态目前只在日志中可见，播放页没有直观入口。
+  - `NativeHiFiDspBridge` 已有 `STATUS_OK/BYPASS/ERROR` 与 `FLAG_ACTIVE/BYPASS/DEGRADED/OVER_BUDGET/ERROR` 等状态位，可作为 UI 指示来源。
+  - `MainActivity` 已有 `UI_PROGRESS_REFRESH_MS = 1_000L` 的进度刷新 tick，适合低频读取 DSP 状态并避免 per-frame UI 更新。
+- `KugouMusic.NET/`:
+  - 已提供登录、推荐歌曲、推荐电台、歌单标签、推荐歌单、歌单歌曲、播放 URL、点赞/我喜欢等参考实现。
+  - 当前目录未跟踪，作为参考源码读取，不在本阶段修改。
+- 主要冲突:
+  - 历史决策中“首版协议 Emby only”被本阶段显式覆盖为“多来源 + 酷狗模式”。
+  - 现有 UI 与播放队列紧耦合 Emby，需要先做模型和来源边界，避免直接把酷狗字段塞进 `EmbyTrack`。
 
 ## Workstreams
 
-### W1 Native Bridge & Build Integration
-- 目标: 固定 JNI API、native 生命周期、CMake 接线和 fail-open 契约。
-- 输出: 可构建的 native DSP bridge，先支持 no-op/bypass buffer 处理。
+### W1 Source Abstraction & IA Shell
+- 目标: 建立多来源统一模型和左侧一级导航信息架构。
+- 输出: source/domain 契约、默认酷狗入口、页面切换计划。
 
-### W2 Native DSP Engine & Performance Tiers
-- 目标: 将现有五种模式迁入 C++，并实现 quality/balanced/safe 三档。
-- 输出: native 模式参数、预计算系数、低开销 limiter、耗时统计和自动降档。
+### W0 Native DSP Playback Status Hotfix
+- 目标: 在播放页提供低开销 DSP fail-open 可视确认。
+- 输出: DSP runtime state 发布、播放按钮有色边框、1s tick 读取与变更才重绘。
 
-### W3 Kotlin AudioProcessor Migration
-- 目标: 将 `HiFiAudioProcessor.queueInput()` 热路径改为 native 整块调用。
-- 输出: Kotlin 不再执行逐 sample DSP；异常与不支持路径继续 fail-open。
+### W2 Kugou Interface Map & Auth
+- 目标: 固定酷狗能力到 `KugouMusic.NET` 的源码映射，并接入登录/session 生命周期。
+- 输出: 接口映射文档、扫码/验证码登录、session 缓存与失效处理任务。
 
-### W4 Validation & AC83xx Evidence
-- 目标: 建立本地构建、API17 guardrails、实机性能日志和长播验证闭环。
-- 输出: 更新验证清单、日志观察项、实机报告模板与调优输入。
+### W3 Kugou Content Pages
+- 目标: 接入推荐歌曲、推荐电台、发现歌单三类酷狗内容。
+- 输出: 三个一级页面的数据加载、状态反馈、列表渲染和基础播放引用。
+
+### W4 Playback, Cache & Like State
+- 目标: 将酷狗曲目接入统一队列/播放解析，并实现酷狗点赞与历史状态。
+- 输出: source-aware queue/playback resolver、100MB 缓存守卫、点赞状态页。
+
+### W5 Validation & Evidence
+- 目标: 确保 API17 构建、低版本资源、横屏 UI 与登录/内容失败路径可验证。
+- 输出: 回归清单、构建验证、实机检查点。
+
+### W6 Deferred Emby Ingest Research
+- 目标: 后续确认 Emby 上传播放缓存入库能力。
+- 输出: 当前只保留阻塞项，不进入 Ready。
 
 ## Dependency Graph
-- `W1 -> W2 -> W3 -> W4`
-- `W2` 可在 `W1` no-op bridge 可构建后推进。
-- `W4` 文档可提前更新，但实机结论依赖 `W2/W3` 完成。
+- `W0` 与 S5 主线并行，可先执行，不阻塞酷狗接口映射。
+- `W1 -> W2 -> W3 -> W4 -> W5`
+- `W2` 的接口映射可与 `W1` 契约设计并行。
+- `W3` 依赖登录/session 和基础 source contract。
+- `W4` 依赖至少一个可加载的酷狗曲目列表。
+- `W6` 被阻塞，不依赖主线，不阻断本阶段可验证结果。
+- S4 `T-S4-AUDIO-095` 仍为外部实机阻塞项，与 S5 本地规划并行。
 
 ## Recommended Order
-1. `T-S4-AUDIO-088`: Native DSP JNI API 与 fail-open 契约。
-2. `T-S4-AUDIO-089`: 三档性能策略、预算阈值与日志字段契约。
-3. `T-S4-AUDIO-090`: native bridge scaffold + no-op/bypass buffer 处理。
-4. `T-S4-AUDIO-091`: C++ DSP 模式引擎与系数预计算。
-5. `T-S4-AUDIO-092`: 自动降档、耗时统计、throttled logs。
-6. `T-S4-AUDIO-093`: Kotlin `HiFiAudioProcessor` 热路径迁移到 native。
-7. `T-S4-AUDIO-094`: 本地构建、guardrails、API17 清单更新。
-8. `T-S4-AUDIO-095`: AC83xx 实机长播与听感验证。
+1. `T-S4-AUDIO-096`: Native DSP 播放按钮 fail-open 状态指示。
+2. `T-S5-KG-096`: KugouMusic.NET 接口能力映射与缺口检查。
+3. `T-S5-SRC-097`: 多来源领域模型与左侧一级导航契约。
+4. `T-S5-KG-098`: 酷狗登录/session 缓存契约。
+5. `T-S5-SRC-099`: Source-aware 队列/播放边界设计。
+6. `T-S5-UI-100`: 左侧导航与默认酷狗模式页面骨架。
+7. `T-S5-KG-101`: 酷狗登录 UI 与 session 缓存实现。
+8. `T-S5-KG-102`: 推荐歌曲页面接入。
+9. `T-S5-KG-103`: 推荐电台页面接入。
+10. `T-S5-KG-104`: 发现歌单分类与歌单歌曲接入。
+11. `T-S5-LIKE-105`: 酷狗点赞抽象与历史/状态页。
+12. `T-S5-VAL-106`: API17 回归清单与本地验证。
 
 ## Milestones
-- M1: native bridge 可构建，可处理整块 PCM buffer，失败时旁路原声。`Done locally`
-- M2: 五种音质模式在 native 中实现，Kotlin 热路径不再逐 sample 处理。`Done locally`
-- M3: 自动档位和耗时日志可观察，超预算先降档再旁路。`Done locally`
-- M4: AC83xx 实机开启 `保真` 连续播放不再出现广播感卡顿。`Blocked by device`
+- M1: 酷狗接口映射完整，确认本阶段所有酷狗行为均可追溯到 `KugouMusic.NET`。
+- M2: App 启动默认进入酷狗推荐歌曲页，左侧一级导航可切换核心页面。
+- M3: 酷狗扫码/验证码登录可用，session 可缓存并在失效时跳转登录。
+- M4: 推荐歌曲、推荐电台、发现歌单可加载并展示。
+- M5: 酷狗点赞状态可记录和查看，Emby 入库明确显示为阻塞/待处理。
+- M6: API17 guardrails 与 Kotlin 编译通过。
+- M0: 播放页可通过播放/暂停按钮边框确认 Native DSP 是否处于正常、降级或 fail-open 状态。
 
 ## Validation Strategy
+- 文档/契约:
+  - 每个酷狗接口必须标注对应 `KugouMusic.NET` 文件与方法。
+  - 没有来源依据的能力不得进入 Ready。
 - 本地:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
-  - `gradle :app:assembleDebug --no-daemon`
-- 代码审查重点:
-  - JNI 不跨 sample 调用。
-  - `queueInput()` 不做高频分配，不吞 buffer，不破坏 position/limit。
-  - `ByteBuffer` direct 地址不可用时必须旁路。
-  - native handle 生命周期与 `onFlush/onReset` 一致。
-  - 所有 native/JNI 异常路径 fail-open。
-- 实机:
-  - AC83xx 连续播放 30 分钟，无卡顿、爆音、破音、闪退。
-  - 切歌、seek、暂停/恢复后 mode/tier/state 正常。
-  - 对比 `原声/保真/清晰/动感/柔和`，保留可感知差异。
-  - 日志能解释正常处理、降档、旁路三类状态。
+  - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`
+- UI:
+  - 1024x600 横屏下导航、列表、登录、状态页不重叠。
+  - 不新增 Home 二级 tab。
+  - DSP 状态指示只更新播放/暂停按钮边框，随既有 1s progress tick 刷新且状态未变不重绘。
+- 行为:
+  - 未登录进入酷狗内容页时跳登录。
+  - session 缓存可复用；失效后能清理/重登。
+  - 网络失败、空结果、不可播均有明确反馈。
 
 ## Risks & Assumptions
-- 风险: AC83xx 浮点性能不足，optimized float 仍可能超预算，需要 fixed-point 或进一步降滤波器数量。
-- 风险: ExoPlayer 输出 buffer 是否始终 direct 需实测；非 direct 必须有安全旁路或低频复制兜底。
-- 风险: native 崩溃不可被 Kotlin catch 捕获，因此 C++ 代码必须避免越界、空指针、未校验 handle。
-- 风险: 自动降档过激会削弱听感，阈值需要实机调优。
-- 假设: 现有 `native-playback` so 可继续承载 DSP JNI，不需要新 so。
-- 假设: 当前 PCM 格式以 16-bit mono/stereo 为主，足够覆盖目标播放链路。
+- 风险: `KugouMusic.NET` WebApi 服务地址与部署方式未固定；若 Android 直接调网关，需要设置项或默认地址。
+- 风险: 酷狗 session 失效码需要严格按 `KugouMusic.NET` 行为识别，不能猜。
+- 风险: 现有 `MainActivity` 很大，直接硬改容易引入回归；需要先抽模型和页面边界。
+- 风险: 酷狗播放 URL/VIP 权限可能导致可展示但不可播，必须有状态反馈。
+- 风险: Emby 上传入库能力未确认，不能把点赞状态伪装为入库成功。
+- 风险: 若 DSP runtime 状态直接从音频线程触发 UI，会增加低端车机卡顿风险；必须采用轻量发布 + UI 低频读取。
+- 假设: `KugouMusic.NET/` 会作为本阶段稳定参考源码存在。
+- 假设: 第一版可通过 WebApi 形态接入酷狗能力，后续再决定是否移植协议到 Android 本地。
 
-## Execution Snapshot (2026-06-02)
-- Full Plan Mode 已完成本地可执行链 `T-S4-AUDIO-088~094`。
-- 代码结果:
-  - 新增 `NativeHiFiDspBridge.kt`，封装 native create/release/configure/setMode/flush/processPcm16。
-  - 新增 `native_hifi_dsp.cpp`，实现五种音质模式、预计算 biquad、`quality/balanced/safe` 三档和耗时统计。
-  - `HiFiAudioProcessor` 热路径已从 Kotlin sample loop 切换为 native direct `ByteBuffer` 整块处理。
-  - `CMakeLists.txt` 已将 native DSP 编入 `native-playback`。
-  - API17 回归清单已补充 native DSP 性能日志与降档/旁路证据字段。
-- 本地验证通过:
-  - `git diff --check`
-  - `./scripts/check_api17_guardrails.sh`
-  - `gradle :app:compileDebugKotlin --no-daemon`
-  - `gradle :app:assembleDebug --no-daemon`
-- 剩余:
-  - `T-S4-AUDIO-095` AC83xx 实机长播与听感验证。
+## Carry Forward
+- `T-S4-AUDIO-095`: AC83xx Native DSP 实机长播与听感验证仍保持 Blocked by external device，不进入 S5 Ready。
+- `B-KG-EMBY-INGEST-001`: 播放缓存上传到 Emby 入库保持 Blocked / Deferred。

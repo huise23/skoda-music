@@ -41,6 +41,16 @@ class HiFiAudioProcessor(
                         "ch=${inputAudioFormat.channelCount} enc=${inputAudioFormat.encoding}"
                 )
             }
+            val config = controller.snapshot()
+            if (config.enabled) {
+                controller.publishRuntimeState(
+                    status = HiFiDspController.RuntimeStatus.FAIL_OPEN,
+                    mode = config.mode,
+                    tier = "unsupported",
+                    flags = NativeHiFiDspBridge.FLAG_UNSUPPORTED,
+                    reason = "unsupported-format"
+                )
+            }
             return AudioProcessor.AudioFormat.NOT_SET
         }
         unsupportedLogged = false
@@ -66,6 +76,13 @@ class HiFiAudioProcessor(
         val config = controller.snapshot()
         val shouldProcess = config.enabled && config.mode != HiFiDspMode.ORIGINAL && sampleRate > 0 && channelCount > 0
         if (!shouldProcess) {
+            controller.publishRuntimeState(
+                status = HiFiDspController.RuntimeStatus.DISABLED,
+                mode = config.mode,
+                tier = "none",
+                flags = 0,
+                reason = "disabled-or-original"
+            )
             if (!bypassLogged) {
                 bypassLogged = true
                 activeLogged = false
@@ -118,6 +135,7 @@ class HiFiAudioProcessor(
             NativeHiFiDspBridge.release(nativeHandle)
             nativeHandle = 0L
         }
+        controller.resetRuntimeState(source = "audio_processor_reset")
         sampleRate = 0
         channelCount = 0
         nativeConfiguredSampleRate = 0
@@ -202,6 +220,14 @@ class HiFiAudioProcessor(
         input.position(inputStart)
         output.put(input)
         output.flip()
+        val config = controller.snapshot()
+        controller.publishRuntimeState(
+            status = HiFiDspController.RuntimeStatus.FAIL_OPEN,
+            mode = config.mode,
+            tier = "bypass",
+            flags = NativeHiFiDspBridge.FLAG_BYPASS,
+            reason = reason
+        )
         if (!bypassLogged) {
             bypassLogged = true
             activeLogged = false
@@ -215,6 +241,13 @@ class HiFiAudioProcessor(
         val tier = NativeHiFiDspBridge.tier(packed)
         val flags = NativeHiFiDspBridge.flags(packed)
         val costUs = NativeHiFiDspBridge.costUs(packed)
+        controller.publishRuntimeState(
+            status = resolveRuntimeStatus(status, tier, flags),
+            mode = config.mode,
+            tier = NativeHiFiDspBridge.tierName(tier),
+            flags = flags,
+            reason = statusName(status)
+        )
         val important = (flags and (
             NativeHiFiDspBridge.FLAG_DEGRADED or
                 NativeHiFiDspBridge.FLAG_OVER_BUDGET or
@@ -244,6 +277,29 @@ class HiFiAudioProcessor(
             NativeHiFiDspBridge.STATUS_BYPASS -> "bypass"
             NativeHiFiDspBridge.STATUS_ERROR -> "error"
             else -> "unknown"
+        }
+    }
+
+    private fun resolveRuntimeStatus(status: Int, tier: Int, flags: Int): HiFiDspController.RuntimeStatus {
+        val failed = status == NativeHiFiDspBridge.STATUS_ERROR ||
+            status == NativeHiFiDspBridge.STATUS_BYPASS ||
+            (flags and (NativeHiFiDspBridge.FLAG_BYPASS or NativeHiFiDspBridge.FLAG_ERROR)) != 0
+        if (failed) {
+            return HiFiDspController.RuntimeStatus.FAIL_OPEN
+        }
+        val degraded = (flags and (
+            NativeHiFiDspBridge.FLAG_DEGRADED or
+                NativeHiFiDspBridge.FLAG_OVER_BUDGET
+            )) != 0 ||
+            tier == NativeHiFiDspBridge.TIER_BALANCED ||
+            tier == NativeHiFiDspBridge.TIER_SAFE
+        if (degraded) {
+            return HiFiDspController.RuntimeStatus.DEGRADED
+        }
+        return if ((flags and NativeHiFiDspBridge.FLAG_ACTIVE) != 0) {
+            HiFiDspController.RuntimeStatus.ACTIVE
+        } else {
+            HiFiDspController.RuntimeStatus.UNKNOWN
         }
     }
 

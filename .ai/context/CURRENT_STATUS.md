@@ -1,12 +1,19 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
 
 ## Stage
-- 当前阶段: S4 子阶段（AC83xx Native Hi-Fi DSP 性能优化）
+- 当前阶段: S5 子阶段（Kugou Source Mode & Multi-Source Discovery）
 - 当前主干: `master@bb12c6b`
 
 ## Latest Confirmed (User)
+- 新阶段切换到酷狗默认模式与多来源抽象。
+- 来源需抽象，后续支持多套来源；点赞也先抽象，本阶段暂只支持酷狗。
+- 酷狗模式必须登录后可用；默认扫码登录，同时支持手机号验证码登录；登录成功后缓存 session，直到下次不可用再跳转登录。
+- 酷狗相关实现必须参考 `KugouMusic.NET/` 已有接口、模型和流程；没有依据就停止并询问用户。
+- 左侧应能快速切换整体界面；默认进入酷狗模式；不增加二级 tab。
+- 点赞后“播放缓存上传到 Emby 入库”先作为阻塞项，后续再处理；本地缓存设计目标最大不超过 `100MB`。
+- Native DSP 已可用，但播放页需要可视确认未进入 fail-open；采用播放/暂停按钮有色边框方案，状态刷新要慢一点，避免卡顿。
 - 路线锁定为“方案1（Legacy 稳态）”。
 - 第一版必须同轮达成：后台服务 + 后台方向盘按键 + 全局浮窗。
 - 浮窗策略锁定：播放/暂停均显示；手动关闭后“进应用再切出”再次显示。
@@ -22,6 +29,155 @@ Last Updated: 2026-06-02
   - 移除不稳定媒体会话实现（`ff52815`）。
   - 增加 API17 违规守卫（`8afea55`）。
   - 启动白屏感知优化（`6e6206c`、`2d5d315`）。
+
+## Requirement Refresh (Kugou Source Mode, 2026-06-03)
+- 用户确认新口径：
+  - 多来源抽象是前置，不能继续硬绑定 Emby-only。
+  - 默认进入酷狗模式，左侧一级导航快速切换，不新增二级 tab。
+  - 酷狗登录必需：默认扫码，同时支持手机号验证码；session 缓存复用，失效后再登录。
+  - 酷狗实现以 `KugouMusic.NET/` 为唯一参考来源，不自行发挥接口或字段。
+  - 点赞先抽象，本阶段暂只支持酷狗；点赞历史和状态需要可查看。
+  - 播放缓存上传到 Emby 入库能力未确认，作为阻塞项 `B-KG-EMBY-INGEST-001`。
+- 状态:
+  - `Planned`：已写入 S5 scope 并完成 planning。
+
+## Planning Refresh (Kugou Source Mode, 2026-06-03)
+- 已按新 scope 完成规划重排：
+  - 新增模块 `M-S5-SRC-022`：Multi-Source Domain & Left Navigation IA。
+  - 新增模块 `M-S5-KG-023`：Kugou Interface Map & Auth Session。
+  - 新增模块 `M-S5-KG-024`：Kugou Content Pages。
+  - 新增模块 `M-S5-PLAY-025`：Source-Aware Playback & Cache Guard。
+  - 新增模块 `M-S5-LIKE-026`：Like Abstraction & Status History。
+  - 新增模块 `M-S5-VAL-027`：API17 Validation & Regression Evidence。
+  - 阻塞模块 `M-S5-INGEST-028`：Emby Upload Ingest From Playback Cache。
+- 新任务链：
+  - `T-S5-KG-096` KugouMusic.NET 接口能力映射与缺口检查。
+  - `T-S5-SRC-097` 多来源领域模型与左侧一级导航契约。
+  - `T-S5-KG-098` 酷狗登录与 session 缓存契约。
+  - `T-S5-SRC-099` Source-aware 队列与播放解析边界设计。
+  - `T-S5-UI-100` 左侧导航与默认酷狗模式页面骨架。
+  - `T-S5-KG-101` 酷狗登录 UI 与 session 缓存实现。
+  - `T-S5-KG-102` 酷狗推荐歌曲页面接入。
+  - `T-S5-KG-103` 酷狗推荐电台页面接入。
+  - `T-S5-KG-104` 发现歌单分类、歌单列表与歌曲列表接入。
+  - `T-S5-LIKE-105` 酷狗点赞抽象与历史/状态页。
+  - `T-S5-VAL-106` S5 API17 回归清单与本地验证。
+  - `T-S5-PLAY-107` 酷狗播放 URL 解析与 100MB 缓存守卫实现。
+- 当时队列状态:
+  - Ready then: `T-S5-VAL-106`。
+  - Blocked then: `B-KG-EMBY-INGEST-001`, `T-S4-AUDIO-095`。
+
+## Execution Progress (T-S5-KG-101~105, 2026-06-03)
+- 已完成 `T-S5-KG-101`:
+  - 新增 WebApi session store 与 client，按 `.NET` `X-Kg-Session-Id`/`kg_sid` 契约缓存 session key。
+  - 设置页新增 Kugou WebApi Base URL、扫码登录、手机号验证码登录、登出和状态显示。
+  - 默认推荐歌曲页未登录时展示扫码登录，扫码轮询按 `.NET LoginViewModel` 的 2s 节奏。
+  - 启动时优先 `/login/token` 复用 session；失败清 session 并回登录。
+- 已完成 `T-S5-KG-102`:
+  - 接入 `GET /recommend/songs`，按 `DailyRecommendResponse` / `DailyRecommendViewModel` 映射为 `SourceTrack`。
+  - 推荐歌曲点击当前只提示播放解析待后续任务，不改 Emby 播放链。
+- 已完成 `T-S5-KG-103`:
+  - 接入 `GET /fm/recommend` 与 `GET /fm/songs`，按 `FmRecommendResponse` / `FmSongResponse` 映射电台与电台歌曲。
+- 已完成 `T-S5-KG-104`:
+  - 接入 `GET /playlist/tags`、`GET /top/playlist`、`GET /playlist/track/all`。
+  - 发现歌单分类来自接口返回，不手写场景/主题/语种/风格/心情/年代。
+- 已完成 `T-S5-LIKE-105`:
+  - 新增来源无关点赞历史 store。
+  - 酷狗歌曲行新增点赞入口，调用 `.NET` WebApi `/playlist/tracks/add`，目标列表 ID 按 `FavoritePlaylistService` 的 `LikeListIdForAction = "2"`。
+  - 点赞/入库状态页展示 source、远端点赞状态、失败原因和 `blocked_ingest`。
+  - 不执行 Emby 上传入库。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 当前队列状态:
+  - Ready: None。
+  - Pending: None。
+  - Blocked: `B-KG-EMBY-INGEST-001`, `T-S4-AUDIO-095`。
+
+## Execution Progress (T-S5-VAL-106/T-S5-PLAY-107, 2026-06-03)
+- 已完成 `T-S5-VAL-106`:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 升级为 S4/S5 清单。
+  - 新增酷狗登录/session、内容页、点赞/入库状态和证据要求。
+  - 写入本轮本地验证快照。
+- 已完成 `T-S5-PLAY-107`:
+  - `KugouWebApiClient` 新增 `GET /song/url` resolver，参考 `SongController.GetUrl` / `SongClient.GetPlayInfoAsync` / `PlayUrlData`。
+  - 酷狗歌曲点击后解析播放 URL，并通过 ExoPlayer 直接播放远程 URL；Emby 队列与 download-only 主路径保持不变。
+  - 本地播放缓存守卫覆盖 `emby_*.cache` 和未来 `kugou_*.cache`，上限 `100MB`。
+  - 不执行 Emby 上传入库。
+- 最终本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 当前队列状态:
+  - Ready: None。
+  - Pending: None。
+  - Blocked: `B-KG-EMBY-INGEST-001`, `T-S4-AUDIO-095`。
+
+## Requirement Refresh (Native DSP Playback Indicator, 2026-06-03)
+- 用户确认新口径：
+  - Native DSP 当前方案可以继续。
+  - 播放页需要一个地方确认没有进入 fail-open。
+  - 采用播放/暂停按钮边框上色方案。
+  - 状态刷新不要过快，避免低端车机 UI 卡顿。
+- 状态:
+  - `Planned`：已加入并行热修模块 `M-S4-AUDIO-022` 与 Ready 任务 `T-S4-AUDIO-096`。
+
+## Planning Refresh (Native DSP Playback Indicator, 2026-06-03)
+- 新增模块:
+  - `M-S4-AUDIO-022` Native DSP Playback Status Indicator。
+- 新增任务:
+  - `T-S4-AUDIO-096` Native DSP 播放按钮 fail-open 状态指示。
+- 执行边界:
+  - 不修改 DSP 算法和 native 性能策略。
+  - 通过轻量 runtime state 发布 + `MainActivity` 既有 `UI_PROGRESS_REFRESH_MS = 1_000L` tick 读取。
+  - 仅状态变化时重绘播放按钮边框。
+  - 颜色语义：灰色未知/关闭，绿色正常，黄色降级/超预算，红色 fail-open/bypass/error。
+
+## Execution Progress (Full Plan Mode, 2026-06-03)
+- 已完成 `T-S4-AUDIO-096`:
+  - `HiFiDspController` 新增轻量 runtime state。
+  - `HiFiAudioProcessor` 基于 native status/tier/flags 发布 `UNKNOWN/DISABLED/ACTIVE/DEGRADED/FAIL_OPEN`。
+  - `MainActivity` 在既有 `UI_PROGRESS_REFRESH_MS = 1_000L` tick 中刷新播放/暂停按钮边框，状态未变化不重绘。
+  - 播放按钮边框颜色：灰色未知/关闭，绿色正常，黄色降级/超预算，红色 fail-open/bypass/error。
+- 已完成 `T-S5-KG-096`:
+  - 新增 `docs/KUGOU_MUSIC_NET_INTERFACE_MAP.md`。
+  - 覆盖扫码登录、手机号验证码、session、推荐歌曲、推荐电台、发现歌单、播放 URL、点赞/我喜欢。
+  - 明确点赞没有独立 toggle route，需参考 `FavoritePlaylistService` 的“我喜欢歌单 add/remove”流程。
+- 已完成 `T-S5-SRC-097`:
+  - `MainModels.kt` 新增 `MusicSource`、`SourceTrack`、`SourcePlaylist`、`SourceRadio`、`SourcePlaybackRef` 等最小来源模型。
+  - 新增 `docs/MULTI_SOURCE_NAV_CONTRACT.md`，固定左侧一级导航和 Emby 迁移边界。
+- 已完成 `T-S5-KG-098`:
+  - 新增 `docs/KUGOU_AUTH_SESSION_CONTRACT.md`，固定 WebApi session key、扫码轮询、手机号验证码、缓存复用和失效跳转口径。
+- 已完成 `T-S5-SRC-099`:
+  - 新增 `docs/SOURCE_AWARE_PLAYBACK_QUEUE_CONTRACT.md`，固定 Emby/Kugou resolver、source-aware queue 和 100MB 缓存守卫边界。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 上一轮停止边界:
+  - `T-S5-UI-100` 曾因 UI 结构风险单独进入 Ready。
+  - 本轮已执行并完成该任务。
+
+## Execution Progress (T-S5-UI-100, 2026-06-03)
+- 已完成左侧一级导航与默认酷狗模式页面骨架:
+  - 左侧入口调整为：推荐歌曲、推荐电台、发现歌单、播放队列、点赞/入库状态、设置。
+  - 默认启动进入推荐歌曲页，复用现有播放卡片保留播放控制和 DSP 状态按钮。
+  - Home 内歌词/队列二级 tab 入口已隐藏，不新增二级 tab。
+  - 新增推荐电台、发现歌单、点赞/入库状态骨架页。
+  - Queue 从隐藏页改为左侧一级入口。
+  - 旧 Library 页面代码保留但不在 S5 一级导航暴露。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+- 当时队列状态:
+  - Next Ready then: `T-S5-KG-101`。
+  - Done 新增: `T-S5-UI-100`。
 
 ## Requirement Refresh (AC83xx Native Hi-Fi DSP, 2026-06-02)
 - 实机反馈：AC83xx 上 Kotlin DSP 播放时有轻微卡顿，听感类似广播不稳。
@@ -91,8 +247,25 @@ Last Updated: 2026-06-02
   - `T-S4-AUDIO-087` Blocked：等待 API17 实机听感、长播、切歌/seek/暂停恢复验证。
 
 ## Current Focus
-- 当前焦点切换为 AC83xx Native DSP 性能优化。
-- 本地 native DSP 优化链已完成，下一步焦点是 AC83xx 实机长播与听感验证。
+- 当前焦点为 S5 酷狗来源模式与多来源抽象。
+- DSP 播放页状态指示已完成。
+- 酷狗接口映射、登录/session 契约、多来源模型、source-aware 播放边界、左侧一级导航、登录、三类内容页和点赞状态页已完成。
+- 当前 S5 计划内可执行任务已完成；剩余为 Emby 入库能力确认和 AC83xx 实机验证阻塞项。
+- S4 `T-S4-AUDIO-095` 仍等待 AC83xx 实机验证，不阻塞 S5 本地 planning/execution。
+
+## Review (2026-06-03)
+- 状态: Done，无阻断问题。
+- Scope 对齐: 仍符合 S5 酷狗来源、多来源抽象、点赞状态、100MB 缓存守卫与 DSP 播放按钮状态指示口径。
+- Plan/Queue 对齐: `TASK_QUEUE.md` 当前 Ready/Pending 均为 None，Blocked 仅保留 `B-KG-EMBY-INGEST-001` 与 `T-S4-AUDIO-095`。
+- 本轮 review 补充:
+  - `KugouMusic.NET/` 是只读参考源码，已加入 `.gitignore`，不随 Android 代码提交。
+  - 静态检查未发现会阻断提交/推送的启动、播放、登录/session、缓存守卫问题。
+  - 结构风险: `MainActivity` 继续膨胀，后续新增来源时建议拆分 source adapter / view binder；不阻塞本次阶段完成。
+- 验证通过:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
 
 ## Historical Notes
 ## Requirement Refresh (App EQ Fixed 10-band Trial, 2026-05-29)
@@ -107,7 +280,7 @@ Last Updated: 2026-06-02
 - 状态:
   - `Pending Planning`：已写入 scope，下一步进入 planning 拆任务。
 
-## Current Focus
+## Historical Current Focus (2026-05-29)
 - 执行 `T-S4-CORE-026`（S4 大闭环）：后台播放服务、方向盘按键、通知与浮窗控制链路稳定化。
 - 维持播放主链路稳定，并按新口径保持“无自动续播”。
 - 并行焦点：音效目标切到“应用内保真 DSP 引擎”，不再沿 Android `audiofx` 10 段直写作为主线推进。

@@ -1,34 +1,34 @@
 # NEXT_STEPS
 
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
 
 ## One-Line Summary
-- Native Hi-Fi DSP 本地实现已完成并通过构建；下一步是 AC83xx 实机验证是否解决卡顿。
+- S5 计划内可执行任务已完成：酷狗登录、内容页、点赞状态、播放 URL、100MB 缓存守卫和 API17 回归清单均已本地验证。
 
 ## Current Highest Priority
-- `T-S4-AUDIO-095`: AC83xx 实机长播与听感验证。
+- None ready.
 
-## What To Validate On Device
-1. 安装本轮 APK 后开启 `保真` 模式连续播放，确认是否还存在“听广播一样”的轻微卡顿。
-2. 切换 `原声 / 保真 / 清晰 / 动感 / 柔和`，确认不断播、不切歌、不爆音。
-3. 执行 seek、切歌、暂停/恢复，确认 native DSP 状态一致。
-4. 连续播放至少 30 分钟，确认无卡顿、爆音、破音、闪退。
-5. 回传日志样本：`hifi-dsp native status=<...> mode=<...> tier=<...> costUs=<...> flags=<...>`。
+## Immediate Ready Tasks
+- None.
 
-## Expected Log Interpretation
-- `tier=quality`: 正常高音效档。
-- `tier=balanced`: CPU 超预算后自动降一档，仍应保持可听差异。
-- `tier=safe`: CPU 压力较高，进入最低复杂度音效。
-- `status=bypass` 或 `flags=bypass`: native 保护性旁路，播放应不中断。
-- `reason=non-direct-buffer`: ExoPlayer 输出 buffer 不满足 native 直处理，需要后续改复制兜底或调整接入策略。
+## Blocked / Deferred
+- `B-KG-EMBY-INGEST-001`: 点赞后将播放缓存上传到 Emby 并纳入媒体库。
+  - 原因: Emby 上传并入库能力未确认。
+  - 当前处理: 本阶段只记录点赞和入库阻塞状态，不执行上传。
+- `T-S4-AUDIO-095`: AC83xx Native DSP 实机长播与听感验证。
+  - 原因: 外部设备窗口。
 
-## Completed Locally
-- `T-S4-AUDIO-088~094` 已完成。
-- `gradle :app:compileDebugKotlin --no-daemon` 通过。
-- `gradle :app:assembleDebug --no-daemon` 通过。
-- `./scripts/check_api17_guardrails.sh` 通过。
-- `git diff --check` 通过。
-
-## Recommended Next Action
-- 推送/打包后执行 AC83xx 实机验证。
-- 若实机仍卡顿：带日志回到 `$ai-requirement` 或 `$ai-planning`，规划 fixed-point/NEON/更低复杂度参数二轮优化。
+## Validation Notes
+- 最终本地验证已通过:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Review 结论:
+  - 未发现阻断提交/推送的问题。
+  - `KugouMusic.NET/` 保持只读参考并已加入 `.gitignore`。
+  - 后续若继续扩展来源，优先拆分 `MainActivity` 中的 source UI/client 接线。
+- 后续需要实机/外部验证:
+  - Kugou WebApi 地址、扫码/验证码登录、session 失效、内容接口真实返回。
+  - AC83xx native DSP 长播听感。
+  - Emby 是否支持上传播放缓存并入库。

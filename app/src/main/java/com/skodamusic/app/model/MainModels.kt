@@ -26,6 +26,71 @@ enum class ListSource {
     LIBRARY
 }
 
+enum class MusicSource {
+    EMBY,
+    KUGOU
+}
+
+enum class SourceCapability {
+    PLAY,
+    LIKE,
+    RADIO,
+    PLAYLIST,
+    REQUIRES_LOGIN
+}
+
+enum class SourceNavEntry {
+    KUGOU_RECOMMENDED_SONGS,
+    KUGOU_RECOMMENDED_RADIO,
+    KUGOU_DISCOVER_PLAYLISTS,
+    PLAYBACK_QUEUE,
+    LIKE_STATUS,
+    SETTINGS
+}
+
+data class SourcePlaybackRef(
+    val source: MusicSource,
+    val primaryId: String,
+    val hash: String = "",
+    val albumId: String = "",
+    val albumAudioId: String = "",
+    val quality: String = "",
+    val requiresLogin: Boolean = false
+)
+
+data class SourceTrack(
+    val source: MusicSource,
+    val sourceTrackId: String,
+    val title: String,
+    val artist: String = "",
+    val album: String = "",
+    val coverUrl: String = "",
+    val durationMs: Long = -1L,
+    val playbackRef: SourcePlaybackRef,
+    val capabilities: Set<SourceCapability> = emptySet()
+)
+
+data class SourcePlaylist(
+    val source: MusicSource,
+    val sourcePlaylistId: String,
+    val title: String,
+    val globalId: String = "",
+    val coverUrl: String = "",
+    val subtitle: String = "",
+    val tagId: Int? = null,
+    val capabilities: Set<SourceCapability> = emptySet()
+)
+
+data class SourceRadio(
+    val source: MusicSource,
+    val sourceRadioId: String,
+    val title: String,
+    val coverUrl: String = "",
+    val subtitle: String = "",
+    val type: Int = 2,
+    val capabilities: Set<SourceCapability> = emptySet()
+)
+
 data class UiState(
     val currentTrack: String,
     @StringRes val playbackStatusRes: Int,

@@ -1,222 +1,399 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
 
-## Active Stage: S4 子阶段 - AC83xx Native Hi-Fi DSP 性能优化
+## Active Stage: S5 子阶段 - Kugou Source Mode & Multi-Source Discovery
 
 ## Planning Snapshot
-- Previous Kotlin DSP tasks `T-S4-AUDIO-080~086`: Done locally.
-- Previous real-device listening task `T-S4-AUDIO-087`: Superseded by native performance optimization before further listening validation.
-- New task chain starts at `T-S4-AUDIO-088`.
+- Scope 已由用户确认：多来源抽象、默认酷狗模式、酷狗登录必需、左侧一级导航、不新增二级 tab。
+- 酷狗实现必须参考 `KugouMusic.NET/`，没有依据就停下问用户。
+- 播放缓存上传到 Emby 入库进入阻塞项，不进入本阶段 Ready。
+- Native DSP 追加并行热修：播放页播放/暂停按钮需要用有色边框显示是否进入 fail-open，状态刷新稍慢一点，避免按音频帧刷 UI。
 
-## Execution Snapshot (2026-06-02)
-- Done locally: `T-S4-AUDIO-088`, `089`, `090`, `091`, `092`, `093`, `094`.
-- Blocked by device: `T-S4-AUDIO-095`.
-- Local validation passed:
-  - `git diff --check`
-  - `./scripts/check_api17_guardrails.sh`
-  - `gradle :app:compileDebugKotlin --no-daemon`
-  - `gradle :app:assembleDebug --no-daemon`
+## T-S4-AUDIO-096
+- Task ID: `T-S4-AUDIO-096`
+- Module ID: `M-S4-AUDIO-022`
+- Title: Native DSP 播放按钮 fail-open 状态指示
+- Goal: 在播放页播放/暂停按钮上增加 DSP runtime 状态边框，让用户能确认 Native DSP 当前未进入 fail-open。
+- Why: Native DSP 本地链已完成，但状态目前主要靠日志判断；车机播放页需要一个低开销、可立即识别的状态信号。
+- Dependencies: `T-S4-AUDIO-088~094`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiDspController.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiAudioProcessor.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/NativeHiFiDspBridge.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/drawable/button_control_primary.xml`
+- Expected Outputs:
+  - 轻量 DSP runtime state：unknown/disabled、active、degraded、fail_open 或等价状态。
+  - `HiFiAudioProcessor` 在 native ok/degraded/over_budget/bypass/error/disabled 路径发布状态。
+  - `MainActivity` 在既有 `UI_PROGRESS_REFRESH_MS = 1_000L` tick 中读取状态，状态未变不重绘。
+  - 播放/暂停按钮边框颜色语义：
+    - 灰色：DSP 关闭、原声、未知、播放器释放。
+    - 绿色：native active 且未 fail-open。
+    - 黄色：native active 但 degraded、balanced/safe tier 或 over budget。
+    - 红色：fail-open、bypass、error、native unavailable 或处理失败。
+- Done Criteria:
+  - 播放页按钮边框能稳定反映 DSP 状态，不依赖打开日志页。
+  - 停播/release player/关闭 DSP/原声模式会回到灰色或未知态。
+  - 不从 audio thread 直接触发 UI；UI 刷新不快于 1s tick，状态未变化不重复重绘。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - 触及 drawable/resource 后执行 `gradle :app:assembleDebug --no-daemon`。
+- Risks:
+  - 如果 runtime state 写入包含重对象或锁竞争，可能影响音频热路径；实现需使用 volatile/不可变小对象或等价轻量方式。
+  - 按钮背景若直接替换 selector，需保留按下态和现有视觉，不应造成播放按钮尺寸变化。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
 
-## T-S4-AUDIO-088
-- Task ID: `T-S4-AUDIO-088`
-- Module ID: `M-S4-AUDIO-018`
-- Title: Native DSP JNI API 与 fail-open 契约
-- Goal: 固定 Kotlin 到 C++ 的调用边界、错误码、生命周期和旁路策略。
-- Why: native 化最容易出错的是 JNI 签名、buffer 所有权和异常边界；先定契约可避免实现返工。
+## T-S5-KG-096
+- Task ID: `T-S5-KG-096`
+- Module ID: `M-S5-KG-023`
+- Title: KugouMusic.NET 接口能力映射与缺口检查
+- Goal: 建立本阶段酷狗能力到 `.NET` 源码的映射表，确认推荐歌曲、电台、发现歌单、登录、播放 URL、点赞的参考文件与方法。
+- Why: 用户明确要求酷狗相关实现只参考 `KugouMusic.NET`，不能自行发挥；这是所有后续实现的防返工前置。
+- Dependencies: 无
+- Inputs:
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/`
+  - `KugouMusic.NET/src/Apps/KgWebApi.Net/Controllers/`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/`
+- Expected Outputs:
+  - 酷狗接口映射文档或 context 章节。
+  - 每个 S5 能力对应 client/controller/model/raw api。
+  - 明确缺口：没有依据的能力必须标记 Pending Confirmation。
+- Done Criteria:
+  - 覆盖扫码登录、验证码登录、session 缓存、推荐歌曲、电台、发现歌单、播放 URL、点赞/我喜欢。
+  - 每项均能定位到具体文件/方法。
+  - 未发现依据的项没有进入 Ready 实现。
+- Risks:
+  - `.NET` WebApi controller 形态与 Android 直接调用形态可能不一致，需要后续适配。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-SRC-097
+- Task ID: `T-S5-SRC-097`
+- Module ID: `M-S5-SRC-022`
+- Title: 多来源领域模型与左侧一级导航契约
+- Goal: 定义 source-aware 模型、页面入口和默认酷狗模式规则。
+- Why: 当前代码强绑定 `EmbyTrack` 与 Home 二级 tab；先定义契约可避免把酷狗数据硬塞进旧模型。
 - Dependencies: 无
 - Inputs:
   - `.ai/context/SCOPE.md`
-  - `HiFiAudioProcessor.kt`
-  - `HiFiDspController.kt`
-  - `app/src/main/cpp/CMakeLists.txt`
-  - `native_playback_bridge.cpp`
+  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
 - Expected Outputs:
-  - JNI 方法清单与参数含义。
-  - native handle 生命周期规则。
-  - direct/non-direct buffer 处理规则。
-  - 错误码与 fail-open 行为矩阵。
+  - 来源模型草案：source id、track id、title、artist、cover、duration、playback ref、capabilities。
+  - 左侧导航入口定义与默认页规则。
+  - 现有 Emby 模型迁移边界。
 - Done Criteria:
-  - 契约足够直接进入实现。
-  - 明确不允许 per-sample JNI。
-  - 明确 native 失败不能导致播放中断。
+  - 明确哪些字段属于统一模型，哪些字段是来源私有。
+  - 明确左侧一级入口，不新增 Home 二级 tab。
+  - 能支撑后续 UI/接口实现。
 - Risks:
-  - 契约过度复杂会增加 JNI 维护成本。
+  - 契约过大可能拖慢实现，需保持第一版最小可用。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S4-AUDIO-089
-- Task ID: `T-S4-AUDIO-089`
-- Module ID: `M-S4-AUDIO-019`
-- Title: 性能档位、预算阈值与日志字段契约
-- Goal: 定义 `quality / balanced / safe` 三档策略、降档条件、恢复条件和日志字段。
-- Why: 用户要求高音效，但 AC83xx 性能有限；必须先定义“何时保真、何时降档、何时旁路”。
-- Dependencies: 无
+## T-S5-KG-098
+- Task ID: `T-S5-KG-098`
+- Module ID: `M-S5-KG-023`
+- Title: 酷狗登录与 session 缓存契约
+- Goal: 基于 `KugouMusic.NET` 固定扫码登录、手机号验证码登录、session 持久化与失效处理契约。
+- Why: 酷狗模式必须登录后可用，登录状态是后续所有内容加载的前置。
+- Dependencies: `T-S5-KG-096`
 - Inputs:
-  - 当前 Kotlin 五种模式参数
-  - `.ai/context/SCOPE.md` 性能验收标准
+  - `LoginClient.cs`
+  - `RawLoginApi.cs`
+  - `LoginController.cs`
+  - `CaptchaController.cs`
+  - `KugouSessionPersistence.cs`
+  - `LoginViewModel.cs`
 - Expected Outputs:
-  - 三档每个模式保留的滤波器数量/方向。
-  - buffer 耗时预算初值。
-  - 超预算计数与降档策略。
-  - 日志字段：mode/tier/cost/degrade/bypass。
+  - Android 侧登录流程契约。
+  - session 缓存字段与失效判断。
+  - 默认扫码、验证码 fallback 的 UI 状态矩阵。
 - Done Criteria:
-  - 三档策略可直接映射到 C++ 实现。
-  - 降档优先于直接关闭。
-  - 旁路只作为最终保护路径。
+  - 不猜测 session 字段和失效码。
+  - 能进入 UI/实现任务。
 - Risks:
-  - 阈值需要实机二次调优。
+  - 真实扫码登录需要外部账号与扫码环境验证。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S4-AUDIO-090
-- Task ID: `T-S4-AUDIO-090`
-- Module ID: `M-S4-AUDIO-018`
-- Title: Native bridge scaffold 与 no-op/bypass buffer 处理
-- Goal: 新增 native DSP bridge 文件、CMake 接线、Kotlin bridge，并先实现安全 no-op/bypass。
-- Why: 先证明 native 调用链稳定，再加入 DSP 算法，降低排障复杂度。
-- Dependencies: `T-S4-AUDIO-088`
+## T-S5-SRC-099
+- Task ID: `T-S5-SRC-099`
+- Module ID: `M-S5-PLAY-025`
+- Title: Source-aware 队列与播放解析边界设计
+- Goal: 设计 Emby/Kugou 共存的队列项、播放 URL 解析入口和缓存上限策略。
+- Why: 当前播放链路只知道 Emby download URL；酷狗播放必须通过来源 resolver 接入，且缓存目标上限 100MB。
+- Dependencies: `T-S5-SRC-097`, `T-S5-KG-096`
 - Inputs:
-  - `app/src/main/cpp/CMakeLists.txt`
-  - `app/src/main/java/com/skodamusic/app/audio/dsp/`
+  - `MainActivity.kt` 播放与下载控制逻辑
+  - `PlaybackEngine.kt`
+  - `TrackCodec.kt`
+  - `SongClient.cs` / `SongController.cs`
 - Expected Outputs:
-  - `native_hifi_dsp` C++ 源文件/头文件或等价实现。
-  - Kotlin `NativeHiFiDspBridge` 或等价封装。
-  - handle create/configure/release/process no-op 路径。
+  - source-aware queue item 契约。
+  - Kugou playback ref 到 URL 的解析流程。
+  - 100MB 缓存上限与清理规则草案。
 - Done Criteria:
-  - 构建通过。
-  - native 不可用时 Kotlin 自动旁路。
-  - no-op 处理不改变音频内容。
+  - 不破坏现有 Emby 播放语义。
+  - 酷狗播放失败/不可播有明确反馈边界。
+  - Emby 上传入库不进入本任务。
 - Risks:
-  - JNI 名称或包路径不一致导致运行期找不到方法。
+  - 现有下载控制器与 Emby ID 强耦合，改动需分步。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-UI-100
+- Task ID: `T-S5-UI-100`
+- Module ID: `M-S5-SRC-022`
+- Title: 左侧导航与默认酷狗模式页面骨架
+- Goal: 改造左侧导航和页面容器，默认进入酷狗推荐歌曲页，并移除新增二级 tab 的需求路径。
+- Why: 用户明确要求整体界面左侧快速切换、默认酷狗模式、不增加二级 tab。
+- Dependencies: `T-S5-SRC-097`
+- Inputs:
+  - `activity_main.xml`
+  - `MainActivity.kt`
+  - `strings.xml`
+  - 现有 nav drawable 资源
+- Expected Outputs:
+  - 推荐歌曲、推荐电台、发现歌单、队列、点赞/入库状态、设置页面骨架。
+  - 默认启动显示推荐歌曲。
+  - 现有 Emby 设置入口仍可访问。
+- Done Criteria:
+  - 1024x600 横屏不重叠。
+  - 左侧导航一级切换可用。
+  - 不新增 Home 二级 tab。
+- Risks:
+  - 现有首页播放卡片和歌词区需要保留或重新定位，避免播放主控丢失。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: Yes
 
-## T-S4-AUDIO-091
-- Task ID: `T-S4-AUDIO-091`
-- Module ID: `M-S4-AUDIO-019`
-- Title: C++ DSP 模式引擎与系数预计算
-- Goal: 将现有五种模式的 preamp、biquad、limiter 迁入 native，并把系数计算移出热路径。
-- Why: Kotlin per-sample float 处理是当前性能瓶颈；C++ 需要承担实际 DSP 热路径。
-- Dependencies: `T-S4-AUDIO-090`, `T-S4-AUDIO-089`
+## T-S5-KG-101
+- Task ID: `T-S5-KG-101`
+- Module ID: `M-S5-KG-023`
+- Title: 酷狗登录 UI 与 session 缓存实现
+- Goal: 实现扫码登录、手机号验证码登录、session 缓存复用和失效跳转。
+- Why: 酷狗内容登录后才可用，默认扫码是用户确认的入口。
+- Dependencies: `T-S5-KG-098`, `T-S5-UI-100`
 - Inputs:
-  - `HiFiAudioProcessor.kt` 当前 `ModeSpec/FilterSpec/Biquad`
-  - Native bridge scaffold
+  - 登录/session 契约
+  - `KugouMusic.NET` 登录参考实现
+  - Android 设置/登录 UI 骨架
 - Expected Outputs:
-  - C++ mode specs。
-  - 每声道滤波器状态。
-  - 配置时预计算系数。
-  - PCM16 mono/stereo buffer 处理。
+  - 登录页/对话框。
+  - QR code 加载与轮询状态。
+  - 手机号验证码登录。
+  - session cache store。
+  - 未授权跳登录。
 - Done Criteria:
-  - `原声` 旁路，其它四种模式可处理。
-  - 热路径无三角函数、无分配、少分支。
-  - 输出 clamp/limiter 不产生明显爆音。
+  - 未登录时酷狗内容不可用并引导登录。
+  - 登录后可缓存并复用。
+  - session 不可用时清理并回登录。
 - Risks:
-  - C++ 参数与 Kotlin 版听感不完全一致，需要实机调音。
+  - QR 图片/状态字段需要严格遵循 .NET 实现，不能猜。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: No
 
-## T-S4-AUDIO-092
-- Task ID: `T-S4-AUDIO-092`
-- Module ID: `M-S4-AUDIO-019`
-- Title: 自动降档、耗时统计与节流日志
-- Goal: 实现 buffer 处理耗时统计、三档自动降级、最终旁路和日志节流。
-- Why: native 化后仍可能在 AC83xx 超预算，必须自动保护播放连续性。
-- Dependencies: `T-S4-AUDIO-091`
+## T-S5-KG-102
+- Task ID: `T-S5-KG-102`
+- Module ID: `M-S5-KG-024`
+- Title: 酷狗推荐歌曲页面接入
+- Goal: 使用 `KugouMusic.NET` 推荐歌曲接口加载并展示推荐歌曲。
+- Why: 推荐歌曲是默认酷狗模式首屏，也是最短可验证内容入口。
+- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
 - Inputs:
-  - 性能档位契约
-  - native DSP engine
+  - `RecommendClient.GetRecommendedSongsAsync`
+  - `DiscoveryController.GetRecommendSong`
+  - `DailyRecommendModels.cs`
+  - source track contract
 - Expected Outputs:
-  - quality/balanced/safe runtime tier。
-  - over-budget counter。
-  - degrade/bypass reason。
-  - throttled log callback 或 Kotlin 侧状态读取。
+  - 推荐歌曲列表。
+  - 加载/空/失败/未登录状态。
+  - 点击产生播放引用或明确不可播反馈。
 - Done Criteria:
-  - 超预算优先降档。
-  - 持续超预算或处理异常最终旁路。
-  - 日志足够判断性能问题，不高频刷屏。
+  - 字段映射可追溯到 `.NET` model。
+  - 未登录不请求内容。
+  - 网络失败不破坏主界面。
 - Risks:
-  - 日志跨 JNI 设计过重会抵消性能收益。
+  - 推荐接口可能要求有效 session 或返回权限受限歌曲。
 - Size: M
 - Execution Mode: Module
-- Minimal Loop: No
+- Minimal Loop: Yes
 
-## T-S4-AUDIO-093
-- Task ID: `T-S4-AUDIO-093`
-- Module ID: `M-S4-AUDIO-020`
-- Title: `HiFiAudioProcessor` 热路径迁移到 native
-- Goal: Kotlin `queueInput()` 改为整块调用 native 处理，移除 active path 中的 Kotlin sample loop。
-- Why: 只有播放热路径真正离开 Kotlin，才能解决 AC83xx 卡顿根因。
-- Dependencies: `T-S4-AUDIO-090`, `T-S4-AUDIO-091`, `T-S4-AUDIO-092`
+## T-S5-KG-103
+- Task ID: `T-S5-KG-103`
+- Module ID: `M-S5-KG-024`
+- Title: 酷狗推荐电台页面接入
+- Goal: 使用 `FmClient` / `FmController` 接入推荐电台和电台歌曲列表。
+- Why: 推荐电台是用户明确要求的新一级内容。
+- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
 - Inputs:
-  - `HiFiAudioProcessor.kt`
-  - Native bridge Kotlin wrapper
+  - `FmClient.cs`
+  - `RawFmApi.cs`
+  - `FmController.cs`
+  - `FmRecommendResponse.cs`
+  - `FmSongResponse.cs`
 - Expected Outputs:
-  - native process 替代 Kotlin `processPcm16`。
-  - `onConfigure/onFlush/onReset` 同步 native 状态。
-  - 失败时当前 buffer 旁路输出。
+  - 推荐电台列表。
+  - 电台图片/名称/描述。
+  - 电台歌曲列表与状态反馈。
 - Done Criteria:
-  - 开启音效时不再执行 Kotlin biquad/sample loop。
-  - 关闭、原声、不支持格式全部旁路。
-  - 模式切换实时更新 native config。
+  - 接口字段来自 `.NET` model。
+  - 可处理空电台、空歌曲、网络失败。
 - Risks:
-  - buffer position 处理错误会造成杂音或丢帧。
+  - 电台歌曲名称可能是组合字段，需要按 `.NET` model 处理，不自行拆分猜测。
 - Size: M
 - Execution Mode: Module
-- Minimal Loop: No
+- Minimal Loop: Yes
 
-## T-S4-AUDIO-094
-- Task ID: `T-S4-AUDIO-094`
-- Module ID: `M-S4-AUDIO-021`
-- Title: 本地验证、guardrails 与 API17 清单更新
-- Goal: 完成本地构建验证，并将 native DSP 性能观察项写入回归清单。
-- Why: native 改动必须同时验证构建、API17 兼容和实机可观察性。
-- Dependencies: `T-S4-AUDIO-093`
+## T-S5-KG-104
+- Task ID: `T-S5-KG-104`
+- Module ID: `M-S5-KG-024`
+- Title: 发现歌单分类、歌单列表与歌曲列表接入
+- Goal: 接入 `playlist/tags`、按 tag 推荐歌单、歌单详情/歌曲列表。
+- Why: 发现歌单是用户点名的核心入口，分类必须覆盖场景/主题/语种/风格/心情/年代。
+- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
+- Inputs:
+  - `PlaylistClient.GetTagsAsync`
+  - `RecommendClient.GetRecommendedPlaylistsAsync`
+  - `PlaylistClient.GetInfoAsync`
+  - `PlaylistClient.GetSongsAsync`
+  - `DiscoverViewModel.cs`
+  - `PlaylistTagCategory.cs`
+  - `RecommendPlaylistResponse.cs`
+- Expected Outputs:
+  - 分类/子标签筛选。
+  - 歌单卡片列表。
+  - 歌单歌曲列表。
+  - 加载/空/失败状态。
+- Done Criteria:
+  - 分类来自接口，不手写猜测。
+  - 歌单字段映射可追溯。
+  - 歌单歌曲可形成 source track。
+- Risks:
+  - tag 名称和分类顺序依赖接口返回；需支持缺失/空分类。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-LIKE-105
+- Task ID: `T-S5-LIKE-105`
+- Module ID: `M-S5-LIKE-026`
+- Title: 酷狗点赞抽象与历史/状态页
+- Goal: 实现来源无关的点赞状态模型，并暂支持酷狗歌曲点赞记录与查看。
+- Why: 用户要求点赞先抽象、暂时支持酷狗，并能查看历史及状态。
+- Dependencies: `T-S5-KG-102`
+- Inputs:
+  - source track contract
+  - `FavoritePlaylistService.cs`
+  - `PlayerViewModel.Queue.cs` ToggleLike 参考
+  - 本地持久化方案
+- Expected Outputs:
+  - Like status store。
+  - 酷狗歌曲点赞入口。
+  - 点赞/入库状态页。
+  - Emby 入库阻塞状态展示。
+- Done Criteria:
+  - 可记录酷狗歌曲点赞历史。
+  - 可展示状态、来源、失败原因。
+  - 不执行 Emby 上传入库。
+- Risks:
+  - `.NET` 的“我喜欢”是酷狗账号侧能力，本阶段若只做本地状态，需要文案避免误导。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-VAL-106
+- Task ID: `T-S5-VAL-106`
+- Module ID: `M-S5-VAL-027`
+- Title: S5 API17 回归清单与本地验证
+- Goal: 更新回归清单并执行本地兼容验证。
+- Why: 登录、导航、网络内容和来源模型均是主路径变更，必须有 API17 可复盘验证。
+- Dependencies: `T-S5-LIKE-105`
 - Inputs:
   - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - scripts/guardrails
+  - `scripts/check_api17_guardrails.sh`
   - Gradle build
 - Expected Outputs:
-  - 构建验证结果。
-  - 更新后的 AC83xx native DSP 验证条目。
-  - 实机日志回传模板。
+  - S5 酷狗模式验证条目。
+  - 本地验证结果。
+  - 实机验证建议。
 - Done Criteria:
-  - `git diff --check` 通过。
-  - API17 guardrails 通过。
-  - compile/assemble 至少完成一个，优先 assemble。
-  - 文档包含 mode/tier/cost/degrade/bypass 观察项。
+  - guardrails 通过。
+  - compileDebugKotlin 通过。
+  - 清单覆盖登录、session、三类内容、点赞状态、未登录/失败路径、1024x600 UI。
 - Risks:
-  - 本地缺少目标设备，只能完成本地闭环。
+  - 真实扫码登录和酷狗账号状态可能无法本地全自动验证。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S4-AUDIO-095
-- Task ID: `T-S4-AUDIO-095`
-- Module ID: `M-S4-AUDIO-021`
-- Title: AC83xx 实机长播与听感验证
-- Goal: 在目标车机验证 native DSP 是否消除卡顿并保留听感差异。
-- Why: 这是本阶段最终验收，不能由本地构建替代。
-- Dependencies: `T-S4-AUDIO-094`
+## T-S5-PLAY-107
+- Task ID: `T-S5-PLAY-107`
+- Module ID: `M-S5-PLAY-025`
+- Title: 酷狗播放 URL 解析与 100MB 缓存守卫实现
+- Goal: 将酷狗 source playback ref 接入播放 URL 解析，并落地本地缓存总量限制。
+- Why: 展示酷狗歌曲后需要可控播放路径；缓存必须不超过 100MB，避免影响车机其它应用。
+- Dependencies: `T-S5-KG-102`, `T-S5-SRC-099`
 - Inputs:
-  - 对应 APK
-  - API17 native DSP 验证清单
-  - logcat/runtime logs
+  - `SongClient.GetPlayInfoAsync`
+  - `SongController.GetUrl`
+  - 现有 download/cache controller
+  - source-aware queue contract
 - Expected Outputs:
-  - 30 分钟长播结果。
-  - 各模式听感反馈。
-  - mode/tier/cost/degrade/bypass 日志摘录。
-  - 是否需要 fixed-point/NEON/参数二轮优化的结论。
+  - 酷狗播放 resolver。
+  - 不可播/VIP/URL 失败反馈。
+  - 100MB 缓存清理实现。
 - Done Criteria:
-  - `保真` 模式不再有广播感卡顿。
-  - 切歌、seek、暂停恢复稳定。
-  - 降档/旁路行为有日志证据。
+  - 酷狗歌曲可解析到播放 URL 或明确失败。
+  - 缓存上限生效。
+  - 不执行 Emby 上传入库。
 - Risks:
-  - 设备窗口外部依赖，无法在本地完成。
+  - 现有下载控制器强依赖 Emby token/header，需谨慎隔离。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: No
+
+## Blocked / Deferred
+
+### B-KG-EMBY-INGEST-001
+- Task ID: `B-KG-EMBY-INGEST-001`
+- Module ID: `M-S5-INGEST-028`
+- Title: 点赞后将播放缓存上传到 Emby 并纳入媒体库
+- Goal: 验证并设计“播放缓存 -> Emby 媒体库”的入库能力。
+- Why: 用户最终希望点赞后入 Emby 库，但当前 Emby API 是否支持上传并入库未确认。
+- Dependencies:
+  - Emby 上传/入库能力确认。
+  - 缓存生命周期与 100MB 上限策略确认。
+  - 网络空闲重试策略确认。
+- Inputs:
+  - Emby 官方 API / 实测结果
+  - 现有 Emby 配置与 token
+  - 后续用户确认
+- Expected Outputs:
+  - 支持/不支持结论。
+  - 若支持：上传接口、扫描/入库确认、失败重试方案。
+  - 若不支持：服务端代理写入媒体目录 + 触发扫描方案。
+- Done Criteria:
+  - 形成可执行技术方案并由用户确认。
+- Risks:
+  - Android 车机无权写 Emby 服务器媒体目录。
+  - 上传大文件和重试可能超出车机资源预算。
 - Size: M
 - Execution Mode: Single
 - Minimal Loop: No
+- Status: Blocked / Deferred
+
+## Historical Carry Forward
+- `T-S4-AUDIO-095`: AC83xx Native DSP 实机长播与听感验证，仍 Blocked by external device。

@@ -31,3 +31,58 @@ Last Updated: 2026-04-15 17:12:11
 - 待确认: 系统首页音乐卡片是否支持第三方播放器入口。
 - 待确认: 歌词远程失败时是否回退过期缓存及快速重试策略。
 - 待确认: Android 壳从“封面页”迁移到“可交互播放页”的具体优先级细节。
+
+## Bootstrap Detection (2026-06-04)
+
+### Project Type
+
+- 自动识别结果: Android / Kotlin / C++ 车机音乐播放器，待用户确认。
+
+### Detected Stack
+
+- Android Gradle Plugin via `build.gradle.kts`
+- Kotlin Android via `app/build.gradle.kts`
+- Android XML views under `app/src/main/res/`
+- CMake / C++ native code under `app/src/main/cpp/`
+- GitHub Actions CI under `.github/workflows/package-mvp.yml`
+
+### Source Directories
+
+- `app/src/main/java/`
+- `app/src/main/cpp/`
+- `app/src/main/res/`
+- `src/`
+
+### Test Directories
+
+- 未检测到标准 `app/src/test/` 或 `app/src/androidTest/` 目录。
+
+### Entry Point Candidates
+
+- `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- `app/src/main/java/com/skodamusic/app/playback/PlaybackService.kt`
+- `app/src/main/java/com/skodamusic/app/playback/MediaButtonReceiver.kt`
+- `app/src/main/AndroidManifest.xml`
+
+### Build / Test / Run Command Candidates
+
+- `./scripts/check_api17_guardrails.sh`
+- `python scripts/check_code_health.py`
+- `gradle :app:compileDebugKotlin --no-daemon`
+- `gradle :app:assembleDebug --no-daemon`
+
+### Generated / Ignored Directories
+
+- `.git/`
+- `.gradle/`
+- `build/`
+- `app/build/`
+- `app/.cxx/`
+- `dist/`
+- `KugouMusic.NET/`
+
+### Notes
+
+- 以上为 bootstrap 自动识别，需用户确认。
+- `minSdk = 17` 是当前项目红线。
+- `KugouMusic.NET/` 按用户要求作为第三方参考项目忽略，不纳入 Android 项目 code health 扫描。

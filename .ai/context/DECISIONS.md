@@ -1,6 +1,56 @@
 # DECISIONS
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
+
+## 2026-06-04 - T-S5-KG-118 direct session validation 执行决策
+- 决策: Android QR success 不能再只缓存 `userid/token/nickname` 后直接视为已登录；必须按 `.NET LoginViewModel` 顺序执行 device init 与 `RefreshSessionAsync()`。
+- 决策: 新增 Android-owned `KugouDirectCrypto` 与 `KugouDirectSessionClient`，按 `.NET KgCrypto`、`RawDeviceApi.RegisterDevAsync`、`RawLoginApi.RefreshTokenAsync` 落地 AES/RSA、dfid/mid/uuid 和 token refresh。
+- 决策: `KugouDirectSessionStore` 持久化 direct session 的设备字段、`vipType/t1` 与 `validationState`；只有 `validationState=valid` 时 `KugouAuthConfigBinder.hasSession()` 返回 true。
+- 决策: SMS 登录继续保持 pending；它依赖 `RawLoginApi.LoginByMobileAsync` 的 AES/RSA 登录体，不能在本任务顺手扩大。
+- 决策: 继续不恢复用户填写 Kugou WebApi Base URL，不修改 `KugouMusic.NET/`，不向 `MainActivity.kt` 添加协议逻辑。
+
+## 2026-06-04 - T-S5-KG-109 WebApi 地址纠偏执行决策
+- 决策: Android 设置页不再暴露 Kugou WebApi Base URL，也不再要求用户填写地址作为酷狗登录/内容前置条件。
+- 决策: 旧 WebApi 代理 session/base-url 缓存在启动和登出时清理，不作为可复用登录状态。
+- 决策: 扫码登录与手机号验证码按钮在 direct raw client 完成前只显示“酷狗直连 API 待接入”，不发起旧 `/login/qr/key`、`/captcha/sent`、`/login/cellphone` 代理请求。
+- 决策: `.NET` direct API 不是把 base URL 改为 `https://gateway.kugou.com`；必须后续逐项移植 `KgHttpTransport`、`KgSignatureHandler`、`KgSigner`、`KgCrypto`、`KgSessionManager`、device/dfid/mid/cookie/token 与 raw login/content API。
+- 决策: `T-S5-KG-109` 按“产品路径纠偏 + direct 可行性确认”标记 Done；direct raw API 接入作为后续拆分任务进入队列。
+
+## 2026-06-04 - T-S5-KG-117 QR direct 最小链路执行决策
+- 决策: Android 先落地 QR direct key/check 作为最小登录链路，因为该链路只依赖 Web QR signature 和 GET endpoint，可完整追溯到 `RawLoginApi.GetQrKeyAsync()` / `CheckQrStatusAsync()`。
+- 决策: QR success 返回的 `userid/token/nickname` 可缓存为 direct session，但不把它当作内容接口已完成的依据。
+- 决策: `.NET` QR success 后的 `deviceClient.InitDeviceAsync()` 与 `authClient.RefreshSessionAsync()` 必须拆到 `T-S5-KG-118`，因为它们涉及 `RawDeviceApi`、AES/RSA crypto 和 token refresh。
+- 决策: SMS 登录暂不实现；`RawLoginApi.LoginByMobileAsync` 涉及 AES/RSA 加密与响应解密，不能在未完整移植 crypto 前猜测。
+
+## 2026-06-04 - Bootstrap 红线纳入 S5 规划（ai-planning）
+- 决策: bootstrap 新增的工程护栏立即纳入 S5 后续规划，`minSdk = 17`、不修改 `KugouMusic.NET/`、入口文件不得继续扩大作为硬约束执行。
+- 决策: 因 `python scripts/check_code_health.py` 已将 `MainActivity.kt` 标为 entry red-line，`T-S5-KG-109` 从并列 Ready 调整为 P0 Planned，必须等待 `T-S5-MAIN-114` 完成后再提升。
+- 决策: 当前 Ready 队列只保留 `T-S5-MAIN-114` 与独立修复项 `T-S4-AUDIO-097`。
+- 决策: 后续拆分任务运行 code health 时，允许既有 `MainActivity` red-line 暂时存在，但必须证明行数/职责趋势改善且不得新增 red findings。
+
+## 2026-06-04 - S5 纠偏范围确认（用户确认）
+- 决策: 酷狗 API 不应要求用户提供地址；实现必须回到 `KugouMusic.NET` 已有 client/raw api/controller/model 的依据，不能用用户填写 WebApi Base URL 作为产品路径。
+- 决策: 默认酷狗模式必须是纯酷狗播放，不叠加 Emby 播放、Emby 队列、Emby resume、Emby auto refresh 或 tail refill。
+- 决策: 酷狗普通歌曲队列不能沿用 Emby 队列；需参考 `.NET` `PlaybackQueueManager`，点击歌曲时用 clicked song + context list 建队列，并支持循环 next/previous。
+- 决策: 酷狗电台/Radio 是独立播放会话，不是普通歌曲队列；同一电台持续播放，下一曲由电台/FM session 内部推进，参考 `.NET` `PersonalFmService` 与 `PlayerViewModel.PersonalFm.cs`。
+- 决策: DSP 播放按钮持续红色不可接受；红色只应表示真实 fail-open/bypass/error，正常 native active 为绿色，降级/超预算为黄色，关闭/未知为灰色。
+- 决策: `MainActivity.kt` 过大问题从 Pending Planning 升级为当前纠偏阶段必须执行的工程任务，下一步 Ready 为第一轮拆分。
+
+## 2026-06-04 - S5 纠偏规划决策（ai-requirement + ai-planning）
+- 决策: 当前阶段切换为 `S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split`。
+- 决策: Ready 队列首选 `T-S5-MAIN-108`，先拆 `MainActivity`，再进入酷狗 API、纯 source playback、普通队列和电台 session；`T-S4-AUDIO-097` 依赖已满足，可作为独立 Ready 单任务处理 DSP 红框修正。
+- 决策: 第一轮拆分保持单 Activity 外壳、现有 XML/控件 ID、API17 和后台控制稳定，不做多 Activity 或全量重写。
+- 决策: `.NET` 队列/电台参考文件固定为：
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PlaybackQueueManager.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PersonalFmService.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.Queue.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.PersonalFm.cs`
+
+## 2026-06-04 - MainActivity 拆分口径修正（用户确认）
+- 决策: “保持单 Activity 外壳”不能作为长期硬约束；项目继续变大时允许适当拆 Activity、页面壳、Fragment、Controller 或 Binder。
+- 决策: 第一轮“不做多 Activity”只代表当轮低风险拆分边界，不再作为后续规划红线。
+- 决策: 后续拆分目标是避免单文件行数过多；`MainActivity` 应逐步收敛为 launcher/lifecycle/navigation/service bridge 的薄协调层，页面状态、渲染、登录、队列、电台和音效逻辑不得继续堆入入口文件。
+- 决策: 页面壳拆分必须保持 API17 兼容、左侧一级快速切换、默认酷狗模式、不新增二级 tab、后台服务/方向盘按键/浮窗稳定。
 
 ## 2026-06-03 - Native DSP 播放页状态指示确认（用户确认）
 - 决策: Native DSP 当前方向可继续，播放页需要直观确认当前没有进入 fail-open。
@@ -18,6 +68,13 @@ Last Updated: 2026-06-03
 - 决策: `T-S4-AUDIO-096`、`T-S5-KG-096`、`T-S5-SRC-097`、`T-S5-KG-098`、`T-S5-SRC-099` 已完成并通过本地验证。
 - 决策: `T-S5-UI-100` 作为下一轮 Ready，不与本轮已验证的 DSP/契约改动混做。
 - 原因: `T-S5-UI-100` 会触碰旧 Home 播放页、隐藏 Queue、旧 Library 与新酷狗默认入口的页面结构边界，风险高于前置契约任务，需要独立推进和验证。
+
+## 2026-06-03 - MainActivity 过大问题记录（用户确认）
+- 决策: `MainActivity` 过大问题需要记录为工程治理技术债和后续规划输入。
+- 决策: 当前不直接执行大规模拆分，不改变已完成的 S5 酷狗来源模式行为。
+- 决策: 后续新增来源、扩展酷狗页面或继续改播放/设置链路前，应优先规划 `MainActivity` 拆分边界。
+- 推荐方向: 保持单 Activity 外壳和 API17 兼容，优先小步拆分 Kugou source 页面、通用 source renderer、播放控制 binder、设置 binder 或导航 controller。
+- 2026-06-04 覆盖: 用户已要求当前优化 `MainActivity`，本条“不直接执行”只作为历史记录，不再作为当前执行口径。
 
 ## 2026-06-03 - T-S5-UI-100 执行决策（ai-execution）
 - 决策: 左侧一级导航按 S5 口径调整为推荐歌曲、推荐电台、发现歌单、播放队列、点赞/入库状态、设置。

@@ -1,6 +1,6 @@
 # KugouMusic.NET Interface Map
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
 ## Purpose
 - 本文固定 S5 酷狗接入的唯一实现依据。
@@ -9,9 +9,10 @@ Last Updated: 2026-06-03
 
 ## Integration Boundary
 - `KugouMusic.NET/` 当前作为只读参考源码，不在 Android 仓库内修改。
-- Android 首版优先按 `KgWebApi.Net` controller 形态接入，通过设置页配置 Kugou WebApi base URL。
+- Android 不再要求用户提供 Kugou WebApi base URL；旧 WebApi 代理路径只作为历史映射参考。
+- Android 直连实现必须逐项移植 `KugouMusic.NET` raw/client、signer、crypto、session 行为，不能把 `https://gateway.kugou.com` 当作旧代理路由的默认 base URL。
 - 酷狗模式必须登录后可用；默认扫码登录，同时支持手机号验证码登录。
-- Android 端需要缓存 WebApi session key；WebApi 使用 `X-Kg-Session-Id` header 或 `kg_sid` cookie 绑定服务端 session。
+- 当前 Android 端已实现 QR direct key/check、device init、token refresh 和 direct session validation；SMS AES/RSA 和内容接口 direct 化仍待后续任务。
 
 ## Session And Auth
 
@@ -22,6 +23,7 @@ Last Updated: 2026-06-03
 | 发送手机号验证码 | `POST /captcha/sent?mobile=...` | `LoginClient.SendCodeAsync(mobile)` -> `RawLoginApi.SendSmsCodeAsync(mobile)` | `SendCodeResponse` | `CaptchaController` 校验手机号非空且长度不少于 11。 |
 | 手机号验证码登录 | `POST /login/cellphone` body `{ mobile, code }` | `LoginClient.LoginByMobileAsync(mobile, code)` -> `RawLoginApi.LoginByMobileAsync(...)` | `LoginResponse` | 成功时 `LoginClient` 调用 `KgSessionManager.UpdateAuth(...)` 保存 token/userId/t1。 |
 | 刷新 session | `POST /login/token` | `LoginClient.RefreshSessionAsync()` -> `RawLoginApi.RefreshTokenAsync(...)` | `RefreshTokenResponse` | 本地无 token 或 `UserId == "0"` 时视为无有效登录。扫码成功后 `.NET LoginViewModel` 会先 init device 再 refresh。 |
+| 注册设备 | n/a direct raw | `RegisterClient.InitDeviceAsync()` -> `RawDeviceApi.RegisterDevAsync(...)` | raw JSON with `data.dfid` | 成功后更新 `dfid/mid/uuid`；Android 按 `.NET` 的虚拟硬件字段、Playlist AES 和 RSA PKCS1 实现。 |
 | 退出登录 | `POST /login/logout` | `LoginClient.LogOutAsync()` -> `KgSessionManager.Logout()` | `KgSession` | 清理 token、vip、t1、dfid 并清 cookie。 |
 
 ### Auth Source Files
@@ -36,10 +38,11 @@ Last Updated: 2026-06-03
 - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Session/KgSessionManager.cs`
 
 ### Android Auth Contract
-- 登录成功后保存 `X-Kg-Session-Id` 或 `kg_sid` 对应值；启动时优先带上该 session key。
-- WebApi 返回未授权、刷新失败、session 无 token 或 `UserId == "0"` 时，酷狗内容页跳转登录。
-- 默认打开扫码登录；手机号验证码作为同页备用入口。
+- QR direct session 当前缓存 `userid/token/nickname`、安装设备字段、`dfid/mid/uuid`、`vip_type/t1` 和 validation 状态。
+- 启动时必须清理旧 `X-Kg-Session-Id` / `kg_sid` WebApi 代理缓存，再恢复 direct session。
+- 默认展示扫码登录面板；扫码按钮走 direct raw QR endpoint，手机号验证码按钮在 AES/RSA direct port 完成前不得触发旧 WebApi 代理请求。
 - 扫码轮询节奏参考 `.NET LoginViewModel`: 2s。
+- QR success 后必须执行 `RegisterClient.InitDeviceAsync()` 和 `LoginClient.RefreshSessionAsync()` 等价流程；只有 token refresh 成功后 Android `hasSession()` 才返回 true。
 
 ## Recommended Songs
 
@@ -135,5 +138,6 @@ Last Updated: 2026-06-03
 ## Confirmed Gaps / Pending Confirmation
 - 没有发现“上传播放缓存到 Emby 并入库”的 Kugou 相关依据；该能力仍属于 Emby 侧阻塞项。
 - 没有独立的酷狗“歌曲点赞 toggle WebApi route”；可用依据是 `FavoritePlaylistService` 通过用户歌单和 `PlaylistClient.AddSongsAsync/RemoveSongsAsync` 操作“我喜欢”。
-- 酷狗 WebApi base URL、部署方式和 Android 端默认值未在 `KugouMusic.NET` 中固定，需要设置项或后续用户确认。
-- 若 Android 不通过 WebApi 而是直接移植协议，必须逐项参考 raw API 与 signer/session 行为，不能从本文外推。
+- Android 直连不是 base URL 替换：`KgHttpTransport` 默认 `https://gateway.kugou.com`，但登录还使用 `login-user.kugou.com`、`login.user.kugou.com`、`loginserviceretry.kugou.com` 等 host。
+- Direct port 已补齐登录 session validation 所需的 `KgSigner`、`KgCrypto`、device/dfid/mid/token refresh 行为；内容接口 direct 化仍需继续移植各 raw API 的具体参数和解析。
+- Android 当前旧 `KugouWebApiClient` 仍是代理路由 client，后续需被 direct client 替代或重命名，不得重新暴露用户填写地址。

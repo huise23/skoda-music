@@ -1,0 +1,110 @@
+{
+  "projectType": "android-kotlin-cpp",
+  "detectedStack": [
+    "Android Gradle Plugin",
+    "Kotlin Android",
+    "Android XML views",
+    "CMake",
+    "C++ native DSP",
+    "GitHub Actions"
+  ],
+  "generalFile": {
+    "preferred": 500,
+    "warning": 800,
+    "refactor": 1200,
+    "red": 2000
+  },
+  "entryFile": {
+    "preferred": 500,
+    "warning": 800,
+    "refactor": 1200,
+    "red": 1800
+  },
+  "declarativeUiFile": {
+    "preferred": 700,
+    "warning": 1200,
+    "refactor": 1800,
+    "red": 2500
+  },
+  "testFile": {
+    "preferred": 800,
+    "warning": 1500,
+    "refactor": 2500,
+    "red": 4000
+  },
+  "function": {
+    "preferred": 60,
+    "warning": 120,
+    "refactor": 200,
+    "red": 300
+  },
+  "ignoreDirs": [
+    ".git",
+    ".idea",
+    ".vscode",
+    ".gradle",
+    ".cxx",
+    ".ai/skills",
+    "KugouMusic.NET",
+    "build",
+    "app/build",
+    "dist",
+    "out",
+    "coverage",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "DerivedData",
+    "Pods",
+    "target",
+    "vendor"
+  ],
+  "ignoreFiles": [
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "Cargo.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "composer.lock",
+    "Gemfile.lock"
+  ],
+  "sourceExtensions": [
+    ".java",
+    ".kt",
+    ".kts",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".hh",
+    ".xml",
+    ".qml"
+  ],
+  "entryFilePatterns": [
+    "MainActivity.kt",
+    "PlaybackService.kt",
+    "MediaButtonReceiver.kt",
+    "Application.kt",
+    "Activity.kt",
+    "Fragment.kt"
+  ],
+  "declarativeUiPatterns": [
+    "app/src/main/res/layout/",
+    "app/src/main/res/drawable/",
+    "src/ui/qml/"
+  ],
+  "testPatterns": [
+    "/test/",
+    "/androidTest/",
+    "_test.",
+    "Test.kt",
+    "Test.java"
+  ],
+  "failOnWarning": false,
+  "failOnRefactor": false,
+  "checkFunctions": true
+}

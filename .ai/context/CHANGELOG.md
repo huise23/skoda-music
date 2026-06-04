@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## 2026-06-04
+- Completed `T-S5-VAL-113`: updated `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` for S5 corrective validation, adding Kugou playback/queue/radio checks, MainActivity split/page shell checks, DSP border/direct-buffer bridge checks, and a local validation snapshot.
+- Final local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-MAIN-116`: added `docs/PAGE_SHELL_SPLIT_EVALUATION.md` and decided to defer independent Activity/direct Fragment migration until low-coupling page Binders exist.
+- Recommended next MainActivity split prep is `RuntimeLogBinder`, then `EqualizerPageBinder`, then a Fragment wrapper pilot inside the existing left-navigation shell.
+- Completed `T-S4-AUDIO-097`: fixed the likely DSP red-border false positive by bridging heap `ByteBuffer` input/output through direct scratch buffers before native processing.
+- `non-direct-buffer` no longer publishes `FAIL_OPEN`; real unsupported/native-not-ready/native-process-error/native bypass/error paths still report fail-open red with diagnostic logs.
+- Verified `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails on the existing `MainActivity.kt` red-line findings only.
+- Completed `T-S5-PLAY-112`: added `KugouRadioSessionManager` for Kugou radio current/upcoming/history state, with radio-active previous/next/completion routing and radio queue display.
+- Radio playback now clears ordinary Kugou queue and uses the loaded station song list as a minimal session; ordinary queue and Emby playback clear radio state. No direct Personal FM raw endpoint was guessed and `KugouMusic.NET/` was not modified.
+- Verified `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails on the existing `MainActivity.kt` red-line findings only.
+- Completed `T-S5-MAIN-115`: added `KugouContentBinder` to own Kugou content page requests and list/loading/selected state, completing the earlier `KugouContentRenderer` extraction.
+- Moved recommended songs, recommended radios, radio songs, discover tags/playlists/songs request/state/render coordination out of `MainActivity`; `MainActivity.kt` is now about 5632 lines.
+- Verified `git diff --check`, API17 guardrails, and `compileDebugKotlin`; `check_code_health.py` still fails on the existing `MainActivity.kt` red-line findings only.
+- Earlier slice of `T-S5-MAIN-115`: added `KugouContentRenderer` and moved Kugou recommended songs, radio page, discover page, and Kugou queue row rendering out of `MainActivity`; this is now completed by the `KugouContentBinder` slice above.
+- Intermediate `MainActivity.kt` reduction was about 6118 -> 6007 lines before the Binder slice completed the task.
+- Verified `git diff --check`, API17 guardrails, and `compileDebugKotlin`; `check_code_health.py` still fails on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-PLAY-111`: added `KugouPlaybackQueueManager` with `.NET PlaybackQueueManager`-aligned setup/next/previous behavior, wired recommended/discover songs into an independent Kugou queue, and showed the Kugou queue on the queue page.
+- Radio songs remain single-track playback for now; Radio/FM session is still `T-S5-PLAY-112`. Because `MainActivity.kt` grew to about 6118 lines, the next recommended task is `T-S5-MAIN-115` before more playback wiring.
+- Verified `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-PLAY-110`: added `SourcePlaybackSession`/`SourcePlaybackSnapshot` and routed Kugou active playback through source-aware Now Playing, lyrics artist, seek duration, progress, service state, next/previous and resume persistence boundaries.
+- Kugou active playback now avoids Emby queue/resume/download-window pollution; full Kugou queue and Radio/FM session remain follow-up tasks `T-S5-PLAY-111/112`.
+- Verified `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-KG-118`: added direct Kugou session validation after QR success, including device register, token refresh, AES/RSA helpers, persisted dfid/mid/uuid/install/t1 fields, and Binder gating so cached QR token is not treated as logged-in until refresh succeeds.
+- Updated Kugou auth/interface/API17 docs for the validated direct session contract.
+- Verified `git diff --check`, API17 guardrails and `compileDebugKotlin`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-KG-117`: added Android-owned Kugou direct QR auth client, Web QR signature implementation, direct session cache, and QR polling hookup in `KugouAuthConfigBinder`.
+- Direct QR login now uses `.NET` raw endpoints `https://login-user.kugou.com/v2/qrcode` and `/v2/get_userinfo_qrcode`; SMS AES/RSA login, device init and token refresh remain follow-up work.
+- Verified `git diff --check`, API17 guardrails and `compileDebugKotlin`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Partially completed `T-S5-KG-109`: removed the user-facing Kugou WebApi Base URL input, cleared legacy WebApi session/base-url cache on startup/logout, and changed QR/SMS login actions to show a direct API pending state instead of asking the user for an address.
+- Confirmed from `KugouMusic.NET` that Android direct login/content is not a base URL swap: it requires raw endpoints, `KgSignatureHandler`/`KgSigner`, dfid/mid/session/cookie handling and AES/RSA login crypto. No guessed direct API was implemented.
+- Updated Kugou auth/interface/API17 docs to reflect that user-configured WebApi is disabled and direct raw API port is a follow-up blocker.
+- Verified `git diff --check`, API17 guardrails and `compileDebugKotlin`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Completed `T-S5-MAIN-114`: added `KugouAuthConfigBinder` and moved Kugou login/config UI binding, session restore/persist, QR polling, SMS login, logout and status text out of `MainActivity`.
+- Reduced `MainActivity.kt` from about 6213 lines to 5890 lines.
+- Verified `git diff --check`, API17 guardrails and `compileDebugKotlin`.
+- `check_code_health.py` still fails on existing `MainActivity.kt` red-line findings, but no new red finding was introduced.
+
 ## 2026-06-03
 - Completed `T-S4-AUDIO-096`: added Native DSP runtime state and play/pause button border indicator for active/degraded/fail-open states.
 - Completed `T-S5-KG-096`: added `docs/KUGOU_MUSIC_NET_INTERFACE_MAP.md` mapping S5 Kugou features to `KugouMusic.NET`.

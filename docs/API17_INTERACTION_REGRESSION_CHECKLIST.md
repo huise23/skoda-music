@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4/S5)
 
-Last Updated: 2026-06-03
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106`
+Last Updated: 2026-06-04
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -11,12 +11,14 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - 更新检测与下载安装触发链路
 - 应用内保真 DSP 音效 fail-open 验证
 - 酷狗默认来源模式、登录/session、推荐内容、点赞状态验证
+- 纯酷狗播放 source 边界、普通队列、Radio/FM session 验证
+- MainActivity 拆分后导航/页面壳稳定性验证
 - 关键事件与日志证据回传
 
 ## 1. Preconditions
 - 设备: Android `4.2.2`（API 17），目标车机分辨率 `1024x600`。
-- 构建: 标注 commit/build（建议 `master@6ed0fca` 或更新构建）。
-- 网络: 可访问 Emby；可访问 GitHub（允许镜像回退）；可访问配置的 Kugou WebApi。
+- 构建: 标注 commit/build（使用当前 `T-S5-VAL-113` 对应 APK 或更新构建）。
+- 网络: 可访问 Emby；可访问 GitHub（允许镜像回退）；可访问酷狗 direct 登录域名，不要求用户提供 WebApi 地址。
 - 账号: 可用 Emby 账号；可用酷狗账号（扫码或手机号验证码）。
 - 开关: 允许前台服务通知、允许悬浮窗权限。
 
@@ -29,11 +31,13 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - 更新链路（检查 -> 下载 -> 安装触发）。
   - 应用内保真 DSP 音效（开关/模式/持久化/PCM 处理/fail-open）。
   - S5 酷狗来源模式（登录、推荐歌曲、推荐电台、发现歌单、点赞/入库状态）。
+  - 纯酷狗播放 source boundary、普通队列、Radio/FM session。
+  - MainActivity Binder 拆分与页面壳拆分评估后的导航稳定性。
 - Out of Scope:
   - 新需求（长标题滚动/主屏删除入口）
   - 静默安装/root 安装
   - 点赞后播放缓存上传到 Emby 并入库
-  - 酷狗播放 URL 解析与 100MB 缓存守卫（由 `T-S5-PLAY-107` 跟踪）
+  - 页面壳独立 Activity / Fragment 真实迁移实现（当前 `T-S5-MAIN-116` 结论为后续先抽 Binder 再试点）。
 
 ## 3. Checklist
 
@@ -105,6 +109,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - `hifi-dsp native configured sr=<...> ch=<...>`
   - `hifi-dsp native active mode=<...> ... tier=quality`
   - `hifi-dsp native status=<ok|bypass|error> mode=<...> tier=<quality|balanced|safe> costUs=<...> flags=<...>`
+  - 若发生 heap/direct 桥接：`hifi-dsp native direct-buffer bridge input=<...> output=<...>`
   - `hifi-dsp bypass mode=<...>`
   - 异常时：`hifi-dsp bypass reason=native-process-error`
 - [ ] I8 若当前音频格式不支持 DSP，必须自动旁路原声并记录 `hifi-dsp bypass unsupported format`。
@@ -113,28 +118,31 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] I11 切歌、seek、暂停/恢复后音效模式保持一致。
 - [ ] I12 听感对比：`原声` 接近无处理；`保真` 更清楚不糊；`清晰/动感/柔和` 有方向差异但不过度。
 - [ ] I13 若 AC83xx CPU 超预算，应先看到 `tier=balanced` 或 `tier=safe` 的降档日志；仍超预算时允许 `status=bypass`，但播放不能中断。
+- [ ] I14 播放按钮边框颜色符合语义：关闭/未知灰色、native active 绿色、降级/超预算黄色、真实 fail-open/bypass/error 红色。
+- [ ] I15 若日志出现 `hifi-dsp native direct-buffer bridge ...`，按钮不应仅因 heap buffer 桥接持续红色；后续应出现 `native status=ok` 或明确真实 bypass/error 原因。
 
 ### J. Kugou Source Mode Login / Session
 - [ ] J1 冷启动默认进入左侧“推荐歌曲”入口，不显示 Home 二级 tab。
 - [ ] J2 未登录时推荐歌曲页展示酷狗扫码登录面板，不后台请求推荐内容。
-- [ ] J3 设置页可填写 Kugou WebApi Base URL，并可见酷狗登录状态。
-- [ ] J4 点击“刷新扫码登录”后出现二维码或二维码图片 URL，日志包含 `kugou qr key`。
-- [ ] J5 扫码轮询约 2 秒一次；等待扫码、等待确认、成功、过期状态文案可区分。
-- [ ] J6 扫码成功后调用 `/login/token`，缓存 `X-Kg-Session-Id`，重启后优先复用。
-- [ ] J7 手机号验证码路径可发送验证码并提交登录；失败时停留在登录状态，不崩溃。
-- [ ] J8 session 失效或内容接口失败时清理本地 session，并回到登录面板。
+- [ ] J3 设置页不显示 Kugou WebApi Base URL 输入框；可见酷狗登录状态。
+- [ ] J4 点击“刷新扫码登录”不会要求填写地址，会通过 direct `/v2/qrcode` 获取二维码或二维码图片 URL。
+- [ ] J5 扫码轮询约 2 秒一次，走 direct `/v2/get_userinfo_qrcode`，等待扫码、等待确认、成功、过期状态文案可区分。
+- [ ] J6 旧 `X-Kg-Session-Id` / `kugou_webapi_base_url` 缓存在启动后被清理，不被复用；QR success 后进入“校验设备与 Token”状态。
+- [ ] J7 手机号验证码按钮不会要求填写 WebApi 地址，不发起旧 `/captcha/sent` 代理请求，并显示 SMS direct pending 状态。
+- [ ] J8 device register + token refresh 成功后才显示“已登录”；失败时显示 session 校验失败并保持内容入口锁定。
 - [ ] J9 登出后清理 session、二维码和酷狗内容状态。
 
 ### K. Kugou Content Pages
-- [ ] K1 登录后推荐歌曲页可加载 `GET /recommend/songs` 并展示歌曲名、歌手/专辑。
-- [ ] K2 推荐歌曲点击播放时当前提示“酷狗播放解析将在后续任务接入”，不破坏 Emby 播放队列。
-- [ ] K3 推荐电台页可加载 `GET /fm/recommend`，展示电台名称和描述。
-- [ ] K4 点击电台后可加载 `GET /fm/songs` 并展示电台歌曲。
-- [ ] K5 发现歌单页可加载 `GET /playlist/tags`，分类/标签来自接口返回，不手写固定标签。
-- [ ] K6 点击标签后可加载 `GET /top/playlist` 并展示歌单。
-- [ ] K7 点击歌单后可加载 `GET /playlist/track/all` 并展示歌单歌曲。
+- [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
+- [ ] K2 推荐歌曲页登录后可展示推荐歌曲；失败、空结果、session 失效时有明确反馈并回登录。
+- [ ] K3 推荐电台页可展示电台名称和描述。
+- [ ] K4 点击电台后可加载并展示电台歌曲；加载完成后进入 radio session 首曲播放。
+- [ ] K5 发现歌单页可加载分类/标签，分类/标签来自接口返回，不手写固定标签。
+- [ ] K6 点击标签后可加载歌单。
+- [ ] K7 点击歌单后可加载歌单歌曲。
 - [ ] K8 三个酷狗内容页遇到网络失败、空结果或未登录时有明确反馈，不闪退。
 - [ ] K9 1024x600 横屏下左侧一级导航、登录面板、列表行、点赞按钮不重叠。
+- [ ] K10 `MainActivity` 拆出 `KugouContentBinder` 后，推荐歌曲、推荐电台、发现歌单页面切换和刷新不丢状态、不崩溃。
 
 ### L. Kugou Like / Ingest Status
 - [ ] L1 酷狗歌曲行可见点赞按钮。
@@ -143,6 +151,25 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] L4 点赞/入库状态页展示歌曲、来源、远端状态、入库状态和失败原因。
 - [ ] L5 Emby 入库状态显示 `blocked_ingest` 或等价阻塞文案，不误报已入库。
 - [ ] L6 重启后点赞历史仍可查看。
+
+### M. Pure Kugou Playback / Queue / Radio Session
+- [ ] M1 默认酷狗模式下点击推荐歌曲后 Now Playing 显示酷狗歌曲标题/歌手，不从 Emby 当前队列推导。
+- [ ] M2 酷狗播放期间 `Prev / PlayPause / Next` 不触发 Emby `loadedTracks/currentTrackIndex` 推进。
+- [ ] M3 酷狗播放时前台通知、浮窗、方向盘/媒体键的当前曲信息与控制结果来自 source playback session。
+- [ ] M4 酷狗普通歌曲队列：推荐歌曲/发现歌单歌曲点击后建立普通 queue；队列页显示“酷狗普通队列”。
+- [ ] M5 普通 queue 的 next/previous 在当前上下文内循环，不进入 Emby 队列。
+- [ ] M6 点击推荐电台或电台歌曲后进入“酷狗电台队列”；队列页展示 current + upcoming。
+- [ ] M7 radio active 时 next 推进 upcoming，previous 从 history 回退；不走普通 Kugou queue 或 Emby queue。
+- [ ] M8 radio 当前曲自然结束后，由 radio session 推进下一首；没有 upcoming 时显示队列末尾/不可切换反馈，不崩溃。
+- [ ] M9 从 radio 切到普通 Kugou queue 会清 radio session；切回 Emby 播放会清 Kugou queue/radio session。
+- [ ] M10 旧 WebApi Base URL 输入路径不得恢复；如果内容 API 未可用，应给出登录/接口不可用反馈，而不是要求用户填写地址。
+
+### N. MainActivity Split / Page Shell Decision
+- [ ] N1 `KugouAuthConfigBinder` 登录/登出/QR 刷新仍可用。
+- [ ] N2 `KugouContentBinder` 页面加载、渲染和播放/点赞回调仍可用。
+- [ ] N3 `docs/PAGE_SHELL_SPLIT_EVALUATION.md` 结论已纳入交接：当前阶段不直接引入独立 Activity 或 raw Fragment 迁移。
+- [ ] N4 左侧一级导航在 Home / 推荐电台 / 发现歌单 / 队列 / 点赞状态 / 设置 / EQ 间切换稳定。
+- [ ] N5 返回键行为保持：EQ 返回设置页，其他非首页页面返回首页，首页返回后台。
 
 ## 4. Risk Control & Acceptance Checklist (Section 4)
 
@@ -168,7 +195,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] EVD10 点赞状态样本（成功或失败均可，需包含状态页截图/日志）。
 
 ### 4.3 Acceptance Decision
-- `PASS`: 无 Blocker，且 A~L 关键项通过。
+- `PASS`: 无 Blocker，且 A~N 关键项通过。
 - `PASS with Risks`: 无 Blocker，但存在可接受风险并已有追踪项。
 - `FAIL`: 命中任一 Blocker，或关键链路不可复现/不可诊断。
 
@@ -197,6 +224,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - J Kugou Login/Session: PASS/FAIL
 - K Kugou Content Pages: PASS/FAIL
 - L Kugou Like/Status: PASS/FAIL
+- M Kugou Playback/Queue/Radio: PASS/FAIL
+- N Main Split/Page Shell: PASS/FAIL
 
 ### Section 4 Decision
 - Risk Gate Triggered: YES/NO
@@ -215,6 +244,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - posthog: <capture ok 或失败样本>
 - hifi_dsp: <hifi-dsp config/format/active/bypass/fail 日志样本>
 - kugou: <qr/session/content/like 日志样本>
+- kugou_queue_radio: <普通 queue/radio session next/previous/completion 日志样本>
+- main_split: <页面切换/返回键/页面壳评估验证说明>
 - screenshot/video: <说明或路径>
 
 ### Conclusion
@@ -245,3 +276,24 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - 点赞后 Emby 入库保持阻塞状态，不执行上传。
 - 待外部验证:
   - 真实 Kugou WebApi 地址、扫码/验证码账号、session 失效和内容接口返回需在目标设备或同网环境验证。
+
+## 8. Local Validation Snapshot (T-S5-VAL-113, 2026-06-04)
+- 覆盖变更:
+  - `T-S5-MAIN-115`: `KugouContentRenderer` / `KugouContentBinder` 拆分。
+  - `T-S5-PLAY-110/111/112`: 纯酷狗 source playback、普通 queue、Radio/FM session。
+  - `T-S4-AUDIO-097`: DSP non-direct buffer direct scratch bridge，避免误报持续红框。
+  - `T-S5-MAIN-116`: 页面壳拆分评估结论。
+- 构建验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败，blocking finding 数为 2，未新增 blocking。
+- 本地回归结论:
+  - 默认酷狗播放、普通队列和 Radio session 已有独立 source/session 边界，不复用 Emby 队列。
+  - Radio active 时 next/previous/completion 由 `KugouRadioSessionManager` 的 current/upcoming/history 推进。
+  - DSP heap `ByteBuffer` 不再直接触发 `FAIL_OPEN`；若仍红色，应按 `native-not-ready/native-process-error/native status=bypass|error` 继续定位。
+  - 页面壳拆分当前选择“先低耦合 Binder，再 Fragment 试点”，不在本阶段直接引入独立 Activity。
+- 待外部验证:
+  - API17 目标车机需执行 A~N 分组，尤其 M 组 Radio session、I14/I15 DSP 边框语义和 N 组导航/返回键。
+  - 真实酷狗登录、内容返回、播放 URL 和 radio 列表仍依赖账号与网络环境。

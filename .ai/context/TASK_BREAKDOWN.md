@@ -1,399 +1,507 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
-## Active Stage: S5 子阶段 - Kugou Source Mode & Multi-Source Discovery
+## Active Stage: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
 ## Planning Snapshot
-- Scope 已由用户确认：多来源抽象、默认酷狗模式、酷狗登录必需、左侧一级导航、不新增二级 tab。
-- 酷狗实现必须参考 `KugouMusic.NET/`，没有依据就停下问用户。
-- 播放缓存上传到 Emby 入库进入阻塞项，不进入本阶段 Ready。
-- Native DSP 追加并行热修：播放页播放/暂停按钮需要用有色边框显示是否进入 fail-open，状态刷新稍慢一点，避免按音频帧刷 UI。
+- 用户新增确认：
+  - 电台类型播放不是普通歌曲队列；同一电台持续播放，下一曲由电台内部切换。
+  - `MainActivity.kt` 6k 多行问题不能只记录，当前需要优化拆分。
+  - 酷狗队列必须参考 `.NET`，不能沿用 Emby 队列。
+  - 默认酷狗模式不能叠加 Emby 播放。
+  - DSP 播放按钮不能持续红色，红色应只代表真实 fail-open/bypass/error。
+  - 用户已纠正：不能把“单 Activity 外壳”作为长期硬约束；项目继续变大时允许适当拆 Activity / 页面壳 / Fragment / Binder，目标是避免单文件行数过多。
+- 当前计划改为先拆 `MainActivity`，再做酷狗 API/播放/队列/电台纠偏。
+- Bootstrap 后新增工程红线已纳入规划：
+  - `minSdk = 17` 是不可突破红线。
+  - `KugouMusic.NET/` 是只读第三方参考项目，忽略扫描且不修改。
+  - `MainActivity.kt` 约 6213 行，已超过 entry red-line；当前 Ready 必须优先压降入口文件，不允许继续添加大块职责。
 
-## T-S4-AUDIO-096
-- Task ID: `T-S4-AUDIO-096`
-- Module ID: `M-S4-AUDIO-022`
-- Title: Native DSP 播放按钮 fail-open 状态指示
-- Goal: 在播放页播放/暂停按钮上增加 DSP runtime 状态边框，让用户能确认 Native DSP 当前未进入 fail-open。
-- Why: Native DSP 本地链已完成，但状态目前主要靠日志判断；车机播放页需要一个低开销、可立即识别的状态信号。
-- Dependencies: `T-S4-AUDIO-088~094`
+## T-S5-MAIN-108
+- Task ID: `T-S5-MAIN-108`
+- Module ID: `M-S5-MAIN-029`
+- Title: MainActivity 第一轮拆分边界落地
+- Goal: 将 `MainActivity` 中低风险、与后续纠偏强相关的职责拆到独立类，减少继续修改 6443 行 Activity 的风险。
+- Why: 用户已明确要求优化 `MainActivity` 过大问题；后续酷狗队列、电台和 service state 纠偏如果继续堆在 Activity 中会扩大回归面。
+- Dependencies: 无
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiDspController.kt`
-  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiAudioProcessor.kt`
-  - `app/src/main/java/com/skodamusic/app/audio/dsp/NativeHiFiDspBridge.kt`
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt`
   - `app/src/main/res/layout/activity_main.xml`
-  - `app/src/main/res/drawable/button_control_primary.xml`
 - Expected Outputs:
-  - 轻量 DSP runtime state：unknown/disabled、active、degraded、fail_open 或等价状态。
-  - `HiFiAudioProcessor` 在 native ok/degraded/over_budget/bypass/error/disabled 路径发布状态。
-  - `MainActivity` 在既有 `UI_PROGRESS_REFRESH_MS = 1_000L` tick 中读取状态，状态未变不重绘。
-  - 播放/暂停按钮边框颜色语义：
-    - 灰色：DSP 关闭、原声、未知、播放器释放。
-    - 绿色：native active 且未 fail-open。
-    - 黄色：native active 但 degraded、balanced/safe tier 或 over budget。
-    - 红色：fail-open、bypass、error、native unavailable 或处理失败。
+  - 新增一个或多个低风险 helper/binder/controller 类。
+  - `MainActivity.kt` 行数明显下降。
+  - 第一轮当时保持现有控件 ID、单 Activity 壳和用户可见流程；该约束不作为后续长期红线。
+  - 为后续 `KugouQueueManager` / `KugouRadioSessionManager` 接入留出清晰边界。
 - Done Criteria:
-  - 播放页按钮边框能稳定反映 DSP 状态，不依赖打开日志页。
-  - 停播/release player/关闭 DSP/原声模式会回到灰色或未知态。
-  - 不从 audio thread 直接触发 UI；UI 刷新不快于 1s tick，状态未变化不重复重绘。
+  - `git diff --check` 通过。
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
-  - 触及 drawable/resource 后执行 `gradle :app:assembleDebug --no-daemon`。
+  - 左侧导航、播放按钮、设置页、酷狗登录入口仍可编译接线。
 - Risks:
-  - 如果 runtime state 写入包含重对象或锁竞争，可能影响音频热路径；实现需使用 volatile/不可变小对象或等价轻量方式。
-  - 按钮背景若直接替换 selector，需保留按下态和现有视觉，不应造成播放按钮尺寸变化。
-- Size: S
-- Execution Mode: Single
-- Minimal Loop: Yes
-
-## T-S5-KG-096
-- Task ID: `T-S5-KG-096`
-- Module ID: `M-S5-KG-023`
-- Title: KugouMusic.NET 接口能力映射与缺口检查
-- Goal: 建立本阶段酷狗能力到 `.NET` 源码的映射表，确认推荐歌曲、电台、发现歌单、登录、播放 URL、点赞的参考文件与方法。
-- Why: 用户明确要求酷狗相关实现只参考 `KugouMusic.NET`，不能自行发挥；这是所有后续实现的防返工前置。
-- Dependencies: 无
-- Inputs:
-  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/`
-  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/`
-  - `KugouMusic.NET/src/Apps/KgWebApi.Net/Controllers/`
-  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/`
-- Expected Outputs:
-  - 酷狗接口映射文档或 context 章节。
-  - 每个 S5 能力对应 client/controller/model/raw api。
-  - 明确缺口：没有依据的能力必须标记 Pending Confirmation。
-- Done Criteria:
-  - 覆盖扫码登录、验证码登录、session 缓存、推荐歌曲、电台、发现歌单、播放 URL、点赞/我喜欢。
-  - 每项均能定位到具体文件/方法。
-  - 未发现依据的项没有进入 Ready 实现。
-- Risks:
-  - `.NET` WebApi controller 形态与 Android 直接调用形态可能不一致，需要后续适配。
-- Size: S
-- Execution Mode: Single
-- Minimal Loop: Yes
-
-## T-S5-SRC-097
-- Task ID: `T-S5-SRC-097`
-- Module ID: `M-S5-SRC-022`
-- Title: 多来源领域模型与左侧一级导航契约
-- Goal: 定义 source-aware 模型、页面入口和默认酷狗模式规则。
-- Why: 当前代码强绑定 `EmbyTrack` 与 Home 二级 tab；先定义契约可避免把酷狗数据硬塞进旧模型。
-- Dependencies: 无
-- Inputs:
-  - `.ai/context/SCOPE.md`
-  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt`
-  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/res/layout/activity_main.xml`
-- Expected Outputs:
-  - 来源模型草案：source id、track id、title、artist、cover、duration、playback ref、capabilities。
-  - 左侧导航入口定义与默认页规则。
-  - 现有 Emby 模型迁移边界。
-- Done Criteria:
-  - 明确哪些字段属于统一模型，哪些字段是来源私有。
-  - 明确左侧一级入口，不新增 Home 二级 tab。
-  - 能支撑后续 UI/接口实现。
-- Risks:
-  - 契约过大可能拖慢实现，需保持第一版最小可用。
-- Size: S
-- Execution Mode: Single
-- Minimal Loop: Yes
-
-## T-S5-KG-098
-- Task ID: `T-S5-KG-098`
-- Module ID: `M-S5-KG-023`
-- Title: 酷狗登录与 session 缓存契约
-- Goal: 基于 `KugouMusic.NET` 固定扫码登录、手机号验证码登录、session 持久化与失效处理契约。
-- Why: 酷狗模式必须登录后可用，登录状态是后续所有内容加载的前置。
-- Dependencies: `T-S5-KG-096`
-- Inputs:
-  - `LoginClient.cs`
-  - `RawLoginApi.cs`
-  - `LoginController.cs`
-  - `CaptchaController.cs`
-  - `KugouSessionPersistence.cs`
-  - `LoginViewModel.cs`
-- Expected Outputs:
-  - Android 侧登录流程契约。
-  - session 缓存字段与失效判断。
-  - 默认扫码、验证码 fallback 的 UI 状态矩阵。
-- Done Criteria:
-  - 不猜测 session 字段和失效码。
-  - 能进入 UI/实现任务。
-- Risks:
-  - 真实扫码登录需要外部账号与扫码环境验证。
-- Size: S
-- Execution Mode: Single
-- Minimal Loop: Yes
-
-## T-S5-SRC-099
-- Task ID: `T-S5-SRC-099`
-- Module ID: `M-S5-PLAY-025`
-- Title: Source-aware 队列与播放解析边界设计
-- Goal: 设计 Emby/Kugou 共存的队列项、播放 URL 解析入口和缓存上限策略。
-- Why: 当前播放链路只知道 Emby download URL；酷狗播放必须通过来源 resolver 接入，且缓存目标上限 100MB。
-- Dependencies: `T-S5-SRC-097`, `T-S5-KG-096`
-- Inputs:
-  - `MainActivity.kt` 播放与下载控制逻辑
-  - `PlaybackEngine.kt`
-  - `TrackCodec.kt`
-  - `SongClient.cs` / `SongController.cs`
-- Expected Outputs:
-  - source-aware queue item 契约。
-  - Kugou playback ref 到 URL 的解析流程。
-  - 100MB 缓存上限与清理规则草案。
-- Done Criteria:
-  - 不破坏现有 Emby 播放语义。
-  - 酷狗播放失败/不可播有明确反馈边界。
-  - Emby 上传入库不进入本任务。
-- Risks:
-  - 现有下载控制器与 Emby ID 强耦合，改动需分步。
+  - 拆分 UI binder 时容易捕获 Activity 生命周期；需要避免长生命周期持有已销毁 UI。
 - Size: M
 - Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S5-UI-100
-- Task ID: `T-S5-UI-100`
-- Module ID: `M-S5-SRC-022`
-- Title: 左侧导航与默认酷狗模式页面骨架
-- Goal: 改造左侧导航和页面容器，默认进入酷狗推荐歌曲页，并移除新增二级 tab 的需求路径。
-- Why: 用户明确要求整体界面左侧快速切换、默认酷狗模式、不增加二级 tab。
-- Dependencies: `T-S5-SRC-097`
+## T-S5-MAIN-114
+- Task ID: `T-S5-MAIN-114`
+- Module ID: `M-S5-MAIN-034`
+- Title: MainActivity 第二轮拆分：Kugou Auth/Config Binder
+- Goal: 将 `MainActivity` 中酷狗登录、session 缓存、扫码/短信登录、状态文案和 WebApi 配置 UI 接线迁出到独立 binder/controller，给后续 `T-S5-KG-109` 留出清晰边界。
+- Why: `MainActivity.kt` 第一轮后仍约 6213 行；下一步酷狗 API 地址纠偏会集中触碰登录/配置路径，如果继续直接改 Activity，会扩大 god Activity 风险。
+- Responsibility Boundary:
+  - 新类负责酷狗登录/配置相关 UI 绑定、状态刷新、扫码轮询生命周期入口和回调封装。
+  - `MainActivity` 保留生命周期调用、页面切换协调和播放/service bridge，不承载登录 UI 细节。
+  - 本任务不改变 `.NET` API 语义，不在本任务内猜测或重写酷狗协议。
+- Dependencies: `T-S5-MAIN-108`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouSessionStore.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouWebApiClient.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Expected Outputs:
+  - 新增 `KugouAuthConfigBinder.kt` 或等价小类。
+  - `MainActivity` 中酷狗登录/配置相关字段和函数明显减少。
+  - 扫码、短信、登出、session 恢复入口仍可编译接线。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - Binder 必须显式支持 `start/stop/destroy` 或等价生命周期清理，避免 QR polling 持有销毁后的 Activity/View。
+  - 不引入 Fragment/多 Activity；页面壳拆分另由 `T-S5-MAIN-116` 评估。
+- Comment Requirements:
+  - 仅在轮询生命周期或回调边界处保留必要说明。
+- Done Criteria:
+  - `MainActivity.kt` 行数下降，不再继续承载酷狗登录/配置 UI 细节。
+  - 默认酷狗登录入口、扫码刷新、短信登录、登出和状态显示编译接线不回归。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - QR polling 与 Handler 生命周期迁移可能引入泄漏或重复轮询；需保持 stop 行为。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-MAIN-115
+- Task ID: `T-S5-MAIN-115`
+- Module ID: `M-S5-MAIN-034`
+- Title: MainActivity 第三轮拆分：Kugou Content Pages Binder
+- Goal: 将推荐歌曲、推荐电台、发现歌单/歌曲的页面状态、加载入口和渲染协调从 `MainActivity` 迁出。
+- Why: 酷狗内容页仍占据 Activity 大量函数；后续普通队列和电台 session 都会改这些页面入口，必须先收敛边界。
+- Responsibility Boundary:
+  - 新 binder 负责酷狗内容页状态和渲染协调。
+  - API client 仍保持独立；`.NET` 行为依据不在 binder 中硬编码猜测。
+  - `MainActivity` 只接收“播放某 source track / 点赞 / 进入 radio session”等高层回调。
+- Dependencies: `T-S5-MAIN-114`, `T-S5-KG-109`
+- Inputs:
+  - `MainActivity.kt` 中 `requestKugouRecommendedSongs`、`requestKugouRecommendedRadios`、`requestKugouRadioSongs`、`renderKugouRadioPage`、`requestKugouDiscoverTags`、`requestKugouPlaylistsByTag`、`requestKugouPlaylistSongs`、`renderKugouDiscoverPage`、`renderKugouRecommendedSongs`
+  - `SourceRowRenderer.kt`
+  - `KugouWebApiClient.kt`
+- Expected Outputs:
+  - 新增 `KugouPagesBinder.kt` 或等价类。
+  - `MainActivity` 不再维护大批酷狗内容页 list/loading/selected state。
+  - 推荐歌曲、电台、发现歌单仍走左侧一级页面，不增加二级 tab。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouPagesBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 电台内容页不能直接落成普通歌曲队列；播放语义留给 `T-S5-PLAY-112`。
+- Comment Requirements:
+  - 对内容页状态所有权和回调边界保留简短说明。
+- Done Criteria:
+  - 推荐歌曲、推荐电台、发现页加载/渲染主逻辑迁出。
+  - `MainActivity` 行数继续下降。
+  - `git diff --check`、API17 guardrails、`compileDebugKotlin` 通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - 内容页状态与播放入口耦合，拆分时不能改变普通歌曲/电台后续分流语义。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 新增 `KugouContentRenderer.kt` 与 `KugouContentBinder.kt`。
+  - 推荐歌曲、推荐电台、Radio songs、发现 tags/playlists/songs 的渲染、请求、loading/list/selected state 已迁出 `MainActivity`。
+  - `MainActivity.kt` 约 6118 -> 5632 行，只保留内容页委托和播放/点赞高层回调。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
+
+## T-S5-MAIN-116
+- Task ID: `T-S5-MAIN-116`
+- Module ID: `M-S5-MAIN-034`
+- Title: 页面壳拆分试点评估（Fragment / 独立 Activity）
+- Goal: 基于已完成的 Controller/Binder 拆分，选择一个低耦合页面做 Fragment/独立 Activity 可行性评估或试点，明确后续是否继续页面化拆分。
+- Why: 用户已明确单 Activity 外壳不是硬约束；但播放页、service bridge、方向盘按键和浮窗风险高，必须先用低耦合页面验证 API17 路径。
+- Responsibility Boundary:
+  - 评估候选：设置页、日志页、音效/EQ 页、酷狗内容页。
+  - 不触碰播放热路径和 service bridge。
+  - 不破坏左侧一级快速切换，不新增二级 tab。
+- Dependencies: `T-S5-MAIN-114`, `T-S5-MAIN-115`
 - Inputs:
   - `activity_main.xml`
   - `MainActivity.kt`
-  - `strings.xml`
-  - 现有 nav drawable 资源
+  - `app/build.gradle.kts`
+  - AndroidX/AppCompat 现有依赖。
 - Expected Outputs:
-  - 推荐歌曲、推荐电台、发现歌单、队列、点赞/入库状态、设置页面骨架。
-  - 默认启动显示推荐歌曲。
-  - 现有 Emby 设置入口仍可访问。
+  - 页面壳拆分路线结论：Fragment、独立 Activity、继续 Binder 化，三者择一或给出暂缓原因。
+  - 若安全，完成一个低耦合页面试点；若不安全，写明阻塞和后续条件。
+- Expected Files:
+  - 待任务执行时根据候选确定。
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - API17 兼容优先；不能为了页面化引入高 API 导航依赖。
+- Comment Requirements:
+  - 若引入 Fragment/Activity 试点，需要标注生命周期和回退路径。
 - Done Criteria:
-  - 1024x600 横屏不重叠。
-  - 左侧导航一级切换可用。
-  - 不新增 Home 二级 tab。
+  - 有明确页面壳拆分决策和验证结果。
+  - 若落地试点，构建通过并保持左侧一级切换体验。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 触及 manifest/resource 时执行 `gradle :app:assembleDebug --no-daemon`
 - Risks:
-  - 现有首页播放卡片和歌词区需要保留或重新定位，避免播放主控丢失。
-- Size: M
-- Execution Mode: Module
-- Minimal Loop: Yes
-
-## T-S5-KG-101
-- Task ID: `T-S5-KG-101`
-- Module ID: `M-S5-KG-023`
-- Title: 酷狗登录 UI 与 session 缓存实现
-- Goal: 实现扫码登录、手机号验证码登录、session 缓存复用和失效跳转。
-- Why: 酷狗内容登录后才可用，默认扫码是用户确认的入口。
-- Dependencies: `T-S5-KG-098`, `T-S5-UI-100`
-- Inputs:
-  - 登录/session 契约
-  - `KugouMusic.NET` 登录参考实现
-  - Android 设置/登录 UI 骨架
-- Expected Outputs:
-  - 登录页/对话框。
-  - QR code 加载与轮询状态。
-  - 手机号验证码登录。
-  - session cache store。
-  - 未授权跳登录。
-- Done Criteria:
-  - 未登录时酷狗内容不可用并引导登录。
-  - 登录后可缓存并复用。
-  - session 不可用时清理并回登录。
-- Risks:
-  - QR 图片/状态字段需要严格遵循 .NET 实现，不能猜。
+  - Fragment/独立 Activity 会引入生命周期、状态同步和车机返回键行为风险；必须低耦合试点。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: No
+- Status: Done 2026-06-04
+- Result:
+  - 新增 `docs/PAGE_SHELL_SPLIT_EVALUATION.md`。
+  - 结论：当前阶段暂缓独立 Activity；Fragment 可作为未来试点，但不直接迁移 raw XML 页面。
+  - 推荐路线：先继续低耦合 Binder 提取，首选 `RuntimeLogBinder`，其次 `EqualizerPageBinder`；之后用已成型 Binder 包装 Fragment。
+  - 理由：保持 API17、左侧一级导航、后台播放、方向盘按键、前台通知和浮窗状态稳定，避免在 S5 纠偏收尾阶段引入新生命周期风险。
+  - 本地验证通过 `git diff --check` 与 API17 guardrails；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
 
-## T-S5-KG-102
-- Task ID: `T-S5-KG-102`
-- Module ID: `M-S5-KG-024`
-- Title: 酷狗推荐歌曲页面接入
-- Goal: 使用 `KugouMusic.NET` 推荐歌曲接口加载并展示推荐歌曲。
-- Why: 推荐歌曲是默认酷狗模式首屏，也是最短可验证内容入口。
-- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
+## T-S5-KG-109
+- Task ID: `T-S5-KG-109`
+- Module ID: `M-S5-KG-030`
+- Title: Kugou WebApi Base URL 产品路径纠偏与 direct API 可行性确认
+- Goal: 移除用户必填 Kugou WebApi Base URL 的使用路径，并按 `KugouMusic.NET` direct client/raw api 确认 Android 可落地方案。
+- Why: 用户质疑“酷狗 API 怎么要我提供地址了”；当前实现不符合“参考 .NET，不自行发挥”的要求。
+- Dependencies: `T-S5-MAIN-114`
+- Updated Dependencies: bootstrap red-line guardrails 生效后，本任务必须等待 `T-S5-MAIN-114` 完成；如果执行中仍需改登录/配置 UI，必须通过 `KugouAuthConfigBinder` 边界完成，不能直接扩大 `MainActivity`。
 - Inputs:
-  - `RecommendClient.GetRecommendedSongsAsync`
-  - `DiscoveryController.GetRecommendSong`
-  - `DailyRecommendModels.cs`
-  - source track contract
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouWebApiClient.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouSessionStore.kt`
+  - `activity_main.xml`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Infrastructure/Http/KgHttpTransport.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/`
 - Expected Outputs:
-  - 推荐歌曲列表。
-  - 加载/空/失败/未登录状态。
-  - 点击产生播放引用或明确不可播反馈。
+  - 不再要求用户在设置页填写 WebApi Base URL。
+  - 能迁移的默认 host/API 迁移到 Android 内部 adapter。
+  - 无法确认的接口列出具体 `.NET` 缺口并标记 Blocked，不继续猜。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouWebApiClient.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouSessionStore.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/res/values/strings.xml`
+  - `app/src/main/res/layout/activity_main.xml`（仅允许移除/隐藏用户必填地址入口，不做布局大改）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - API/config 纠偏归属 `kugou/*` 与 `KugouAuthConfigBinder`，入口文件只做委托。
+  - 不修改 `KugouMusic.NET/`。
+- Comment Requirements:
+  - 若保留临时兼容路径，必须注释说明原因、`.NET` 依据和后续移除条件。
 - Done Criteria:
-  - 字段映射可追溯到 `.NET` model。
-  - 未登录不请求内容。
-  - 网络失败不破坏主界面。
+  - 设置页无“必填 Kugou WebApi Base URL”阻断。
+  - 酷狗登录/内容/播放 URL 路径要么有 direct `.NET` 依据，要么明确阻塞。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `python scripts/check_code_health.py`（允许既有 `MainActivity` red 继续存在，但本任务不得增加 red findings）
+  - `gradle :app:compileDebugKotlin --no-daemon`
 - Risks:
-  - 推荐接口可能要求有效 session 或返回权限受限歌曲。
+  - C# raw api 可能包含签名/加密/设备参数，Android 移植需要拆成后续任务。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 设置页已移除用户必填 WebApi Base URL。
+  - Android 启动/登出清理旧 WebApi base-url/session 缓存。
+  - QR/SMS 登录入口改为 direct API pending 状态，不再调用旧代理路由。
+  - `.NET` direct API 需要签名、dfid/mid、cookie/session、AES/RSA 登录加密，已拆为 `T-S5-KG-117`。
+
+## T-S5-KG-117
+- Task ID: `T-S5-KG-117`
+- Module ID: `M-S5-KG-030`
+- Title: Kugou direct raw API 最小登录链路移植
+- Goal: 基于 `KugouMusic.NET` direct/raw 实现 Android 最小登录链路，使 QR 登录或手机号验证码登录不依赖用户填写 WebApi 地址。
+- Why: `T-S5-KG-109` 已移除 WebApi 地址产品路径，但酷狗真实登录/session 仍待 direct raw client 支撑。
+- Dependencies: `T-S5-KG-109`
+- Inputs:
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Infrastructure/Http/KgHttpTransport.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Infrastructure/Http/Handlers/SignatureHandler.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawLoginApi.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Transport/KgRequest.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Session/KgSessionManager.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/util/KGSigner.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/util/KGCrypto.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/util/KuGouConfig.cs`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/`
+- Expected Outputs:
+  - Android-owned direct transport/request/signature/session scaffold.
+  - 最小 QR 或 SMS 登录链路可从官方 raw endpoint 获取状态。
+  - session 持久化格式明确，且不存储用户填写 WebApi Base URL。
+  - 不能端到端确认的 raw 字段需列明阻塞点，不猜测。
+- Expected Files:
+  - 新增/替换 `app/src/main/java/com/skodamusic/app/kugou/*Direct*` 或等价 focused client。
+  - `KugouAuthConfigBinder.kt` 只做 UI 状态和调用，不承载协议细节。
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - direct client 与 WebApi proxy client 必须区分清楚；不得重新暴露用户填写地址。
+  - 登录 crypto/signature 逻辑必须可追溯到 `.NET` 源码。
+- Done Criteria:
+  - 至少一个登录入口具备 direct raw API 实现依据并可本地编译。
+  - 若无法验证真实登录，需有明确 blocker 和下一步字段清单。
+  - 旧 WebApi Base URL 路径不回归。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `python scripts/check_code_health.py`（允许既有 `MainActivity` red 继续存在，但不得新增 red findings）
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - AES/RSA 与签名细节移植可能较大，超出 single task 时应只落地 transport/signature scaffold 并拆分后续。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 新增 Android direct QR client/signature/session store。
+  - QR key/check 已按 `.NET` raw endpoint 与 Web signature 接入。
+  - `KugouAuthConfigBinder` 可获取二维码、展示图片、2s 轮询，并缓存 QR success 返回的 direct token。
+  - SMS AES/RSA、device init、token refresh/session validation 未在本轮实现，拆为 `T-S5-KG-118`。
+
+## T-S5-KG-118
+- Task ID: `T-S5-KG-118`
+- Module ID: `M-S5-KG-030`
+- Title: Kugou direct device init / token refresh / session validation
+- Goal: 基于 `KugouMusic.NET` 补齐 QR success 后的 device init、token refresh 和 direct session 校验，使 direct 登录状态可支撑后续内容接口。
+- Why: `.NET LoginViewModel` 在 QR success 后会执行 `deviceClient.InitDeviceAsync()` 与 `authClient.RefreshSessionAsync()`；Android 当前只缓存 QR check 返回 token。
+- Dependencies: `T-S5-KG-117`
+- Inputs:
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/LoginViewModel.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/LoginClient.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/RegisterClient.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawDeviceApi.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawLoginApi.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/util/KGCrypto.cs`
+  - `app/src/main/java/com/skodamusic/app/kugou/`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+- Expected Outputs:
+  - direct session fields needed for authenticated content are defined and persisted.
+  - QR success path performs or explicitly blocks device init/token refresh.
+  - refresh failure clears direct session and returns to login state.
+- Expected Files:
+  - focused `kugou/*Direct*` additions; Binder only coordinates UI/state.
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Done Criteria:
+  - direct session validation is no longer just cached QR token, or unresolved AES/RSA/device fields are explicitly blocked with `.NET` references.
+  - old WebApi Base URL path does not return.
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `python scripts/check_code_health.py`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - `RawDeviceApi` and `RefreshTokenAsync` require AES/RSA helpers; if full port is too large, stop at a verified crypto scaffold and mark remaining fields blocked.
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 新增 `KugouDirectCrypto`，按 `.NET KgCrypto` 移植 AES-CBC、Playlist AES、RSA no-padding 和 RSA PKCS1（API17 标准库）。
+  - 新增 `KugouDirectSessionClient`，按 `.NET RawDeviceApi.RegisterDevAsync` 与 `RawLoginApi.RefreshTokenAsync` 执行 device register + token refresh。
+  - `KugouDirectSessionStore` 扩展持久化 `dfid/mid/uuid/installGuid/installMac/installDev/vipType/t1/validationState`。
+  - `KugouAuthConfigBinder` 改为 QR success 后先进入 session validation；只有 token refresh 成功后 `hasSession()` 才为 true。
+  - 未恢复用户填写 WebApi Base URL；未修改 `KugouMusic.NET/`；SMS 仍待 `LoginByMobileAsync` direct port。
+
+## T-S5-PLAY-110
+- Task ID: `T-S5-PLAY-110`
+- Module ID: `M-S5-PLAY-031`
+- Title: 纯酷狗播放状态边界，切断 Emby 队列叠加
+- Goal: 引入 source playback session，让酷狗播放的 Now Playing、service state、next/previous 不再依赖 Emby `loadedTracks/currentTrackIndex`。
+- Why: 当前酷狗播放是单曲直连，但 UI/service/next 仍读 Emby 队列，导致“Emby 叠加播放，没有切换到纯酷狗”。
+- Dependencies: `T-S5-KG-118`
+- Inputs:
+  - `MainActivity.kt` 中 `playKugouTrack`、`prepareAndPlayKugouUrl`、`reportPlaybackStateToService`、next/previous、render 相关逻辑。
+  - `PlaybackService` state contract。
+  - `MainModels.kt` source models。
+- Expected Outputs:
+  - 当前播放 session 能区分 Emby / KugouSong / KugouRadio。
+  - 酷狗播放时 Now Playing title/artist/duration 来自 `SourceTrack`。
+  - 酷狗模式不触发 Emby resume/auto refresh/tail refill。
+  - next/previous 按 session 类型分流。
+- Done Criteria:
+  - 酷狗播放时 service `hasTrack/trackId/title/duration` 不从 Emby 队列取值。
+  - Emby 队列在酷狗播放时不被自动推进。
+  - Emby 来源仍可独立播放。
+- Risks:
+  - 后台方向盘按键依赖 service state，字段变更需保持兼容。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: Yes
 
-## T-S5-KG-103
-- Task ID: `T-S5-KG-103`
-- Module ID: `M-S5-KG-024`
-- Title: 酷狗推荐电台页面接入
-- Goal: 使用 `FmClient` / `FmController` 接入推荐电台和电台歌曲列表。
-- Why: 推荐电台是用户明确要求的新一级内容。
-- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
+## T-S5-PLAY-111
+- Task ID: `T-S5-PLAY-111`
+- Module ID: `M-S5-PLAY-032`
+- Title: Kugou 普通歌曲队列按 .NET PlaybackQueueManager 实现
+- Goal: 为推荐歌曲和发现歌单歌曲建立独立酷狗普通歌曲队列，行为参考 `.NET` `PlaybackQueueManager`。
+- Why: 酷狗队列和 Emby 队列不同；当前 Android 未建立酷狗 queue，只是点击单曲播放。
+- Dependencies: `T-S5-PLAY-110`
 - Inputs:
-  - `FmClient.cs`
-  - `RawFmApi.cs`
-  - `FmController.cs`
-  - `FmRecommendResponse.cs`
-  - `FmSongResponse.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PlaybackQueueManager.cs`
+  - 推荐歌曲上下文列表 `kugouRecommendedTracks`
+  - 发现歌单歌曲上下文列表 `kugouDiscoverSongs`
+  - 当前 source playback session。
 - Expected Outputs:
-  - 推荐电台列表。
-  - 电台图片/名称/描述。
-  - 电台歌曲列表与状态反馈。
+  - `KugouQueueManager` 或等价类。
+  - `setupQueue(song, contextList)`，列表超过 300 时围绕当前歌曲截取。
+  - next/previous 循环。
+  - 队列页显示酷狗普通队列。
 - Done Criteria:
-  - 接口字段来自 `.NET` model。
-  - 可处理空电台、空歌曲、网络失败。
+  - 点击推荐歌曲/发现歌单歌曲后，next/previous 在同一上下文内循环。
+  - 不改动 Emby `loadedTracks` 作为酷狗队列存储。
+  - 队列页能看出当前是酷狗普通队列。
 - Risks:
-  - 电台歌曲名称可能是组合字段，需要按 `.NET` model 处理，不自行拆分猜测。
+  - `SourceTrack` equality 需要使用稳定 identity，不能依赖对象引用。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: Yes
 
-## T-S5-KG-104
-- Task ID: `T-S5-KG-104`
-- Module ID: `M-S5-KG-024`
-- Title: 发现歌单分类、歌单列表与歌曲列表接入
-- Goal: 接入 `playlist/tags`、按 tag 推荐歌单、歌单详情/歌曲列表。
-- Why: 发现歌单是用户点名的核心入口，分类必须覆盖场景/主题/语种/风格/心情/年代。
-- Dependencies: `T-S5-KG-101`, `T-S5-SRC-099`
+## T-S5-PLAY-112
+- Task ID: `T-S5-PLAY-112`
+- Module ID: `M-S5-PLAY-032`
+- Title: Kugou Radio/FM session 按 .NET PersonalFmService 实现
+- Goal: 将推荐电台播放改为独立 radio/FM session，同一电台持续播放，下一曲由 session 内部推进。
+- Why: 用户明确补充电台不是普通歌曲队列；当前 Android 把电台歌曲当 `SourceTrack` 普通点击播放，语义错误。
+- Dependencies: `T-S5-PLAY-110`
 - Inputs:
-  - `PlaylistClient.GetTagsAsync`
-  - `RecommendClient.GetRecommendedPlaylistsAsync`
-  - `PlaylistClient.GetInfoAsync`
-  - `PlaylistClient.GetSongsAsync`
-  - `DiscoverViewModel.cs`
-  - `PlaylistTagCategory.cs`
-  - `RecommendPlaylistResponse.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PersonalFmService.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.PersonalFm.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.Queue.cs`
+  - Android `requestKugouRecommendedRadios` / `requestKugouRadioSongs`
 - Expected Outputs:
-  - 分类/子标签筛选。
-  - 歌单卡片列表。
-  - 歌单歌曲列表。
-  - 加载/空/失败状态。
+  - `KugouRadioSessionManager` 或等价类。
+  - active session/current/upcoming/history 最小状态。
+  - radio active 时 next/previous 分流到 radio session。
+  - 队列页显示 radio session 状态。
 - Done Criteria:
-  - 分类来自接口，不手写猜测。
-  - 歌单字段映射可追溯。
-  - 歌单歌曲可形成 source track。
+  - 点击电台进入 radio session。
+  - radio active 时下一曲不走普通酷狗队列和 Emby 队列。
+  - 同一电台持续播放，直到用户切换来源/清空/退出 session。
 - Risks:
-  - tag 名称和分类顺序依赖接口返回；需支持缺失/空分类。
+  - `.NET` Personal FM 的 action/report 可能依赖接口；本轮若 Android 缺失对应 direct API，需标记缺口，不猜。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 新增 `KugouRadioSessionManager.kt`，维护 radio active session、current/upcoming/history。
+  - `KugouContentBinder` 的 radio 歌曲点击和电台加载成功回调改为启动 radio session；普通 Kugou queue 与 radio session 互斥。
+  - `MainActivity` 的 Kugou prev/next/completion 分流优先走 radio session，radio active 时不落到普通 queue 或 Emby queue。
+  - 队列页可显示酷狗电台队列（current + upcoming）。
+  - 依据 `.NET PersonalFmService`/`PlayerViewModel.PersonalFm.cs` 的 session/advance/previous/queue 分流；Android 端未猜测 direct Personal FM raw endpoint，仍基于当前已加载的 `/fm/songs` 列表形成最小 session。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
 
-## T-S5-LIKE-105
-- Task ID: `T-S5-LIKE-105`
-- Module ID: `M-S5-LIKE-026`
-- Title: 酷狗点赞抽象与历史/状态页
-- Goal: 实现来源无关的点赞状态模型，并暂支持酷狗歌曲点赞记录与查看。
-- Why: 用户要求点赞先抽象、暂时支持酷狗，并能查看历史及状态。
-- Dependencies: `T-S5-KG-102`
+## T-S4-AUDIO-097
+- Task ID: `T-S4-AUDIO-097`
+- Module ID: `M-S4-AUDIO-023`
+- Title: DSP 播放按钮持续红框诊断与修正
+- Goal: 修正 DSP runtime 状态持续红色问题，让红色只代表真实 fail-open/bypass/error。
+- Why: 用户反馈现在音效持续红色边框，无法确认 native DSP 正常工作。
+- Dependencies: `T-S4-AUDIO-096`
 - Inputs:
-  - source track contract
-  - `FavoritePlaylistService.cs`
-  - `PlayerViewModel.Queue.cs` ToggleLike 参考
-  - 本地持久化方案
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiDspController.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiAudioProcessor.kt`
+  - `app/src/main/cpp/native_hifi_dsp.cpp`
+  - `MainActivity` DSP state rendering。
 - Expected Outputs:
-  - Like status store。
-  - 酷狗歌曲点赞入口。
-  - 点赞/入库状态页。
-  - Emby 入库阻塞状态展示。
+  - 状态原因诊断：native-not-ready、non-direct-buffer、native-process-error、unsupported format、native bypass 等。
+  - 正常 active/degraded/fail-open/disabled 映射修正。
+  - 必要时修正 native 永久 bypass 后的复位或 yellow/red 分层。
 - Done Criteria:
-  - 可记录酷狗歌曲点赞历史。
-  - 可展示状态、来源、失败原因。
-  - 不执行 Emby 上传入库。
+  - 正常 native active 不持续红色。
+  - 降级/超预算为黄色。
+  - fail-open/bypass/error 为红色且日志有原因。
+  - 关闭/原声/release 后回灰。
 - Risks:
-  - `.NET` 的“我喜欢”是酷狗账号侧能力，本阶段若只做本地状态，需要文案避免误导。
-- Size: M
-- Execution Mode: Module
-- Minimal Loop: Yes
-
-## T-S5-VAL-106
-- Task ID: `T-S5-VAL-106`
-- Module ID: `M-S5-VAL-027`
-- Title: S5 API17 回归清单与本地验证
-- Goal: 更新回归清单并执行本地兼容验证。
-- Why: 登录、导航、网络内容和来源模型均是主路径变更，必须有 API17 可复盘验证。
-- Dependencies: `T-S5-LIKE-105`
-- Inputs:
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - `scripts/check_api17_guardrails.sh`
-  - Gradle build
-- Expected Outputs:
-  - S5 酷狗模式验证条目。
-  - 本地验证结果。
-  - 实机验证建议。
-- Done Criteria:
-  - guardrails 通过。
-  - compileDebugKotlin 通过。
-  - 清单覆盖登录、session、三类内容、点赞状态、未登录/失败路径、1024x600 UI。
-- Risks:
-  - 真实扫码登录和酷狗账号状态可能无法本地全自动验证。
+  - 如果红色来自真实 AC83xx native 性能超预算，可能需要后续实机调参；本轮至少要给出明确原因。
 - Size: S
 - Execution Mode: Single
 - Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 诊断出持续红框的高概率误报路径：`HiFiAudioProcessor` 遇到 API17/ExoPlayer heap `ByteBuffer` 时直接走 `non-direct-buffer` bypass，并发布 `FAIL_OPEN`。
+  - 修正为 direct scratch bridge：heap input/output buffer 会复制到 direct scratch buffer 后继续调用 native DSP，不再直接把按钮置红。
+  - 保留真实 fail-open 红色路径：unsupported format、native-not-ready、native-process-error、native `STATUS_BYPASS/STATUS_ERROR` 或 error/bypass flags。
+  - 新日志 `hifi-dsp native direct-buffer bridge input=<...> output=<...>` 可用于确认是否发生 heap/direct 桥接。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
 
-## T-S5-PLAY-107
-- Task ID: `T-S5-PLAY-107`
-- Module ID: `M-S5-PLAY-025`
-- Title: 酷狗播放 URL 解析与 100MB 缓存守卫实现
-- Goal: 将酷狗 source playback ref 接入播放 URL 解析，并落地本地缓存总量限制。
-- Why: 展示酷狗歌曲后需要可控播放路径；缓存必须不超过 100MB，避免影响车机其它应用。
-- Dependencies: `T-S5-KG-102`, `T-S5-SRC-099`
+## T-S5-VAL-113
+- Task ID: `T-S5-VAL-113`
+- Module ID: `M-S5-VAL-033`
+- Title: S5 纠偏 API17 回归清单与本地验证
+- Goal: 更新验证清单并执行本轮构建/guardrails。
+- Why: 本轮触及架构拆分、播放状态、队列、电台和 DSP，必须闭环验证。
+- Dependencies: `T-S5-PLAY-111`, `T-S5-PLAY-112`, `T-S4-AUDIO-097`
 - Inputs:
-  - `SongClient.GetPlayInfoAsync`
-  - `SongController.GetUrl`
-  - 现有 download/cache controller
-  - source-aware queue contract
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 本轮代码改动。
 - Expected Outputs:
-  - 酷狗播放 resolver。
-  - 不可播/VIP/URL 失败反馈。
-  - 100MB 缓存清理实现。
+  - 回归清单覆盖 MainActivity 拆分、纯酷狗、普通队列、电台 session、DSP 状态。
+  - 本地验证结果写入 context。
 - Done Criteria:
-  - 酷狗歌曲可解析到播放 URL 或明确失败。
-  - 缓存上限生效。
-  - 不执行 Emby 上传入库。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - 触及资源/播放/native 时 `gradle :app:assembleDebug --no-daemon` 通过。
 - Risks:
-  - 现有下载控制器强依赖 Emby token/header，需谨慎隔离。
-- Size: M
-- Execution Mode: Module
-- Minimal Loop: No
+  - 真实酷狗登录/电台验证仍依赖外部网络与账号环境。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+- Status: Done 2026-06-04
+- Result:
+  - 更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`，Scope 增加 `T-S5-VAL-113`。
+  - I 组补充 DSP 边框颜色语义与 direct-buffer bridge 验证项。
+  - K 组更新为当前 Kugou 内容页真实口径。
+  - 新增 M 组：纯酷狗播放、普通 queue、Radio session。
+  - 新增 N 组：MainActivity split / page shell decision。
+  - 追加 T-S5-VAL-113 本地验证快照。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
 
-## Blocked / Deferred
+## Blocked
 
 ### B-KG-EMBY-INGEST-001
 - Task ID: `B-KG-EMBY-INGEST-001`
-- Module ID: `M-S5-INGEST-028`
 - Title: 点赞后将播放缓存上传到 Emby 并纳入媒体库
-- Goal: 验证并设计“播放缓存 -> Emby 媒体库”的入库能力。
-- Why: 用户最终希望点赞后入 Emby 库，但当前 Emby API 是否支持上传并入库未确认。
-- Dependencies:
-  - Emby 上传/入库能力确认。
-  - 缓存生命周期与 100MB 上限策略确认。
-  - 网络空闲重试策略确认。
-- Inputs:
-  - Emby 官方 API / 实测结果
-  - 现有 Emby 配置与 token
-  - 后续用户确认
-- Expected Outputs:
-  - 支持/不支持结论。
-  - 若支持：上传接口、扫描/入库确认、失败重试方案。
-  - 若不支持：服务端代理写入媒体目录 + 触发扫描方案。
-- Done Criteria:
-  - 形成可执行技术方案并由用户确认。
-- Risks:
-  - Android 车机无权写 Emby 服务器媒体目录。
-  - 上传大文件和重试可能超出车机资源预算。
-- Size: M
-- Execution Mode: Single
-- Minimal Loop: No
 - Status: Blocked / Deferred
-
-## Historical Carry Forward
-- `T-S4-AUDIO-095`: AC83xx Native DSP 实机长播与听感验证，仍 Blocked by external device。
+- Blocked By:
+  - Emby 是否支持 API 上传音频并入库未确认。
+  - 若不支持，需要确认服务端代理写入媒体目录 + 触发扫描方案。
+  - 100MB 缓存上限与网络空闲重试策略需后续需求确认。
+- Current Requirement:
+  - 当前只记录点赞状态和入库阻塞状态，不执行上传。

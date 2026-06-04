@@ -1,6 +1,6 @@
 # Multi-Source Navigation Contract
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
 ## Purpose
 - 固定 S5 第一版多来源模型和左侧一级导航契约。
@@ -115,7 +115,7 @@ S5 target left navigation uses first-level entries only:
    - Emby ingest remains blocked/deferred.
 6. 设置
    - `SourceNavEntry.SETTINGS`
-   - Keeps Emby/LrcApi settings and adds Kugou login/session/WebApi base settings.
+   - Keeps Emby/LrcApi settings and shows Kugou login/session state without a user-configured WebApi base address.
 
 ## Current UI Migration Boundary
 - Existing `activity_main.xml` has left nav ids:
@@ -146,5 +146,5 @@ S5 target left navigation uses first-level entries only:
 ## Non-Goals
 - No Emby upload ingest in S5 Ready tasks.
 - No non-Kugou like implementation in this stage.
-- No direct raw Kugou protocol port until WebApi route proves insufficient and user confirms.
+- No user-configured Kugou WebApi base address. Direct raw Kugou protocol work must be implemented from `KugouMusic.NET` reference behavior in a dedicated task.
 - No additional Home second-level tab.

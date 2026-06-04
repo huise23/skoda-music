@@ -22,8 +22,10 @@ class HiFiAudioProcessor(
     private var activeLogged = false
     private var bypassLogged = false
     private var nativeUnavailableLogged = false
-    private var directBufferBypassLogged = false
+    private var directBufferBridgeLogged = false
     private var nativeConfigureFailLogged = false
+    private var directInputScratch: ByteBuffer? = null
+    private var directOutputScratch: ByteBuffer? = null
     private var lastRuntimeLogAtMs = 0L
     private var lastRuntimeTier = -1
     private var lastRuntimeFlags = -1
@@ -60,7 +62,7 @@ class HiFiAudioProcessor(
             appliedVersion = -1
             nativeConfiguredSampleRate = 0
             nativeConfiguredChannelCount = 0
-            directBufferBypassLogged = false
+            directBufferBridgeLogged = false
             nativeConfigureFailLogged = false
             log("hifi-dsp format sr=$sampleRate ch=$channelCount enc=${inputAudioFormat.encoding}")
         }
@@ -98,17 +100,13 @@ class HiFiAudioProcessor(
             bypassFrame(inputBuffer, output, inputStart, "native-not-ready")
             return
         }
+        // Some API17/ExoPlayer paths provide heap buffers; bridge them through direct scratch buffers
+        // so JNI DSP can stay active instead of reporting a permanent fail-open state.
         if (!inputBuffer.isDirect || !output.isDirect) {
-            if (!directBufferBypassLogged) {
-                directBufferBypassLogged = true
-                log("hifi-dsp native bypass directBuffer=false input=${inputBuffer.isDirect} output=${output.isDirect}")
-            }
-            bypassFrame(inputBuffer, output, inputStart, "non-direct-buffer")
-            return
+            logDirectBridgeIfNeeded(inputDirect = inputBuffer.isDirect, outputDirect = output.isDirect)
         }
-
-        val inputView = inputBuffer.slice()
-        val outputView = output.slice()
+        val inputView = prepareNativeInput(inputBuffer, inputStart, byteCount)
+        val outputView = prepareNativeOutput(output, byteCount)
         val packed = NativeHiFiDspBridge.processPcm16(nativeHandle, inputView, outputView, byteCount)
         val status = NativeHiFiDspBridge.status(packed)
         if (status == NativeHiFiDspBridge.STATUS_ERROR) {
@@ -119,8 +117,7 @@ class HiFiAudioProcessor(
         }
 
         inputBuffer.position(inputStart + byteCount)
-        output.position(byteCount)
-        output.flip()
+        finishNativeOutput(output, outputView, byteCount)
         logRuntimeStatus(config, packed, forced = false)
     }
 
@@ -145,8 +142,10 @@ class HiFiAudioProcessor(
         bypassLogged = false
         unsupportedLogged = false
         nativeUnavailableLogged = false
-        directBufferBypassLogged = false
+        directBufferBridgeLogged = false
         nativeConfigureFailLogged = false
+        directInputScratch = null
+        directOutputScratch = null
         lastRuntimeLogAtMs = 0L
         lastRuntimeTier = -1
         lastRuntimeFlags = -1
@@ -232,6 +231,71 @@ class HiFiAudioProcessor(
             bypassLogged = true
             activeLogged = false
             log("hifi-dsp bypass reason=$reason")
+        }
+    }
+
+    private fun prepareNativeInput(input: ByteBuffer, inputStart: Int, byteCount: Int): ByteBuffer {
+        if (input.isDirect) {
+            return input.slice()
+        }
+        val scratch = ensureDirectInput(byteCount)
+        val source = input.duplicate()
+        source.position(inputStart)
+        source.limit(inputStart + byteCount)
+        scratch.clear()
+        scratch.put(source)
+        scratch.flip()
+        return scratch
+    }
+
+    private fun prepareNativeOutput(output: ByteBuffer, byteCount: Int): ByteBuffer {
+        if (output.isDirect) {
+            return output.slice()
+        }
+        val scratch = ensureDirectOutput(byteCount)
+        scratch.clear()
+        scratch.limit(byteCount)
+        return scratch
+    }
+
+    private fun finishNativeOutput(output: ByteBuffer, nativeOutput: ByteBuffer, byteCount: Int) {
+        if (output.isDirect) {
+            output.position(byteCount)
+            output.flip()
+            return
+        }
+        val source = nativeOutput.duplicate()
+        source.position(0)
+        source.limit(byteCount)
+        output.clear()
+        output.put(source)
+        output.flip()
+    }
+
+    private fun ensureDirectInput(byteCount: Int): ByteBuffer {
+        val existing = directInputScratch
+        if (existing != null && existing.capacity() >= byteCount) {
+            return existing
+        }
+        return ByteBuffer.allocateDirect(byteCount).also {
+            directInputScratch = it
+        }
+    }
+
+    private fun ensureDirectOutput(byteCount: Int): ByteBuffer {
+        val existing = directOutputScratch
+        if (existing != null && existing.capacity() >= byteCount) {
+            return existing
+        }
+        return ByteBuffer.allocateDirect(byteCount).also {
+            directOutputScratch = it
+        }
+    }
+
+    private fun logDirectBridgeIfNeeded(inputDirect: Boolean, outputDirect: Boolean) {
+        if (!directBufferBridgeLogged) {
+            directBufferBridgeLogged = true
+            log("hifi-dsp native direct-buffer bridge input=$inputDirect output=$outputDirect")
         }
     }
 

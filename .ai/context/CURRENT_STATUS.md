@@ -1,10 +1,398 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
 ## Stage
-- 当前阶段: S5 子阶段（Kugou Source Mode & Multi-Source Discovery）
-- 当前主干: `master@bb12c6b`
+- 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
+- 当前主干: `master@5a98e8f`（上一轮已推送 `Add Kugou source mode`）
+
+## Execution Progress (T-S5-VAL-113, 2026-06-04)
+- 已完成 `T-S5-VAL-113`：
+  - 更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`，Scope 增加 `T-S5-VAL-113`。
+  - I 组补充 DSP 边框颜色语义和 direct-buffer bridge 验证项。
+  - K 组更新为当前 Kugou 内容页真实口径。
+  - 新增 M 组：纯酷狗播放、普通 queue、Radio session。
+  - 新增 N 组：MainActivity split / page shell decision。
+  - 追加 `Local Validation Snapshot (T-S5-VAL-113, 2026-06-04)`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，未新增 blocking finding。
+- 结果:
+  - `T-S5-VAL-113` Done。
+  - S5 纠偏本地计划已闭环；下一步需要 API17 目标车机执行 A~N 分组并回传证据。
+
+## Execution Progress (T-S5-MAIN-116, 2026-06-04)
+- 已完成 `T-S5-MAIN-116` 页面壳拆分试点评估：
+  - 新增 `docs/PAGE_SHELL_SPLIT_EVALUATION.md`。
+  - 结论：当前阶段暂缓独立 Activity；Fragment 可作为未来试点，但不直接迁移 raw XML 页面。
+  - 推荐路线：先继续低耦合 Binder 提取，首选 `RuntimeLogBinder`，其次 `EqualizerPageBinder`；之后用已成型 Binder 包装 Fragment。
+  - 理由：保持 API17、左侧一级导航、后台播放、方向盘按键、前台通知和浮窗状态稳定，避免在 S5 纠偏收尾阶段引入新生命周期风险。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，未新增 blocking finding。
+- 结果:
+  - `T-S5-MAIN-116` Done。
+  - 下一步主线转入 `T-S5-VAL-113`：更新 API17 回归清单并记录本地验证结果。
+
+## Execution Progress (T-S4-AUDIO-097, 2026-06-04)
+- 已完成 `T-S4-AUDIO-097`：
+  - 诊断出 DSP 播放按钮持续红色的高概率误报路径：`HiFiAudioProcessor` 在非 direct `ByteBuffer` 时直接发布 `FAIL_OPEN`。
+  - `HiFiAudioProcessor` 新增 direct scratch bridge；API17/ExoPlayer heap buffer 会桥接到 direct buffer 后继续调用 native DSP。
+  - non-direct buffer 不再直接导致红框；真实 `unsupported-format`、`native-not-ready`、`native-process-error`、native bypass/error 仍按 fail-open 诊断保留红色。
+  - 新增诊断日志：`hifi-dsp native direct-buffer bridge input=<...> output=<...>`。
+- 行数变化:
+  - `HiFiAudioProcessor.kt`: 约 293 -> 383 行，仍低于 general file preferred 500。
+  - `MainActivity.kt`: 未因本任务继续扩大。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，未新增 blocking finding。
+- 结果:
+  - `T-S4-AUDIO-097` Done。
+  - 下一步主线转入 `T-S5-MAIN-116`：页面壳拆分试点评估。
+
+## Execution Progress (T-S5-PLAY-112, 2026-06-04)
+- 已完成 `T-S5-PLAY-112`：
+  - 新增 `KugouRadioSessionManager`，维护 radio active session、current、upcoming、history。
+  - `KugouContentBinder` 将 radio 歌曲点击和电台歌曲加载成功后的首曲播放改为启动 radio session。
+  - 普通 Kugou queue 与 radio session 互斥：普通歌曲队列播放会清 radio，radio 播放会清普通 queue，切回 Emby 播放会清酷狗 queue/radio session。
+  - `performNextAction`、`performPrevAction` 和 Kugou 播放 completion 在 radio active 时先走 radio session，不再落到普通 queue 或 Emby queue。
+  - 队列页在 radio active 时展示“酷狗电台队列”（current + upcoming），普通 queue 仍显示“酷狗普通队列”。
+- `.NET` 依据:
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PersonalFmService.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.PersonalFm.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.Queue.cs`
+- 范围说明:
+  - Android 当前仍基于已接入的旧 WebApi `/fm/songs` 列表构建最小 radio session。
+  - 本轮没有猜测 `.NET` direct Personal FM raw endpoint，没有实现 action report/dislike。
+  - 未修改 `KugouMusic.NET/`，未引入新依赖，未触碰 `minSdk=17`。
+- 行数变化:
+  - 新增 `KugouRadioSessionManager.kt`: 114 行。
+  - `KugouContentBinder.kt`: 486 -> 493 行。
+  - `KugouContentRenderer.kt`: 196 -> 198 行。
+  - `MainActivity.kt`: 5632 -> 5709 行；仍低于 `T-S5-MAIN-115` 执行前约 6118 行，但本轮播放接线使入口文件回升，后续仍需 `T-S5-MAIN-116` 或播放控制 Binder 继续压降。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，未新增 blocking finding。
+- 结果:
+  - `T-S5-PLAY-112` Done。
+  - 下一步主线转入 `T-S4-AUDIO-097`：DSP 播放按钮持续红框诊断与修正。
+
+## Execution Progress (T-S5-MAIN-115, 2026-06-04)
+- 已完成 `T-S5-MAIN-115`：
+  - 新增 `KugouContentRenderer`，接管推荐歌曲、Radio 页面、发现页、普通 Kugou 队列页的 UI 行构造与状态文案渲染。
+  - 新增 `KugouContentBinder`，接管推荐歌曲、推荐电台、radio songs、发现 tag/playlist/songs 的请求入口、loading/list/selected state 和页面渲染协调。
+  - `MainActivity` 不再维护大批 Kugou 内容页 state，也不再承载 `requestKugouRadioSongs`、`requestKugouPlaylistsByTag`、`requestKugouPlaylistSongs` 等内容页请求主逻辑；入口文件只保留播放/点赞/页面刷新委托。
+  - 未改变已完成的 Kugou source boundary、普通 queue 行为或 Radio 单曲临时行为。
+  - 未修改 `KugouMusic.NET/`，未引入新依赖，未触碰 `minSdk=17`。
+- 行数变化:
+  - 新增 `KugouContentRenderer.kt`: 196 行。
+  - 新增 `KugouContentBinder.kt`: 486 行。
+  - `MainActivity.kt`: 约 6118 -> 5632 行。
+  - `SourceRowRenderer.kt`: 约 192 行，未继续扩大。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，但入口文件行数继续下降。
+- 结果:
+  - `T-S5-MAIN-115` Done。
+  - 后续 `T-S5-PLAY-112` 已完成 Radio/FM session，当前主线已转入 API17 实机 A~N 回归证据闭环。
+
+## Execution Progress (T-S5-PLAY-111, 2026-06-04)
+- 已完成普通酷狗歌曲队列最小闭环，依据 `.NET PlaybackQueueManager`：
+  - 新增 `KugouPlaybackQueueManager`，实现 `setupQueue(track, contextList)`、最大 300 首截取、围绕当前歌曲截取、`getNext/getPrevious` 循环。
+  - 推荐歌曲和发现歌单歌曲点击时建立独立 Kugou 普通队列，不写入 Emby `loadedTracks/currentTrackIndex`。
+  - Kugou active 的 previous/next 先走普通 Kugou queue；无普通队列时保持单曲边界，不触发 Emby。
+  - Kugou 普通队列播放完成时按 queue next 推进。
+  - 队列页在 Kugou active/普通队列非空时展示“酷狗普通队列”，并禁用 Emby 源文件删除按钮，避免误删 Emby 当前曲。
+  - Radio 歌曲点击路径已由后续 `T-S5-PLAY-112` 接管为独立 Radio/FM session。
+- `.NET` 依据:
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PlaybackQueueManager.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.Queue.cs`
+- 行数变化:
+  - 新增 `KugouPlaybackQueueManager.kt`: 84 行。
+  - `MainActivity.kt`: 当前约 6118 行；普通队列接线使入口文件 red-line 趋势变差。
+  - `SourceRowRenderer.kt`: 约 192 行，新增 `active` 参数保持向后兼容。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，但入口文件行数继续上升。
+- 结果:
+  - `T-S5-PLAY-111` Done。
+  - 后续 `T-S5-MAIN-115` 已完成；当前主线进入 `T-S5-PLAY-112`。
+
+## Execution Progress (T-S5-PLAY-110, 2026-06-04)
+- 已完成纯酷狗 playback/session 边界：
+  - 新增 `SourcePlaybackSession` 与 `SourcePlaybackSnapshot`，用当前 source session 表达 Now Playing 基础字段。
+  - Kugou 播放请求通过前置校验后标记为 Kugou active；播放失败、暂停或单曲结束时保留当前 Kugou track，避免 play/pause 回落到 Emby 队列。
+  - Emby 显式播放时切回 Emby active。
+  - previous/next 在 Kugou active 时不再触发 Emby `loadedTracks/currentTrackIndex`。
+  - 首页标题/artist、歌词 artist、SeekBar duration、前台 service state 改为读取 source playback snapshot。
+  - Kugou active 时 `refreshProgressMetrics()` 跳过 Emby 下载窗口/可播放估算，`maybePersistPlaybackResumeState()` 跳过 Emby resume 写入。
+  - 清理 Kugou session/content 时清掉 active Kugou source，避免登出后保留旧 Now Playing。
+- 范围说明:
+  - 本轮没有实现完整 Kugou 普通队列或 Radio/FM session；这些已提升为 `T-S5-PLAY-111/112`。
+  - 本轮没有恢复用户填写 Kugou WebApi Base URL；旧内容/play URL direct migration 仍由后续内容/播放任务逐项迁移。
+- 行数变化:
+  - 新增 `SourcePlaybackSession.kt`: 77 行。
+  - `MainActivity.kt`: 当前约 6018 行；本轮只做源状态接线，但入口文件仍处于既有 red-line。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2。
+- 结果:
+  - `T-S5-PLAY-110` Done。
+  - `T-S5-PLAY-111` 与 `T-S5-MAIN-115` 已完成；当前主线建议继续 `T-S5-PLAY-112` Radio/FM session。
+  - 独立 Ready：`T-S4-AUDIO-097` DSP 播放按钮持续红框诊断与修正。
+
+## Execution Progress (T-S5-KG-118, 2026-06-04)
+- 已完成 Kugou direct session validation：
+  - 新增 `KugouDirectCrypto`，按 `.NET` `KgCrypto` / `Constants.PublicLiteRasKey` 移植 AES-CBC、Playlist AES、RSA no-padding、RSA PKCS1。
+  - 新增 `KugouDirectSessionClient`，按 `.NET` `RegisterClient.InitDeviceAsync()` / `RawDeviceApi.RegisterDevAsync(...)` 注册设备并保存 `dfid/mid/uuid`。
+  - 同一 client 按 `.NET` `LoginClient.RefreshSessionAsync()` / `RawLoginApi.RefreshTokenAsync(...)` 刷新 token，并解密 `secu_params` 合并 `token/t1/is_vip`。
+  - `KugouDirectSessionStore` 扩展 direct session 缓存：`dfid/mid/uuid/installGuid/installMac/installDev/vipType/t1/validationState/validationReason/validatedAtMs`。
+  - `KugouAuthConfigBinder` 改为 QR success 后先进入“校验设备与 Token”；只有 refresh 成功后 `hasSession()` 才返回 true。
+- `.NET` 依据:
+  - `LoginViewModel.cs` QR success 后调用 `deviceClient.InitDeviceAsync()` 与 `authClient.RefreshSessionAsync()`。
+  - `RegisterClient.cs`
+  - `RawDeviceApi.cs`
+  - `LoginClient.cs`
+  - `RawLoginApi.cs`
+  - `KGCrypto.cs`
+  - `KgSessionManager.cs`
+- 行数变化:
+  - 新增 `KugouDirectCrypto.kt`: 158 行。
+  - 新增 `KugouDirectSessionClient.kt`: 335 行。
+  - `KugouDirectSessionStore.kt`: 49 -> 140 行。
+  - `KugouAuthConfigBinder.kt`: 282 -> 345 行。
+  - `MainActivity.kt`: 5889 行，未修改。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数仍为 2，未新增 red finding。
+- 结果:
+  - `T-S5-KG-118` Done。
+  - `T-S5-PLAY-110/111` 与 `T-S5-MAIN-115` 已完成；当前主线建议继续 `T-S5-PLAY-112` Radio/FM session。
+  - 独立 Ready：`T-S4-AUDIO-097` DSP 播放按钮持续红框诊断与修正。
+
+## Execution Progress (T-S5-KG-117, 2026-06-04)
+- 已完成 Kugou direct raw API 最小 QR 登录链路:
+  - 新增 `KugouDirectSigner`，按 `.NET` `KgSigner.CalcWebQrSignature` 与 `KgSignatureHandler` 默认参数规则计算 Web QR signature。
+  - 新增 `KugouDirectAuthClient`，调用 `https://login-user.kugou.com/v2/qrcode` 与 `/v2/get_userinfo_qrcode`。
+  - 新增 `KugouDirectSessionStore`，缓存 direct QR 成功返回的 `userid/token/nickname`，不存储 WebApi Base URL。
+  - `KugouAuthConfigBinder` 恢复 QR 获取、二维码图片展示、2s 轮询、成功后缓存 direct session。
+  - 手机号验证码登录仍保持 pending，因 `.NET` `RawLoginApi.LoginByMobileAsync` 依赖 AES/RSA 体加密与解密，本轮不猜测。
+- `.NET` 依据:
+  - `RawLoginApi.GetQrKeyAsync()`
+  - `RawLoginApi.CheckQrStatusAsync(key)`
+  - `LoginClient.CheckQrStatusAsync(key)`
+  - `KgSignatureHandler`
+  - `KgSigner.CalcWebQrSignature(...)`
+  - `KuGouConfig.WebSignatureSalt`
+- 行数变化:
+  - 新增 `KugouDirectAuthClient.kt`: 162 行。
+  - 新增 `KugouDirectSigner.kt`: 67 行。
+  - 新增 `KugouDirectSessionStore.kt`: 49 行。
+  - `KugouAuthConfigBinder.kt`: 187 -> 282 行。
+  - `MainActivity.kt`: 5883 -> 5889 行（仅恢复 Binder 构造参数接线）。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数仍为 2，未新增 red finding。
+- 结果:
+  - `T-S5-KG-117` Done（QR direct 最小登录链路已可编译落地）。
+  - 后续 `T-S5-KG-118` 已完成 direct device init / token refresh / session validation；内容接口 direct 化仍需后续拆分。
+
+## Execution Progress (T-S5-KG-109, 2026-06-04)
+- 已完成产品路径纠偏:
+  - 设置页移除 `kugou_webapi_base_url_input`，不再要求用户填写 Kugou WebApi Base URL。
+  - `KugouAuthConfigBinder` 启动/登出时清理旧 WebApi base-url/session 缓存。
+  - 扫码登录、短信验证码和验证码登录按钮改为显示“酷狗直连 API 待接入”，不再触发旧 WebApi 代理路由。
+  - `resolveKugouBaseUrl()` 当前返回空，推荐歌曲/电台/发现歌单/点赞/播放 URL 旧代理请求不会继续后台发起。
+- `.NET` direct API 可行性确认:
+  - `KgHttpTransport` 默认 host 是 `https://gateway.kugou.com`，但登录还依赖 `login-user.kugou.com`、`login.user.kugou.com`、`loginserviceretry.kugou.com` 等 host。
+  - 登录、刷新、内容和播放 URL 不是 base URL 替换；需要移植 `KgSignatureHandler`、`KgSigner`、`KgCrypto`、`KgSessionManager`、dfid/mid/cookie/token/device/session 行为。
+  - 本轮未猜测签名或加密协议，未修改 `KugouMusic.NET/`。
+- 文档更新:
+  - `docs/KUGOU_AUTH_SESSION_CONTRACT.md`
+  - `docs/KUGOU_MUSIC_NET_INTERFACE_MAP.md`
+  - `docs/MULTI_SOURCE_NAV_CONTRACT.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- 行数变化:
+  - `KugouAuthConfigBinder.kt`: 415 -> 187 行。
+  - `KugouSessionStore.kt`: 83 -> 26 行。
+  - `MainActivity.kt`: 5890 -> 5883 行。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 warning）。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数仍为 2，未新增 red finding。
+- 结果:
+  - `T-S5-KG-109` Done（产品路径纠偏 + direct 可行性确认完成）。
+  - direct raw API 端到端接入拆为后续 P0：`T-S5-KG-117`。
+  - 依赖真实酷狗内容/播放的 `T-S5-PLAY-110/111/112` 当前已由 `T-S5-KG-118` 解锁 session 前置。
+
+## Execution Progress (T-S5-MAIN-114, 2026-06-04)
+- 已完成 MainActivity 第二轮拆分：Kugou Auth/Config Binder。
+- 新增:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+- 迁出范围:
+  - 酷狗登录/配置 UI 控件绑定。
+  - session cache restore / persist。
+  - 扫码登录、QR polling、短信验证码、验证码登录、登出。
+  - 登录状态文案、二维码状态文案、登录面板可见性。
+- `MainActivity` 保留:
+  - 薄委托：`requestKugouQrLogin`、`clearKugouSessionState`、`refreshKugouLoginUi`、`resolveKugouBaseUrl`、`hasKugouSession`。
+  - 酷狗内容页、播放、点赞逻辑暂未改变，留给 `T-S5-KG-109/T-S5-MAIN-115/T-S5-PLAY-*`。
+- 行数变化:
+  - `MainActivity.kt`: 6213 -> 5890 行。
+  - `KugouAuthConfigBinder.kt`: 415 行。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过（仅既有 Kotlin warning）。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败，但 blocking finding 数未增加，入口文件行数下降。
+- 结果:
+  - `T-S5-MAIN-114` Done。
+  - `M-S5-MAIN-034` In Progress（后续仍有 `T-S5-MAIN-115/T-S5-MAIN-116`）。
+  - `T-S5-KG-109` 随后进入 Ready，并已在本轮完成。
+
+## Planning Refresh (Bootstrap Guardrail Alignment, 2026-06-04)
+- 已执行 `$ai-planning`，将 bootstrap 后新增工程护栏纳入 S5 纠偏计划。
+- 关键调整:
+  - `MainActivity.kt` red-line 治理作为当前阶段硬前置。
+  - 当时 Ready 队列收敛为 `T-S5-MAIN-114` 与 `T-S4-AUDIO-097`。
+  - `T-S5-KG-109` 当时从并列 Ready 调整为 P0 Planned，依赖 `T-S5-MAIN-114` 完成后再提升。
+  - 当前已完成 `T-S5-MAIN-114`、`T-S5-KG-109`、`T-S5-KG-117`、`T-S5-KG-118`、`T-S5-PLAY-110` 与 `T-S5-PLAY-111`，下一步转入 `T-S5-MAIN-115`。
+- 原因:
+  - `python scripts/check_code_health.py` 当前因既有 `MainActivity.kt` 约 6213 行与超长方法失败。
+  - WebApi 地址纠偏会触碰酷狗登录/配置 UI，若抢先执行容易继续扩大入口文件。
+- 下一步:
+  - `T-S4-AUDIO-097`、`T-S5-PLAY-111/112` 与 `T-S5-MAIN-115` 已完成。
+  - 当前首选入口为 API17 目标车机 A~N 回归执行与证据回写。
+
+## Bootstrap Completion (2026-06-04)
+- 已按 `$ai-bootstrap` 补齐缺失工程护栏与 code health 文件。
+- 新增 guardrails:
+  - `.ai/context/ARCHITECTURE.md`
+  - `.ai/context/CODE_STANDARDS.md`
+  - `.ai/context/RED_LINES.md`
+  - `.ai/context/ENGINEERING_CHECKLIST.md`
+- 新增 code health / hook 文件:
+  - `.ai/code_health_config.json`
+  - `scripts/check_code_health.py`
+  - `.pre-commit-config.yaml`
+- 已将 `minSdk = 17` 写入 red-line 约束。
+- 已将 `KugouMusic.NET/` 配置为第三方参考项目，code health 扫描忽略该目录。
+- 已追加 `.ai/context/PROJECT_BRIEF.md` 的 bootstrap 自动识别结果。
+- 验证结果:
+  - `python scripts/check_code_health.py` 可执行，但因既有 `MainActivity.kt` 红线失败。
+  - Blocking findings:
+    - `MainActivity.kt` 约 6213 行，超过 entry file red line。
+    - `MainActivity.kt` 中约 line 2242 的方法体被粗略检测为超长方法。
+  - Non-blocking findings:
+    - `MainActivity.kt` 另有 refactor/warning 级方法长度问题。
+    - `SourceRowRenderer.kt` 存在 warning 级方法长度问题。
+    - `AppUpdateManager.kt` 文件长度 warning。
+    - `activity_main.xml` declarative UI 文件长度 warning。
+- 结论: bootstrap 文件生成完成；`T-S5-MAIN-114` 已完成一轮压降，后续继续执行 `T-S5-KG-109/T-S5-MAIN-115` 等任务。
+
+## Requirement Refresh (S5 Corrective Scope, 2026-06-04)
+- 用户新增确认：
+  - 除歌曲外还有电台类型播放；电台是同一电台持续播放，下一曲由电台内部切换。
+  - `MainActivity.kt` 6k 多行问题需要现在优化，不再只是记录。
+  - 酷狗 API 不应要求用户提供地址；必须参考 `KugouMusic.NET`。
+  - 默认酷狗模式应是纯酷狗，不叠加 Emby 播放/队列。
+  - 酷狗队列和 Emby 队列不同，必须参考 `.NET`。
+  - DSP 播放按钮不能持续红色；红色应只代表真实 fail-open/bypass/error。
+- 状态:
+  - `Scoped + Planned`：已写入 S5 纠偏 scope，并重排 plan/modules/tasks/queue。
+  - `T-S5-MAIN-108` 已完成；用户随后修正拆分口径，单 Activity 外壳不再是长期硬约束。
+  - Next Ready 调整为 `T-S5-MAIN-114`，先拆酷狗登录/配置 Binder；`T-S4-AUDIO-097` 可独立执行，`T-S5-KG-109` 等待 `T-S5-MAIN-114` 后提升。
+
+## Planning Refresh (MainActivity Decomposition Phase 2, 2026-06-04)
+- 用户新增确认：
+  - 之前“保持单 Activity 外壳”的口径过窄。
+  - 项目越来越大，如果能适当拆 Activity/页面壳/Fragment/Controller/Binder 更好。
+  - 目标是避免单文件行数过多。
+- 规划调整：
+  - 新增模块 `M-S5-MAIN-034`：MainActivity Decomposition Phase 2。
+  - 新增 Ready 任务 `T-S5-MAIN-114`：拆出 Kugou Auth/Config Binder。
+  - 新增 Planned 任务 `T-S5-MAIN-115`：拆出 Kugou Content Pages Binder。
+  - 新增 Planned 任务 `T-S5-MAIN-116`：页面壳拆分试点评估（Fragment / 独立 Activity）。
+  - `T-S5-KG-109` 保持 P0，但推荐在 `T-S5-MAIN-114` 后执行，避免继续扩大 `MainActivity`。
+- 设计口径：
+  - 不再把单 Activity 作为长期硬约束。
+  - 短期先用 Controller/Binder 降低风险。
+  - 中期可试点 Fragment/独立 Activity，优先设置/日志/EQ 等低耦合页面。
+  - 播放页、service bridge、方向盘按键和浮窗相关页面最后拆。
+
+## Planning Refresh (S5 Corrective Scope, 2026-06-04)
+- 新增/刷新模块：
+  - `M-S5-MAIN-029` MainActivity Split Foundation。
+  - `M-S5-KG-030` Kugou API Configuration Correction。
+  - `M-S5-PLAY-031` Pure Kugou Playback Boundary。
+  - `M-S5-PLAY-032` Kugou Queue and Radio Session Parity。
+  - `M-S4-AUDIO-023` DSP Runtime Indicator Correction。
+  - `M-S5-VAL-033` Corrective Validation。
+- 新任务链：
+  - `T-S5-MAIN-108` MainActivity 第一轮拆分边界落地。
+  - `T-S5-KG-109` Kugou WebApi Base URL 产品路径纠偏与 direct API 可行性确认。
+  - `T-S5-PLAY-110` 纯酷狗播放状态边界，切断 Emby 队列叠加。
+  - `T-S5-PLAY-111` Kugou 普通歌曲队列按 `.NET PlaybackQueueManager` 实现。
+  - `T-S5-PLAY-112` Kugou Radio/FM session 按 `.NET PersonalFmService` 实现。
+  - `T-S4-AUDIO-097` DSP 播放按钮持续红框诊断与修正。
+  - `T-S5-VAL-113` S5 纠偏 API17 回归清单与本地验证。
+- 当时队列状态：
+  - Ready: `T-S5-KG-109`, `T-S4-AUDIO-097`。
+  - Pending: `T-S5-MAIN-115`, `T-S5-PLAY-110`, `T-S5-PLAY-111`, `T-S5-PLAY-112`, `T-S5-MAIN-116`, `T-S5-VAL-113`。
+  - Blocked: `B-KG-EMBY-INGEST-001`, `T-S4-AUDIO-095`。
+
+## Execution Progress (T-S5-MAIN-108, 2026-06-04)
+- 已完成 MainActivity 第一轮低风险拆分:
+  - 新增 `app/src/main/java/com/skodamusic/app/ui/SourceRowRenderer.kt`。
+  - 将 source row、Kugou track row、Emby track row、空态行、分区标题、点赞/删除图标按钮构造从 `MainActivity` 迁出。
+  - 接入范围覆盖：推荐歌曲、推荐电台、发现歌单、队列/库列表、点赞状态页。
+  - 未改变播放、删除、点赞、登录、网络请求、导航和 service state 逻辑。
+- 行数变化:
+  - `MainActivity.kt`: 6443 -> 6213 行。
+  - 新增 `SourceRowRenderer.kt`: 191 行。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+- 结果:
+  - `T-S5-MAIN-108` Done。
+  - `M-S5-MAIN-029` Done。
+  - `T-S5-KG-109` 当时进入 Ready；随后被 bootstrap guardrail planning refresh 临时调整为 P0 Planned；`T-S5-MAIN-114` 完成后重新提升并已完成。
+
+## Code Reality Notes (2026-06-04)
+- `MainActivity.kt` 当前约 5883 行；已抽出 `SourceRowRenderer` 与 `KugouAuthConfigBinder`。
+- 当前酷狗普通歌曲点击使用 `playKugouTrack(SourceTrack)` 单曲直连播放，未建立 `.NET` 风格 queue。
+- 当前电台歌曲也被当普通 `SourceTrack` 播放，未建立同一 radio/FM session。
+- 当前 Now Playing / service state / next/previous 仍大量读取 Emby `loadedTracks/currentTrackIndex`。
+- 当前设置页已移除 `kugou_webapi_base_url_input`；QR direct 登录和 session validation 已落地，SMS direct 登录仍 pending。
+- `.NET` 队列与电台参考：
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PlaybackQueueManager.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PersonalFmService.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.Queue.cs`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.PersonalFm.cs`
 
 ## Latest Confirmed (User)
 - 新阶段切换到酷狗默认模式与多来源抽象。
@@ -247,25 +635,32 @@ Last Updated: 2026-06-03
   - `T-S4-AUDIO-087` Blocked：等待 API17 实机听感、长播、切歌/seek/暂停恢复验证。
 
 ## Current Focus
-- 当前焦点为 S5 酷狗来源模式与多来源抽象。
-- DSP 播放页状态指示已完成。
-- 酷狗接口映射、登录/session 契约、多来源模型、source-aware 播放边界、左侧一级导航、登录、三类内容页和点赞状态页已完成。
-- 当前 S5 计划内可执行任务已完成；剩余为 Emby 入库能力确认和 AC83xx 实机验证阻塞项。
+- 当前焦点为 S5 纠偏：MainActivity 拆分、酷狗 API 地址纠偏、纯酷狗播放、普通酷狗队列、Radio/FM session、DSP 红框修正。
+- 当前 Ready: `T-S5-KG-109`, `T-S4-AUDIO-097`；`T-S5-MAIN-114` 已完成。
 - S4 `T-S4-AUDIO-095` 仍等待 AC83xx 实机验证，不阻塞 S5 本地 planning/execution。
 
-## Review (2026-06-03)
+## Historical Review Snapshot (2026-06-03, Superseded By 2026-06-04 Corrective Scope)
 - 状态: Done，无阻断问题。
 - Scope 对齐: 仍符合 S5 酷狗来源、多来源抽象、点赞状态、100MB 缓存守卫与 DSP 播放按钮状态指示口径。
 - Plan/Queue 对齐: `TASK_QUEUE.md` 当前 Ready/Pending 均为 None，Blocked 仅保留 `B-KG-EMBY-INGEST-001` 与 `T-S4-AUDIO-095`。
 - 本轮 review 补充:
   - `KugouMusic.NET/` 是只读参考源码，已加入 `.gitignore`，不随 Android 代码提交。
   - 静态检查未发现会阻断提交/推送的启动、播放、登录/session、缓存守卫问题。
-  - 结构风险: `MainActivity` 继续膨胀，后续新增来源时建议拆分 source adapter / view binder；不阻塞本次阶段完成。
+  - 结构风险: `MainActivity` 继续膨胀，后续新增来源时建议拆分 source adapter / view binder。
 - 验证通过:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
   - `gradle :app:assembleDebug --no-daemon`
+
+## Historical Requirement Capture (MainActivity Engineering Debt, 2026-06-03, Superseded By 2026-06-04)
+- 用户要求记录 `MainActivity` 过大问题。
+- 当时写入 `SCOPE.md` 的 `D-MAINACTIVITY-001`：
+  - 状态: Pending Planning。
+  - 目标: 后续逐步拆分 UI/controller/binder 边界。
+  - 边界: 当前不直接执行重构，不改变 S5 已完成行为，不进入当前 Ready 队列。
+- 2026-06-04 更新:
+  - 用户已明确要求现在优化，当前 Ready 已变更为 `T-S5-MAIN-108`。
 
 ## Historical Notes
 ## Requirement Refresh (App EQ Fixed 10-band Trial, 2026-05-29)

@@ -836,23 +836,6 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
-                    <EditText
-                        android:id="@+id/kugou_webapi_base_url_input"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/field_surface"
-                        android:fontFamily="sans-serif"
-                        android:hint="@string/hint_kugou_webapi_base_url"
-                        android:imeOptions="actionNext"
-                        android:inputType="textUri"
-                        android:maxLines="1"
-                        android:padding="12dp"
-                        android:singleLine="true"
-                        android:textColor="@color/text_primary"
-                        android:textColorHint="@color/text_muted"
-                        android:textSize="18sp" />
-
                     <TextView
                         android:id="@+id/kugou_status_value"
                         android:layout_width="match_parent"

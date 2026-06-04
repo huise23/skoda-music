@@ -1,195 +1,239 @@
 # MODULES
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
 ## Active Stage
-- S5 子阶段 - Kugou Source Mode & Multi-Source Discovery
-- Parallel Hotfix: S4 Native DSP Playback Status Indicator
+- S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
-## M-S4-AUDIO-022
-- Module ID: `M-S4-AUDIO-022`
-- Name: Native DSP Playback Status Indicator
-- Goal: 在播放页用播放/暂停按钮边框展示 Native DSP runtime 状态，让用户能快速确认当前没有进入 fail-open。
-- Why it matters: native DSP 已经能工作，但目前状态主要依赖日志；车机场景需要在播放页用低成本视觉信号判断 DSP 是否仍在正常处理。
+## Planning Refresh (Bootstrap Guardrail Alignment, 2026-06-04)
+- `MainActivity.kt` 已被 code health 标记为 entry red-line 文件，`M-S5-MAIN-034` 是当前阶段前置治理模块。
+- `KugouMusic.NET/` 已按红线定义为只读第三方参考项目，不纳入 Android 项目扫描，不允许在本阶段修改。
+- `minSdk = 17` 是所有模块的强制兼容红线。
+- 模块队列调整:
+  - `M-S5-MAIN-034` 保持 P0 Ready。
+  - `M-S4-AUDIO-023` 保持 P0 Ready，但只适合独立 single task。
+  - `M-S5-KG-030` 当时保持 P0 Planned，等待 `T-S5-MAIN-114`；当前 `T-S5-MAIN-114` 已完成，本模块已 Ready。
+
+## M-S5-MAIN-029
+- Module ID: `M-S5-MAIN-029`
+- Name: MainActivity Split Foundation
+- Goal: 将 `MainActivity` 中低风险的酷狗/source UI 与播放控制职责拆出，降低后续队列和电台纠偏风险。
+- Why it matters: `MainActivity.kt` 当时约 6443 行，继续直接堆逻辑会让酷狗 source、Emby 队列、DSP 状态和 service bridge 互相污染。
 - In Scope:
-  - 在 `HiFiDspController` 或等价轻量状态源中发布 runtime state。
-  - `HiFiAudioProcessor` 根据 native status/tier/flags 更新状态。
-  - `MainActivity` 在既有 `UI_PROGRESS_REFRESH_MS` 进度 tick 中读取状态。
-  - `btn_play_pause` 使用有色边框展示：未知/关闭、正常、降级/超预算、fail-open/旁路/错误。
-  - 仅视觉状态变化时更新按钮背景。
+  - 第一轮当时保持单 Activity 壳层，不代表后续长期硬约束。
+  - 保持现有 XML/控件 ID。
+  - 拆出 source row/list renderer、酷狗页面 binder、播放控制 binder 或等价低风险类。
+  - MainActivity 仍负责 Android 生命周期和总协调。
 - Out of Scope:
-  - 修改 DSP 算法、native 性能档位或音频处理策略。
-  - 增加新播放页二级入口或常驻大面积状态面板。
-  - 逐帧 UI 刷新或从 audio thread 直接操作 UI。
-- Dependencies: `T-S4-AUDIO-088~094` 已完成。
+  - 当轮不做多 Activity 重写。
+  - UI 大改版。
+  - 删除稳定 Emby 链路。
+  - 引入高 API 依赖。
+- Dependencies: 当前 scope 已确认。
 - Milestone / Done Criteria:
-  - 播放/暂停按钮边框可稳定反映 DSP 状态。
-  - fail-open/bypass/error 有明显异常颜色。
-  - 关闭 DSP、原声模式或 release player 后不会残留正常状态。
-  - API17 guardrails、Kotlin compile 通过；触及资源时 assemble 通过。
-- Related Tasks: `T-S4-AUDIO-096`
+  - 至少完成一轮可编译拆分。
+  - `MainActivity.kt` 行数明显下降。
+  - 左侧导航、播放按钮、设置、登录、service state 不回归。
+- Related Tasks: `T-S5-MAIN-108`
 - Priority: P0
 - Status: Done
 - Risks:
-  - UI 刷新过快会影响低端车机体验；必须复用 1s tick 并做状态变化去重。
+  - 生命周期、handler 和 callback 捕获 Activity 引用时容易泄漏；拆分时需显式销毁/停止轮询。
+- Suitable For Module Execution?: Yes
+
+## M-S5-MAIN-034
+- Module ID: `M-S5-MAIN-034`
+- Name: MainActivity Decomposition Phase 2
+- Goal: 继续把 `MainActivity` 中仍然膨胀的酷狗登录/配置、酷狗内容页和页面壳职责拆出，避免后续纠偏继续扩大入口文件。
+- Why it matters: 第一轮只迁出了 source/list row 构造，`MainActivity.kt` 仍约 6213 行；用户已明确不能把单 Activity 外壳当硬约束，项目变大后应适当拆 Activity/页面壳。
+- Responsibility Boundary:
+  - `MainActivity` 只保留 launcher/lifecycle、左侧一级导航协调、播放/service bridge 的薄协调入口。
+  - 酷狗登录/session/config UI 归属 `KugouAuthConfigBinder` 或等价类。
+  - 酷狗推荐/电台/发现页面状态与渲染归属 `KugouPagesBinder` 或等价类。
+  - 页面壳拆分评估覆盖 Fragment/独立 Activity，但不得破坏左侧一级快速切换、默认酷狗模式、不新增二级 tab。
+- In Scope:
+  - 第二轮拆分酷狗登录/配置 UI 与 session 状态接线。
+  - 第三轮拆分酷狗内容页 binder。
+  - 评估 API17 兼容的 Fragment/独立 Activity 试点，优先设置/日志/EQ 等低耦合页面。
+  - 建立文件规模目标：短期 `MainActivity` 压到 5500 行以下，中期继续向 3000 行级别收敛。
+- Out of Scope:
+  - 一次性全量重写 Activity。
+  - 牺牲后台服务、方向盘按键、浮窗、默认酷狗入口或 API17 兼容。
+  - 引入要求 `minSdk > 17` 的导航/Fragment/页面依赖。
+- Dependencies:
+  - `T-S5-MAIN-108` 已完成。
+- Guardrail Dependencies:
+  - 必须先执行至少 `T-S5-MAIN-114`，因为 `MainActivity.kt` 已超过 entry red-line，后续 API/播放任务不得继续把登录/配置 UI 逻辑堆回入口文件。
+- Entry Points Involved:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Files Expected:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouPagesBinder.kt`
+  - 可能新增页面壳试点文件（待 `T-S5-MAIN-116` 决定）。
+- Files To Avoid Expanding:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Size / God Object Risk:
+  - High: `MainActivity` 仍是 god Activity；新 binder/controller 单文件应保持小而聚焦，避免形成新的 god binder。
+- Milestone / Done Criteria:
+  - 酷狗登录/配置和内容页主要 UI 状态从 `MainActivity` 迁出。
+  - `MainActivity` 行数持续下降，后续 API/播放纠偏不再向入口文件堆大块逻辑。
+  - 页面壳拆分路线有明确试点结论。
+- Progress:
+  - `T-S5-MAIN-114` Done：新增 `KugouAuthConfigBinder`，迁出酷狗登录/配置 UI、session 恢复、扫码/短信登录、登出和 QR polling 生命周期。
+  - `MainActivity.kt` 行数约 6213 -> 5890。
+  - `T-S5-PLAY-110/111` 完成后，入口文件因播放源/普通队列接线回升到约 6118 行；`T-S5-MAIN-115` 需要优先迁出 Kugou 内容页与普通队列页接线。
+  - `T-S5-MAIN-115` Done：新增 `KugouContentRenderer` 与 `KugouContentBinder`，已迁出推荐歌曲、Radio、发现页、普通 Kugou 队列页 UI 渲染、请求入口、loading/list/selected state；`MainActivity.kt` 约 6118 -> 5632 行。
+  - `T-S5-MAIN-116` 剩余：页面壳拆分试点评估，候选 Fragment/独立 Activity/继续 Binder 化。
+- Related Tasks: `T-S5-MAIN-114`, `T-S5-MAIN-115`, `T-S5-MAIN-116`
+- Priority: P0
+- Status: Done
+- Risks:
+  - Binder 持有 Activity/View 生命周期时可能引入泄漏；必须提供 stop/destroy 或在 Activity 生命周期中清理。
+  - 过早拆播放页会影响 service bridge 和后台按键；页面壳试点必须先选低耦合页面。
+- Suitable For Module Execution?: Yes
+- Suitable For Full Plan Execution?: Yes
+
+## M-S5-KG-030
+- Module ID: `M-S5-KG-030`
+- Name: Kugou API Configuration Correction
+- Goal: 移除用户必填 WebApi Base URL 路径，回到 `KugouMusic.NET` direct client/raw api 依据。
+- Why it matters: 用户明确质疑“酷狗 api 怎么要我提供地址了”；当前设置项把实现责任转嫁给用户，不符合 scope。
+- In Scope:
+  - 审计 `KugouWebApiClient` 与设置页 base URL。
+  - 对照 `.NET` `KgHttpTransport`、raw api、client 默认 host。
+  - 能直接移植的改为 Android 内部配置/常量/adapter。
+  - 不能确认的能力标记 Blocked 并停下询问。
+- Out of Scope:
+  - 猜测酷狗签名协议。
+  - 修改 `KugouMusic.NET/`。
+  - 要求用户部署本地 WebApi 才可使用。
+- Dependencies:
+  - `M-S5-MAIN-029` 已完成。
+  - `T-S5-MAIN-114` 必须先完成，避免 `T-S5-KG-109` 继续扩大 `MainActivity` 登录/配置逻辑。
+- Updated Dependency Note: `T-S5-MAIN-114` 已完成，本模块可进入 Ready；执行时不得把登录/配置逻辑加回 `MainActivity`。
+- Progress:
+  - `T-S5-KG-109` Done：已移除设置页用户必填 WebApi Base URL、清理旧 WebApi session/base 缓存、阻断 QR/SMS 旧代理请求，并确认 direct raw API 不是 base URL 替换。
+  - `T-S5-KG-117` Done：已移植 QR direct raw key/check、Web QR signature、direct session cache 与 Binder 轮询接线。
+  - `T-S5-KG-118` Done：已移植 QR success 后的 device register、token refresh、AES/RSA crypto 和 validation state；只有 refresh 成功才视为已登录。
+- Milestone / Done Criteria:
+  - 设置页不再暴露必填 WebApi 地址。（已完成）
+  - 酷狗登录 session validation 已有 `.NET` direct 依据；内容接口 direct 化仍需后续逐项迁移。
+- Related Tasks: `T-S5-KG-109`, `T-S5-KG-117`, `T-S5-KG-118`
+- Priority: P0
+- Status: Done for auth/session correction; content direct migration remains pending in playback/content modules.
+- Risks:
+  - Android 端移植 raw api 可能需要 C#/Kotlin 协议字段逐项对齐，超出单轮实现时必须拆任务。
+  - 若仍需触碰设置页或登录 UI，必须通过 `KugouAuthConfigBinder` 边界完成，不能直接扩大 `MainActivity`。
+- Suitable For Module Execution?: Yes
+
+## M-S5-PLAY-031
+- Module ID: `M-S5-PLAY-031`
+- Name: Pure Kugou Playback Boundary
+- Goal: 酷狗默认播放与 Emby 队列彻底分离，Now Playing/service state/next/previous 基于当前 source session。
+- Why it matters: 当前酷狗播放仍被 Emby `loadedTracks/currentTrackIndex` 影响，表现为 Emby 叠加播放和状态污染。
+- In Scope:
+  - source playback session state。
+  - 酷狗播放时更新 Now Playing、service state、浮窗/通知所需基础字段。
+  - 酷狗模式禁用 Emby auto resume/auto refresh/tail refill。
+  - next/previous 根据当前 session 分流。
+- Out of Scope:
+  - 删除 Emby 来源。
+  - 改写 Emby download-only 播放内核。
+- Dependencies: `T-S5-MAIN-108`, `T-S5-KG-118`
+- Milestone / Done Criteria:
+  - 酷狗播放不依赖 Emby `loadedTracks` 显示标题/artist/hasTrack。
+  - 酷狗 next/previous 不触发 Emby 队列。
+- Related Tasks: `T-S5-PLAY-110`
+- Priority: P0
+- Status: Done
+- Progress:
+  - `T-S5-PLAY-110` Done：新增 `SourcePlaybackSession`/`SourcePlaybackSnapshot`，Kugou active 时 Now Playing、service state、progress、SeekBar、lyrics artist 和 resume persistence 均不再读取/写入 Emby 队列语义。
+  - Kugou active 时 previous/next 不触发 Emby queue；Emby 显式播放时切回 Emby active。
+  - 剩余完整普通队列与 Radio/FM session 已拆入 `M-S5-PLAY-032`。
+- Risks:
+  - Service state bridge 同时服务后台按键和浮窗，必须保持字段兼容。
+- Suitable For Module Execution?: Yes
+
+## M-S5-PLAY-032
+- Module ID: `M-S5-PLAY-032`
+- Name: Kugou Queue and Radio Session Parity
+- Goal: 按 `.NET` 分别实现普通酷狗歌曲队列和电台/FM session。
+- Why it matters: Kugou 队列和 Emby 队列不同；电台也不是普通歌曲队列。
+- In Scope:
+  - `PlaybackQueueManager.cs` 语义：SetupQueue(song, contextList)、最大 300、围绕当前歌曲截取、循环 next/previous。
+  - `PersonalFmService.cs` 语义：active session、current/upcoming/history、next 由 session advance。
+  - `PlayerViewModel.Queue.cs` 分流：FM active 时 next/previous 走 FM。
+  - 队列页显示当前普通队列或 radio session 队列。
+- Out of Scope:
+  - 完整 shuffle/repeat UI。
+  - 电台 dislike/report 全量能力，除非 `.NET` 已有且本轮必要。
+- Dependencies: `T-S5-PLAY-110`（已完成）
+- Milestone / Done Criteria:
+  - 推荐歌曲/发现歌单点击建立普通酷狗队列。
+  - 推荐电台点击建立 radio session。
+  - radio active 时 next/previous 不走普通队列。
+- Related Tasks: `T-S5-PLAY-111`, `T-S5-PLAY-112`
+- Priority: P0
+- Status: Done
+- Progress:
+  - `T-S5-PLAY-111` Done：新增 `KugouPlaybackQueueManager`，实现 `.NET PlaybackQueueManager` 的普通队列最小语义，推荐歌曲/发现歌单点击建立独立 Kugou queue，next/previous 循环。
+  - `T-S5-PLAY-112` Done：新增 `KugouRadioSessionManager`，按 `.NET PersonalFmService` 最小语义维护 radio active session、current/upcoming/history；radio active 时 next/previous/completion 先走 radio session；队列页展示 radio current+upcoming。
+- Risks:
+  - Android 当前仍使用旧 WebApi `/fm/songs` 列表构建最小 radio session；未猜测 `.NET` direct Personal FM raw endpoint，也未实现 action report/dislike。
+- Suitable For Module Execution?: Yes
+
+## M-S4-AUDIO-023
+- Module ID: `M-S4-AUDIO-023`
+- Name: DSP Runtime Indicator Correction
+- Goal: 修复播放按钮持续红色，确保红/黄/绿/灰语义与真实 DSP runtime 一致。
+- Why it matters: 用户需要通过播放页确认没有进入 fail-open；持续红色会让功能不可验收。
+- In Scope:
+  - 审计 `HiFiAudioProcessor` fail-open 发布路径。
+  - 审计 native 永久 bypass 和 direct buffer 条件。
+  - 增加必要诊断日志/状态原因。
+  - 修正 release/disable/normal active/degraded/fail-open 状态映射。
+- Out of Scope:
+  - 重写 DSP 算法。
+  - 按 audio frame 刷 UI。
+- Dependencies: Native DSP 本地链已完成。
+- Milestone / Done Criteria:
+  - 正常 native active 显示绿色。
+  - 降级/超预算显示黄色。
+  - 红色有明确 fail-open/bypass/error 原因。
+- Related Tasks: `T-S4-AUDIO-097`
+- Priority: P0
+- Status: Done
+- Progress:
+  - `T-S4-AUDIO-097` Done：`HiFiAudioProcessor` 对非 direct input/output ByteBuffer 使用 direct scratch bridge 继续调用 native DSP，避免 API17/ExoPlayer heap buffer 常态触发 FAIL_OPEN 红框。
+  - native 不可用、native process error、unsupported format 与 native bypass/error 仍保持 fail-open 诊断路径。
+- Risks:
+  - 真实 AC83xx 性能问题仍需实机验证；如果日志仍出现 `native status=bypass/error`，需要按日志原因继续调 native 参数。
 - Suitable For Module Execution?: No
 
-## M-S5-SRC-022
-- Module ID: `M-S5-SRC-022`
-- Name: Multi-Source Domain & Left Navigation IA
-- Goal: 建立多来源统一模型和左侧一级导航结构，默认进入酷狗模式。
-- Why it matters: 当前代码以 `EmbyTrack` 和 Home 二级 tab 为中心；如果不先建立来源边界，酷狗会变成临时字段堆叠，后续扩展会失控。
-- In Scope:
-  - 定义 `MusicSource / SourceTrack / SourcePlaylist / SourceRadio / SourcePlaybackRef` 或等价模型。
-  - 定义 source-aware queue/playback/like/history 的最小字段。
-  - 规划左侧一级导航：推荐歌曲、推荐电台、发现歌单、播放队列、点赞/入库状态、设置。
-  - 默认启动进入酷狗推荐歌曲页。
-  - 明确不新增 Home 内二级 tab。
-- Out of Scope:
-  - 真实酷狗接口请求。
-  - Emby 上传入库。
-  - 大规模拆分 `MainActivity` 到多 Activity。
-- Dependencies: 已确认 S5 scope。
-- Milestone / Done Criteria:
-  - source contract 可承载 Emby 与 Kugou。
-  - 页面导航契约清楚，能进入实现。
-  - 不把酷狗数据塞进 `EmbyTrack` 作为长期方案。
-- Related Tasks: `T-S5-SRC-097`, `T-S5-SRC-099`, `T-S5-UI-100`
-- Priority: P0
-- Status: Done
-- Risks:
-  - `MainActivity` 体量大，UI 改造时容易碰到播放链路；需先做薄契约。
-- Suitable For Module Execution?: Yes
-
-## M-S5-KG-023
-- Module ID: `M-S5-KG-023`
-- Name: Kugou Interface Map & Auth Session
-- Goal: 将酷狗相关能力逐项映射到 `KugouMusic.NET`，并实现登录/session 生命周期。
-- Why it matters: 用户明确要求酷狗内容全部参考 .NET 程序，不允许自行发挥；登录又是酷狗模式可用的前置条件。
-- In Scope:
-  - 建立接口映射文档，覆盖登录、推荐歌曲、推荐电台、发现歌单、播放 URL、点赞相关参考点。
-  - 默认扫码登录。
-  - 手机号验证码登录。
-  - session 缓存、启动复用、失效跳转登录。
-  - 未登录状态阻断酷狗内容加载。
-- Out of Scope:
-  - 猜测 `KugouMusic.NET` 未覆盖的接口。
-  - 酷狗账号完整管理。
-  - 修改 `KugouMusic.NET`。
-- Dependencies: `M-S5-SRC-022` 的来源契约可并行推进。
-- Milestone / Done Criteria:
-  - 每个酷狗能力可追溯到具体 .NET client/controller/model。
-  - 登录成功后能缓存并复用 session。
-  - session 失效时能跳回登录。
-- Related Tasks: `T-S5-KG-096`, `T-S5-KG-098`, `T-S5-KG-101`
-- Priority: P0
-- Status: Done
-- Risks:
-  - 网关地址/部署方式未固定。
-  - session 失效响应不能猜，需要以 .NET 现有逻辑为准。
-- Suitable For Module Execution?: Yes
-
-## M-S5-KG-024
-- Module ID: `M-S5-KG-024`
-- Name: Kugou Content Pages
-- Goal: 接入酷狗推荐歌曲、推荐电台和发现歌单三个一级内容页。
-- Why it matters: 这是用户可感知的核心功能，也是验证来源抽象是否成立的最短路径。
-- In Scope:
-  - 推荐歌曲加载与列表渲染。
-  - 推荐电台加载、图片、进入电台歌曲列表。
-  - 发现歌单分类、子标签、歌单列表、歌单歌曲列表。
-  - 空结果、网络错误、未登录、不可播状态反馈。
-  - 所有字段映射参考 `KugouMusic.NET` 对应 models。
-- Out of Scope:
-  - 搜索、排行榜、歌手、专辑、MV、听书、评论。
-  - 酷狗歌单收藏/创建/删除。
-- Dependencies: `M-S5-KG-023`, `M-S5-SRC-022`
-- Milestone / Done Criteria:
-  - 三个一级页均可加载数据并展示。
-  - 发现歌单分类来自接口，不手写猜测。
-  - 点击歌曲可产生 source playback ref 或明确不可播反馈。
-- Related Tasks: `T-S5-KG-102`, `T-S5-KG-103`, `T-S5-KG-104`
-- Priority: P0
-- Status: Done
-- Risks:
-  - 酷狗字段结构复杂，已按 `.NET` model 做首屏映射；分页/播放仍由后续任务处理。
-- Suitable For Module Execution?: Yes
-
-## M-S5-PLAY-025
-- Module ID: `M-S5-PLAY-025`
-- Name: Source-Aware Playback & Cache Guard
-- Goal: 让队列和播放解析支持多来源，并建立酷狗播放缓存上限策略。
-- Why it matters: 列表可展示不等于能播放；播放链路当前强依赖 Emby download URL，需要抽出来源解析边界。
-- In Scope:
-  - source-aware queue item。
-  - 酷狗播放 URL 解析契约，参考 `SongClient.GetPlayInfoAsync()` / `GetUrlAsync()`。
-  - 100MB 本地缓存上限与清理策略设计。
-  - 播放失败、不可播、VIP 权限反馈。
-- Out of Scope:
-  - 上传缓存到 Emby 入库。
-  - 自研下载器大重构。
-  - 非酷狗来源播放扩展。
-- Dependencies: `M-S5-SRC-022`, `M-S5-KG-024`
-- Milestone / Done Criteria:
-  - 队列项能区分 Emby/Kugou。
-  - 酷狗播放解析失败不影响 App 稳定。
-  - 缓存上限策略清楚且不超过 100MB。
-- Related Tasks: `T-S5-SRC-099`, `T-S5-PLAY-107`
-- Priority: P1
-- Status: Done
-- Risks:
-  - 直接改现有播放队列可能影响 Emby 已稳定链路；本轮采用酷狗点击直连 resolver 播放，Emby 队列保持原路径。
-- Suitable For Module Execution?: Yes
-
-## M-S5-LIKE-026
-- Module ID: `M-S5-LIKE-026`
-- Name: Like Abstraction & Status History
-- Goal: 抽象点赞能力，并实现酷狗歌曲点赞状态与历史页。
-- Why it matters: 用户明确要求点赞先抽象、暂时支持酷狗，同时需要查看历史和状态；这也是后续 Emby 入库任务的前置状态模型。
-- In Scope:
-  - source-aware like model。
-  - 酷狗歌曲点赞入口。
-  - 本地点赞历史/状态持久化。
-  - 状态字段：pending、liked、blocked_ingest、failed、retry_deferred。
-  - Emby 入库阻塞原因展示。
-- Out of Scope:
-  - 非酷狗来源点赞真实实现。
-  - 上传到 Emby。
-  - 网络空闲真实重试队列。
-- Dependencies: `M-S5-SRC-022`, `M-S5-KG-024`
-- Milestone / Done Criteria:
-  - 酷狗歌曲能记录点赞。
-  - 状态页可查看历史、来源、状态、失败原因。
-  - Emby 入库显示为阻塞，不误报成功。
-- Related Tasks: `T-S5-LIKE-105`
-- Priority: P1
-- Status: Done
-- Risks:
-  - 后续入库任务字段若设计不足会返工；当前已保留 source/hash/status/failure/ingest 字段。
-- Suitable For Module Execution?: Yes
-
-## M-S5-VAL-027
-- Module ID: `M-S5-VAL-027`
-- Name: API17 Validation & Regression Evidence
-- Goal: 为 S5 新来源模式建立 API17 构建、UI、登录和网络失败路径验证闭环。
-- Why it matters: 新增登录/网络/导航页改动触及用户主路径，必须有可复盘验证清单。
+## M-S5-VAL-033
+- Module ID: `M-S5-VAL-033`
+- Name: Corrective Validation
+- Goal: 为本轮纠偏建立 API17 构建和行为验证闭环。
+- Why it matters: 纠偏触及播放、队列、登录、导航和 DSP，必须避免回归。
 - In Scope:
   - 更新 API17 回归清单。
-  - 本地执行 guardrails/compile。
-  - 登录、session 缓存、未授权、网络失败、空结果、点赞状态验证项。
-  - 横屏 1024x600 UI 验证点。
+  - 本地执行 guardrails/compile/assemble。
+  - 覆盖纯酷狗、普通队列、电台 session、DSP 状态。
 - Out of Scope:
-  - AC83xx Native DSP 听感验证，仍由 `T-S4-AUDIO-095` 跟踪。
-- Dependencies: `M-S5-KG-023`, `M-S5-KG-024`, `M-S5-LIKE-026`
+  - Emby 入库验证。
+- Dependencies: `T-S5-PLAY-112`, `T-S4-AUDIO-097`
 - Milestone / Done Criteria:
-  - 文档包含 S5 验证清单。
-  - 本地构建验证通过。
-  - 下一轮实机验证入口明确。
-- Related Tasks: `T-S5-VAL-106`
+  - 本地验证通过。
+  - 回归清单可指导实机测试。
+- Related Tasks: `T-S5-VAL-113`
 - Priority: P1
 - Status: Done
+- Progress:
+  - `T-S5-VAL-113` Done：`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补充 S5 纠偏 A~N 回归口径，包含纯酷狗播放、普通 queue、Radio session、DSP direct-buffer bridge、MainActivity split/page shell decision。
+  - 本地验证完成：`git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug` 通过；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
 - Risks:
-  - 真实酷狗登录需要外部账号/扫码条件，部分验证可能依赖人工。
+  - 真实登录/电台返回仍依赖外部账号和网络环境。
 - Suitable For Module Execution?: No
 
 ## Blocked / Deferred Modules

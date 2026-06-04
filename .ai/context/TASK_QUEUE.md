@@ -1,6 +1,6 @@
 # TASK_QUEUE
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-04
 
 ## Ready
 - None
@@ -20,7 +20,7 @@ Last Updated: 2026-06-03
   - 若不支持，需要确认服务端代理写入媒体目录 + 触发扫描方案。
   - 100MB 缓存上限与网络空闲重试策略需后续需求确认。
 - Current Requirement:
-  - 本阶段只记录点赞状态和入库阻塞状态，不执行上传。
+  - 当前只记录点赞状态和入库阻塞状态，不执行上传。
 
 ### T-S4-AUDIO-095
 - Priority: P1
@@ -37,6 +37,17 @@ Last Updated: 2026-06-03
 - None
 
 ## Done
+- `T-S5-VAL-113`: S5 纠偏 API17 回归清单与本地验证完成；`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补充 M/N 分组与 T-S5-VAL-113 本地验证快照。
+- `T-S5-MAIN-116`: 页面壳拆分试点评估完成，新增 `docs/PAGE_SHELL_SPLIT_EVALUATION.md`；结论为当前阶段暂缓独立 Activity/直接 Fragment，先抽 `RuntimeLogBinder`/`EqualizerPageBinder`，再用 Binder 包装做 Fragment 试点。
+- `T-S4-AUDIO-097`: DSP 播放按钮持续红框诊断与修正；`HiFiAudioProcessor` 对 API17/ExoPlayer heap ByteBuffer 增加 direct scratch bridge，non-direct buffer 不再直接发布 FAIL_OPEN，真实 native-not-ready/native-process-error/bypass/error 仍保持红色诊断。
+- `T-S5-PLAY-112`: Kugou Radio/FM session 按 .NET PersonalFmService 实现，新增 `KugouRadioSessionManager`，radio active 时 next/previous/completion 由 radio session current/upcoming/history 推进，队列页展示 radio current+upcoming。
+- `T-S5-MAIN-115`: MainActivity 第三轮拆分：新增 `KugouContentRenderer` 与 `KugouContentBinder`，迁出推荐歌曲、Radio、发现页和普通 Kugou 队列页的渲染、请求、list/loading/selected state；`MainActivity.kt` 约 6118 -> 5632 行。
+- `T-S5-PLAY-111`: Kugou 普通歌曲队列按 .NET PlaybackQueueManager 实现
+- `T-S5-PLAY-110`: 纯酷狗播放状态边界，切断 Emby 队列叠加
+- `T-S5-KG-118`: Kugou direct device init / token refresh / session validation
+- `T-S5-KG-117`: Kugou direct raw API 最小登录链路移植
+- `T-S5-KG-109`: Kugou WebApi Base URL 产品路径纠偏与 direct API 可行性确认
+- `T-S5-MAIN-114`: MainActivity 第二轮拆分：Kugou Auth/Config Binder
 - `T-S4-AUDIO-080`: ExoPlayer DSP 接入落点确认
 - `T-S4-AUDIO-081`: 音效模式状态模型与配置迁移
 - `T-S4-AUDIO-082`: Fail-open DSP AudioProcessor 骨架实现
@@ -64,10 +75,11 @@ Last Updated: 2026-06-03
 - `T-S5-LIKE-105`: 酷狗点赞抽象与历史/状态页
 - `T-S5-VAL-106`: S5 API17 回归清单与本地验证
 - `T-S5-PLAY-107`: 酷狗播放 URL 解析与 100MB 缓存守卫实现
+- `T-S5-MAIN-108`: MainActivity 第一轮拆分边界落地
 
 ## Superseded
 - `T-S4-AUDIO-087`: Kotlin DSP API17 实机听感验证。原因：AC83xx 已反馈 Kotlin 热路径卡顿，已由 native 优化链取代；后续实机验证改走 `T-S4-AUDIO-095`。
 
 ## Recommended Execution Mode
-- 当前 S5 计划内可执行任务已完成。
-- 下一步需要用户确认或外部条件：Emby 上传入库能力、AC83xx 实机验证、或新增下一阶段需求。
+- 当前 S5 纠偏本地计划已闭环；下一步需要 API17 实机按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组并回传证据。
+- `T-S5-MAIN-114` 已完成；后续 API/config 改动必须走 `KugouAuthConfigBinder` 与 `kugou/*`，不要把逻辑加回 `MainActivity`。

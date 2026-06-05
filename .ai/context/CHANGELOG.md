@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## 2026-06-05
+- Follow-up QR image fix: normalized Kugou QR image references before download, supporting `http(s)`, protocol-relative URLs, relative paths, bare host/path values, and embedded `data:image` base64 payloads without logging the full image URL/query.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
 - Completed `T-S5-KG-119`: fixed QR refresh crash risk by wrapping QR image URL/request construction in fail-soft handling, adding QR refresh generation guard, and making failed QR refreshes retryable instead of starting empty polling.
 - Added redacted QR auth PostHog/runtime events: `kugou_qr_refresh_start/success/failed`, `kugou_qr_poll_failed`, `kugou_qr_login_success`, `kugou_session_validation_success/failed`.
 - Completed `T-S5-OBS-120`: added low-frequency S5 observability for Kugou content loading, normal queue start, and radio session start.

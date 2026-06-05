@@ -2,6 +2,7 @@ package com.skodamusic.app.kugou
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Base64
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -81,9 +82,16 @@ class KugouDirectAuthClient(
     }
 
     fun downloadBitmap(url: String): Bitmap? {
+        val clean = url.trim()
+        decodeEmbeddedBitmap(clean)?.let { return it }
+        val normalizedUrl = normalizeImageUrl(clean)
+        if (normalizedUrl.isNullOrBlank()) {
+            log("kugou direct qr image unsupported ref kind=${imageRefKind(clean)}")
+            return null
+        }
         return runCatching {
             val request = Request.Builder()
-                .url(url)
+                .url(normalizedUrl)
                 .header("User-Agent", KugouDirectSigner.USER_AGENT)
                 .build()
             httpClient.newCall(request).execute().use { response ->
@@ -98,6 +106,44 @@ class KugouDirectAuthClient(
         }.onFailure { error ->
             log("kugou direct qr image failed ${error.javaClass.simpleName}")
         }.getOrNull()
+    }
+
+    private fun normalizeImageUrl(value: String): String? {
+        return when {
+            value.startsWith("https://") || value.startsWith("http://") -> value
+            value.startsWith("//") -> "https:$value"
+            value.startsWith("/") -> "$WEB_HOST$value"
+            value.contains("://") -> null
+            value.contains(".") && !value.contains(" ") -> "https://$value"
+            else -> null
+        }
+    }
+
+    private fun decodeEmbeddedBitmap(value: String): Bitmap? {
+        if (!value.startsWith("data:image")) {
+            return null
+        }
+        val payload = value.substringAfter(',', missingDelimiterValue = "").trim()
+        if (payload.isEmpty()) {
+            return null
+        }
+        return runCatching {
+            val bytes = Base64.decode(payload, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        }.onFailure { error ->
+            log("kugou direct qr image data decode failed ${error.javaClass.simpleName}")
+        }.getOrNull()
+    }
+
+    private fun imageRefKind(value: String): String {
+        return when {
+            value.isBlank() -> "empty"
+            value.startsWith("data:image") -> "data-image"
+            value.startsWith("//") -> "protocol-relative"
+            value.startsWith("/") -> "relative-path"
+            value.contains("://") -> "unsupported-scheme"
+            else -> "unknown"
+        }
     }
 
     private fun executeGet(

@@ -81,11 +81,11 @@ class KugouDirectAuthClient(
     }
 
     fun downloadBitmap(url: String): Bitmap? {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", KugouDirectSigner.USER_AGENT)
-            .build()
         return runCatching {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", KugouDirectSigner.USER_AGENT)
+                .build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     log("kugou direct qr image http=${response.code()}")

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-06-05
+- Completed `T-S5-KG-119`: fixed QR refresh crash risk by wrapping QR image URL/request construction in fail-soft handling, adding QR refresh generation guard, and making failed QR refreshes retryable instead of starting empty polling.
+- Added redacted QR auth PostHog/runtime events: `kugou_qr_refresh_start/success/failed`, `kugou_qr_poll_failed`, `kugou_qr_login_success`, `kugou_session_validation_success/failed`.
+- Completed `T-S5-OBS-120`: added low-frequency S5 observability for Kugou content loading, normal queue start, and radio session start.
+- Added `docs/S5_OBSERVABILITY_COVERAGE.md` and updated PostHog event dictionary/API17 regression checklist with QR/content/queue/radio evidence requirements and sensitive-field filtering.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+
 ## 2026-06-04
 - Completed `T-S5-VAL-113`: updated `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` for S5 corrective validation, adding Kugou playback/queue/radio checks, MainActivity split/page shell checks, DSP border/direct-buffer bridge checks, and a local validation snapshot.
 - Final local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.

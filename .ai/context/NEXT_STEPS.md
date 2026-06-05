@@ -3,7 +3,7 @@
 Last Updated: 2026-06-04
 
 ## One-Line Summary
-- S5 纠偏本地计划已闭环；下一步是在 API17 设备执行 A~N 回归并回传证据。
+- QR refresh 崩溃热修和 S5 脱敏观测补齐已完成；下一步恢复 API17 A~N 实机回归。
 
 ## Current Highest Priority
 - API17 实机回归：按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组。
@@ -11,6 +11,8 @@ Last Updated: 2026-06-04
 ## Guardrail-Adjusted Queue
 - 当前 Ready:
   - None
+- 当前 Planned:
+  - API17 A~N 实机回归，需真实设备/手机环境回传证据。
 - 当前 In Progress:
   - None
 - 原因:
@@ -20,14 +22,17 @@ Last Updated: 2026-06-04
   - `T-S4-AUDIO-097` 已完成：non-direct buffer 会走 direct scratch bridge，不再直接把按钮置红。
   - `T-S5-MAIN-116` 已完成：页面壳路线结论为先 Binder 化低耦合页面，再做 Fragment 试点。
   - `T-S5-VAL-113` 已完成：清单已覆盖 Main split、纯酷狗、普通 queue、Radio session、DSP direct-buffer bridge 和页面壳评估。
+  - `T-S5-KG-119` 已完成：QR refresh 图片 URL/request 构造异常 fail-soft，旧异步回调会被 generation guard 忽略。
+  - `T-S5-OBS-120` 已完成：QR/content/queue/radio 低频 PostHog 事件和敏感过滤已补齐，DSP 使用 runtime/logcat 证据。
 
 ## Immediate Next Step
 
-- 在 API17 目标车机执行 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` A~N 分组。
-- 重点回传:
+- 在手机/目标 API17 设备执行 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` A~N 分组。
+- 重点回传：
+  - J10/J11 QR refresh 连续点击、弱网/异常、PostHog/logcat 脱敏证据。
+  - G 组 `SkodaPostHog capture ok/failed/exception event=...` 样本。
   - M 组 Kugou playback/queue/radio 证据。
   - I14/I15 DSP 边框颜色与 direct-buffer bridge/native status 日志。
-  - N 组导航/返回键与页面壳决策验证说明。
 
 ## Planned After Ready
 - None
@@ -51,5 +56,7 @@ Last Updated: 2026-06-04
 - 酷狗普通歌曲队列需参考 `.NET` `PlaybackQueueManager`，不要复用 Emby `loadedTracks/currentTrackIndex`。
 - 酷狗 API 不应继续要求用户填地址；没有 `KugouMusic.NET` 依据就停下问。
 - 当前 app 已不再要求用户填写 Kugou WebApi Base URL；QR 扫码已接入 direct key/check，SMS 仍待 AES/RSA direct port。
+- 新增功能必须有足够 PostHog/runtime/logcat 证据；敏感信息必须过滤，PostHog 不作为高频原始日志池。
+- QR refresh 失败态应可重试；若手机仍崩溃，优先回传 `FATAL EXCEPTION` / `Caused by` 堆栈。
 - DSP 红框只能代表真实 fail-open/bypass/error，正常 native active 应为绿色。
 - `python scripts/check_code_health.py` 当前会因既有 `MainActivity.kt` red-line 失败；拆分任务应记录行数下降趋势，不得新增 red finding。

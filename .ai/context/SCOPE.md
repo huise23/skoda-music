@@ -16,6 +16,8 @@ Last Updated: 2026-06-04
   - 电台/Radio 不是普通歌曲队列：同一电台会话持续播放，下一曲由电台/FM 会话内部推进，需参考 `.NET` `PersonalFmService` 与 `PlayerViewModel.PersonalFm.cs`。
   - DSP 播放按钮持续红色意味着当前 runtime 仍被判为 fail-open/bypass/error；需要诊断并修正，不能把红色作为常态。
   - `MainActivity.kt` 当前仍约 6213 行，之前第一轮只迁出 source/list row 构造；用户已明确纠正：不能把“单 Activity 外壳”当硬约束，项目变大后允许适当拆 Activity / 页面壳 / Controller / Binder，核心目标是避免单文件继续膨胀。
+  - 2026-06-04 新增热修输入：手机环境点击“刷新二维码”约 1-2 秒后崩溃；API17 车机实机回归需先等待 QR 登录入口稳定。
+  - 2026-06-04 新增工程约束：后续新增功能必须有足够 PostHog/runtime/logcat 诊断日志，且必须过滤敏感信息。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -33,6 +35,11 @@ Last Updated: 2026-06-04
   - 优先按 `KugouMusic.NET/src/Libraries/KuGou.Net/` 的 client/raw api/transport 直接移植或封装 Android 端能力。
   - 如果某个能力只能依赖 `.NET` WebApi 服务且无法从 `.NET` raw/client 侧确认 Android 直连方案，必须停下询问用户，不能让用户临时填地址绕过。
   - 登录继续必须支持默认扫码与手机号验证码；登录成功后缓存，直到下次不可用再跳转登录。
+- QR 登录入口稳定性与观测:
+  - 修复刷新二维码 1-2 秒后崩溃的问题。
+  - QR refresh、QR polling、session validation 的失败路径必须 fail-soft，不得因网络、解析、图片下载、旧回调或生命周期切换导致闪退。
+  - 新增或确认脱敏 PostHog/runtime/logcat 证据，覆盖 QR refresh start/success/failure、polling failure、session validation failure。
+  - 不记录 token、session key、cookie、手机号、验证码、完整 URL query、认证 header、私有 API key 或可复用设备凭据。
 - 纯酷狗默认模式:
   - 默认进入酷狗推荐歌曲。
   - 酷狗播放期间 Now Playing、队列页、next/previous、service state、按钮状态应来自酷狗/source session，而不是 Emby `loadedTracks`。
@@ -101,6 +108,10 @@ Last Updated: 2026-06-04
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`。
+- 观测与安全验收:
+  - 新增功能必须能通过 PostHog/runtime/logcat 追踪关键动作、异步请求结果、状态机跳转和失败路径。
+  - PostHog 只记录低频结构化事件，不记录高频进度 tick、逐帧 DSP 状态、UI redraw 或完整 HTTP payload。
+  - 日志和事件属性必须通过敏感字段审计。
 
 ## Design Direction
 - 当前纠偏按“先继续拆 MainActivity，再修 source 播放语义”的顺序推进。

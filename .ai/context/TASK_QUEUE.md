@@ -1,12 +1,13 @@
 # TASK_QUEUE
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-05
 
 ## Ready
 - None
 
 ## Pending / Planned
-- None
+
+- API17 A~N 实机回归：`T-S5-KG-119` 已本地完成，等待手机/API17 设备执行并回传 QR refresh 与 PostHog 证据。
 
 ## Blocked
 
@@ -37,6 +38,8 @@ Last Updated: 2026-06-04
 - None
 
 ## Done
+- `T-S5-OBS-120`: S5 新功能 PostHog 覆盖补齐与敏感字段审计；补齐 QR/content/queue/radio 低频事件，新增 `docs/S5_OBSERVABILITY_COVERAGE.md`，DSP 继续用 runtime/logcat 热路径证据。
+- `T-S5-KG-119`: QR refresh crash hotfix + fail-soft observability；修复二维码图片 URL/request 构造未捕获异常，增加 QR refresh generation guard、失败可重试状态和脱敏 PostHog/runtime 事件。
 - `T-S5-VAL-113`: S5 纠偏 API17 回归清单与本地验证完成；`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补充 M/N 分组与 T-S5-VAL-113 本地验证快照。
 - `T-S5-MAIN-116`: 页面壳拆分试点评估完成，新增 `docs/PAGE_SHELL_SPLIT_EVALUATION.md`；结论为当前阶段暂缓独立 Activity/直接 Fragment，先抽 `RuntimeLogBinder`/`EqualizerPageBinder`，再用 Binder 包装做 Fragment 试点。
 - `T-S4-AUDIO-097`: DSP 播放按钮持续红框诊断与修正；`HiFiAudioProcessor` 对 API17/ExoPlayer heap ByteBuffer 增加 direct scratch bridge，non-direct buffer 不再直接发布 FAIL_OPEN，真实 native-not-ready/native-process-error/bypass/error 仍保持红色诊断。
@@ -81,5 +84,6 @@ Last Updated: 2026-06-04
 - `T-S4-AUDIO-087`: Kotlin DSP API17 实机听感验证。原因：AC83xx 已反馈 Kotlin 热路径卡顿，已由 native 优化链取代；后续实机验证改走 `T-S4-AUDIO-095`。
 
 ## Recommended Execution Mode
-- 当前 S5 纠偏本地计划已闭环；下一步需要 API17 实机按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组并回传证据。
+- 当前可执行代码任务已完成；下一步恢复 API17 实机按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组并回传证据。
 - `T-S5-MAIN-114` 已完成；后续 API/config 改动必须走 `KugouAuthConfigBinder` 与 `kugou/*`，不要把逻辑加回 `MainActivity`。
+- 后续新增功能必须有足够 PostHog/runtime/logcat 证据，并进行敏感字段审计。

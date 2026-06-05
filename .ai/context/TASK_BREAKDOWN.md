@@ -17,6 +17,10 @@ Last Updated: 2026-06-04
   - `minSdk = 17` 是不可突破红线。
   - `KugouMusic.NET/` 是只读第三方参考项目，忽略扫描且不修改。
   - `MainActivity.kt` 约 6213 行，已超过 entry red-line；当前 Ready 必须优先压降入口文件，不允许继续添加大块职责。
+- 2026-06-04 追加规划:
+  - 手机环境点击刷新二维码 1-2 秒后崩溃，API17 车机实机回归暂缓。
+  - 后续新增功能必须补足 PostHog/runtime/logcat 诊断日志，且敏感信息必须过滤。
+  - 当前 Ready 转为 `T-S5-KG-119` QR refresh crash hotfix；观测补齐任务 `T-S5-OBS-120` 紧随其后。
 
 ## T-S5-MAIN-108
 - Task ID: `T-S5-MAIN-108`
@@ -337,6 +341,132 @@ Last Updated: 2026-06-04
   - `KugouDirectSessionStore` 扩展持久化 `dfid/mid/uuid/installGuid/installMac/installDev/vipType/t1/validationState`。
   - `KugouAuthConfigBinder` 改为 QR success 后先进入 session validation；只有 token refresh 成功后 `hasSession()` 才为 true。
   - 未恢复用户填写 WebApi Base URL；未修改 `KugouMusic.NET/`；SMS 仍待 `LoginByMobileAsync` direct port。
+
+## T-S5-KG-119
+- Task ID: `T-S5-KG-119`
+- Module ID: `M-S5-KG-035`
+- Title: QR refresh crash hotfix + fail-soft observability
+- Goal: 修复手机环境点击“刷新二维码”后约 1-2 秒崩溃的问题，并补齐 QR direct auth 关键路径的脱敏 PostHog/runtime/logcat 诊断。
+- Why: QR 登录入口不稳定会阻塞 API17 实机 A~N 回归；当前崩溃发生在登录前置路径，必须先让刷新失败可恢复、不闪退。
+- Responsibility Boundary:
+  - `KugouAuthConfigBinder` 负责按钮状态、UI 状态、轮询生命周期、generation guard 和 Activity/View 生命周期保护。
+  - `KugouDirectAuthClient` / `KugouDirectSessionClient` 负责 direct 网络、解析、crypto/session 请求，不向 UI 线程传播未捕获异常。
+  - PostHog 只记录低频脱敏事件；runtime/logcat 只记录短 ID、阶段、错误码、异常类型和截断摘要。
+  - 不修改 `MainActivity` 承载 QR 细节，不修改 `KugouMusic.NET/`。
+- Dependencies: `T-S5-KG-118`
+- Inputs:
+  - 用户反馈：手机打开后点击刷新二维码，1-2 秒后崩溃；API17 实机未测。
+  - 可选输入：`adb logcat` 中 `FATAL EXCEPTION` / `Caused by` 堆栈。
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectAuthClient.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectSessionClient.kt`
+  - `app/src/main/java/com/skodamusic/app/observability/PostHogTracker.kt`
+- Expected Outputs:
+  - QR refresh 异步链路中网络、解析、bitmap download、UI 回调、polling start、session validation 的异常 fail-soft。
+  - 防重复点击/并发刷新导致旧回调覆盖新状态。
+  - 失败时 UI 进入“失败/可重试”状态，而不是崩溃。
+  - PostHog 或 runtime/logcat 至少覆盖 QR refresh start/success/failure、polling failure、session validation failure。
+  - 回归清单补充 QR refresh crash 与脱敏观测验收项。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectAuthClient.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectSessionClient.kt`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 如需复用 PostHog 属性构造，优先增加小型 helper 或私有方法，不把埋点散落成长函数。
+  - PostHog 上报必须 fail-open；上报失败不得影响 QR 登录。
+  - 敏感字段禁止进入事件属性和 runtime log：token/session key/cookie/手机号/验证码/完整 URL query/auth header/API key/可复用设备凭据。
+- Comment Requirements:
+  - 对 lifecycle generation guard、并发刷新取消/忽略旧结果的逻辑保留简短注释。
+- Done Criteria:
+  - 本地/手机环境点击 QR refresh 连续 10 次不崩溃。
+  - 断网、接口失败、二维码图片下载失败、切后台/返回后旧回调都不崩溃。
+  - 失败态可见且可再次刷新。
+  - PostHog/logcat 有脱敏诊断证据，且无敏感字段。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `python scripts/check_code_health.py`（允许既有 `MainActivity` red-line 失败，但不得新增 red finding）
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 触及资源/清单时执行 `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - 没有崩溃堆栈时，可能只能先覆盖高概率未捕获异常路径；若修后仍崩溃，需要补充 logcat 继续定位。
+  - QR/session direct API 涉及网络与 crypto，不能通过吞异常假装登录成功。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+- Status: Done 2026-06-05
+- Result:
+  - 修复高概率崩溃点：`KugouDirectAuthClient.downloadBitmap()` 现在把 `Request.Builder().url(...)` 纳入 `runCatching`，二维码图片 URL 异常不会再抛未捕获异常杀进程。
+  - `KugouAuthConfigBinder` 增加 QR refresh request generation，刷新/登出/停止后的旧异步结果不会再写 UI。
+  - QR refresh 失败时进入失败/可重试状态，不启动无图轮询。
+  - 新增脱敏 PostHog/runtime 事件：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_qr_login_success`、`kugou_session_validation_success/failed`。
+  - 用户 ID runtime log 改为短 hash；不记录 token/session key/cookie/手机号/验证码/完整 URL query/auth header/API key/设备凭据。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍仅因既有 `MainActivity` red-line 失败。
+
+## T-S5-OBS-120
+- Task ID: `T-S5-OBS-120`
+- Module ID: `M-S5-OBS-036`
+- Title: S5 新功能 PostHog 覆盖补齐与敏感字段审计
+- Goal: 对 S5 后续新增的 QR direct auth、酷狗内容、普通 queue、radio session、DSP direct-buffer/fail-open 等关键路径补齐低频 PostHog 或明确 runtime/logcat 证据。
+- Why: 用户已确认新功能必须有足够日志；当前 PostHog 覆盖主要集中在启动、通用播放、网络门禁和更新，S5 新增功能存在观测缺口。
+- Responsibility Boundary:
+  - 只补低频、可聚合事件，不引入高频 progress/UI/audio-frame 噪音。
+  - 事件属性只使用脱敏字段：短 ID/hash、source、stage、error_code、elapsed_ms、count、布尔状态、截断非敏感摘要。
+  - 事件定义/回归清单/代码三者保持一致。
+- Dependencies: `T-S5-KG-119`（建议先完成）
+- Inputs:
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/KugouPlaybackQueueManager.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/KugouRadioSessionManager.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiAudioProcessor.kt`
+- Expected Outputs:
+  - 一份 S5 observability gap list。
+  - 必要的 PostHog capture 点或明确 runtime/logcat 替代证据。
+  - 回归清单中的 PostHog 证据字段更新。
+  - 敏感字段审计结论。
+- Expected Files:
+  - 视审计结果最小修改相关 feature 文件。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 必要时更新 `docs/POSTHOG_EVENT_DICTIONARY.md`。
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 如果多个 S5 feature 需要相同脱敏属性，新增 focused helper，避免分散复制。
+  - 不把 PostHog 当原始日志仓库。
+- Comment Requirements:
+  - 对刻意不上报的高频/敏感字段保留简短原因说明或文档说明。
+- Done Criteria:
+  - QR auth、Kugou 内容失败、queue/radio session 切换、DSP fail-open/bridge 至少有低频诊断证据。
+  - 无敏感字段进入 PostHog/runtime logs。
+  - 事件预算和 coalescing 规则不被破坏。
+  - 本地校验命令通过或记录既有失败。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `python scripts/check_code_health.py`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - 埋点过多会污染 PostHog；必须优先失败路径和状态转换，不记录每次 UI 渲染或播放进度。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+- Status: Done 2026-06-05
+- Result:
+  - `KugouContentBinder` 新增低频 PostHog 事件：`kugou_content_load_success/failed`、`kugou_queue_start`、`kugou_radio_session_start`。
+  - `PostHogTracker` 敏感 key 过滤扩展到 session key、cookie、phone/mobile、verification code、auth header、API key、query、credential、secret、payload 等。
+  - 新增 `docs/S5_OBSERVABILITY_COVERAGE.md`，明确 QR/content/queue/radio/DSP 的证据路径；DSP 热路径继续使用 runtime/logcat，不接入高频 PostHog。
+  - `docs/POSTHOG_EVENT_DICTIONARY.md` 与 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已同步事件与验收项。
+  - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍仅因既有 `MainActivity` red-line 失败。
 
 ## T-S5-PLAY-110
 - Task ID: `T-S5-PLAY-110`

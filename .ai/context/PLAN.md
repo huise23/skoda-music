@@ -6,6 +6,23 @@ Last Updated: 2026-06-04
 - Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 - Scope Source: `.ai/context/SCOPE.md`（2026-06-04）
 
+## Planning Refresh (QR Refresh Crash + Observability, 2026-06-04)
+- Trigger:
+  - 用户反馈：手机打开应用后点击“刷新二维码”，约 1-2 秒后崩溃；API17 车机实机尚未测试。
+  - 用户确认：后续新增功能必须有足够 PostHog/运行时诊断日志，并且必须过滤敏感信息。
+- Planning Decision:
+  - API17 A~N 全量实机回归暂缓，先执行 QR 刷新崩溃热修；否则登录入口不稳定会污染后续回归结论。
+  - QR 登录链路属于当前 S5 酷狗 direct auth/session 范围内的稳定性修复，不需要回到大范围 requirement。
+  - 新增功能验收必须包含 observability：关键动作、异步请求结果、状态机跳转和失败路径要有 PostHog 结构化事件或 runtime/logcat 证据。
+  - PostHog 不作为原始日志池；禁止上报 token/session/cookie/手机号/验证码/完整 URL query/auth header/API key/可复用设备凭据。
+- Ready Queue Update:
+  - `T-S5-KG-119`: Done 2026-06-05。
+- Planned Queue Update:
+  - `T-S5-OBS-120`: Done 2026-06-05。
+- Execution Result:
+  - QR refresh hotfix and S5 observability catch-up are complete locally.
+  - Current remaining stage work is external device validation: API17 A~N regression evidence.
+
 ## Stage Goal
 - 修正 S5 首轮实现中的方向偏差：
   - 酷狗不再要求用户提供 WebApi Base URL。
@@ -116,23 +133,35 @@ Last Updated: 2026-06-04
 - 目标: 构建、guardrails、交互清单和回归证据闭环。
 - 输出: 本地验证通过，清单覆盖纯酷狗、队列、电台、DSP。
 
+### W7 QR Auth Stability & Observability
+- 目标: 修复 QR 刷新崩溃，补齐 QR 登录/轮询/session validation 的脱敏 PostHog 与 runtime/logcat 证据。
+- 输出: 刷新二维码失败可恢复、不闪退；PostHog 可看到 start/success/failure/error stage；敏感字段不进入日志。
+
+### W8 Observability Catch-up
+- 目标: 对 S5 新增酷狗内容、普通 queue、radio session、DSP direct-buffer bridge 等低频关键路径补齐结构化观测。
+- 输出: 事件字典/代码埋点/回归清单一致，避免后续新功能无日志完成。
+
 ## Dependency Graph
 - `W1/T-S5-MAIN-114 -> W2/T-S5-KG-109 -> W3 -> W4 -> W6`
 - `W1/T-S5-MAIN-114 -> W1/T-S5-MAIN-115 -> W1/T-S5-MAIN-116`
 - `W2 -> W3`
 - `W5` 可与 `W1/W2` 并行；`T-S4-AUDIO-097` 依赖已满足，可作为并行 Ready，但最终进入 `W6`。
+- `W7/T-S5-KG-119 -> W6/API17 real-device regression`
+- `W7/T-S5-KG-119 -> W8/T-S5-OBS-120`
 - `B-KG-EMBY-INGEST-001` 继续阻塞，不参与当前 Ready。
 
 ## Recommended Order
-1. `T-S5-MAIN-114`: MainActivity 第二轮拆分：Kugou Auth/Config Binder，先把下一步 API 地址纠偏会触碰的登录/配置 UI 迁出入口文件。
-2. `T-S4-AUDIO-097`: DSP 持续红框诊断与修正（可与 MainActivity 拆分并行，但建议独立单任务完成）。
-3. `T-S5-KG-109`: Kugou WebApi Base URL 产品路径纠偏与 `.NET` direct API 可行性确认；执行时不得向 `MainActivity` 添加新大块逻辑。
-4. `T-S5-MAIN-115`: MainActivity 第三轮拆分：Kugou 内容页 Binder；若 `T-S5-KG-109` 实际需要大面积触碰内容页，先执行本任务。
-5. `T-S5-PLAY-110`: 纯酷狗播放状态边界，切断 Emby 队列叠加。
-6. `T-S5-PLAY-111`: Kugou 普通歌曲队列按 `.NET PlaybackQueueManager` 实现。
-7. `T-S5-PLAY-112`: Kugou Radio/FM session 按 `.NET PersonalFmService` 实现。
-8. `T-S5-MAIN-116`: 页面壳拆分试点评估，优先设置/日志/EQ 或酷狗内容页，不影响左侧一级导航。
-9. `T-S5-VAL-113`: API17 回归与构建验证。
+1. `T-S5-KG-119`: 修复手机上 QR 刷新 1-2 秒后崩溃，并补齐 QR direct auth 的脱敏 PostHog/runtime logs。
+2. `T-S5-OBS-120`: 补齐 S5 新功能低频 PostHog 事件覆盖，优先 QR/queue/radio/DSP 失败路径。
+3. `T-S5-MAIN-114`: MainActivity 第二轮拆分：Kugou Auth/Config Binder，先把下一步 API 地址纠偏会触碰的登录/配置 UI 迁出入口文件。
+4. `T-S4-AUDIO-097`: DSP 持续红框诊断与修正（可与 MainActivity 拆分并行，但建议独立单任务完成）。
+5. `T-S5-KG-109`: Kugou WebApi Base URL 产品路径纠偏与 `.NET` direct API 可行性确认；执行时不得向 `MainActivity` 添加新大块逻辑。
+6. `T-S5-MAIN-115`: MainActivity 第三轮拆分：Kugou 内容页 Binder；若 `T-S5-KG-109` 实际需要大面积触碰内容页，先执行本任务。
+7. `T-S5-PLAY-110`: 纯酷狗播放状态边界，切断 Emby 队列叠加。
+8. `T-S5-PLAY-111`: Kugou 普通歌曲队列按 `.NET PlaybackQueueManager` 实现。
+9. `T-S5-PLAY-112`: Kugou Radio/FM session 按 `.NET PersonalFmService` 实现。
+10. `T-S5-MAIN-116`: 页面壳拆分试点评估，优先设置/日志/EQ 或酷狗内容页，不影响左侧一级导航。
+11. `T-S5-VAL-113`: API17 回归与构建验证。
 
 ## Milestones
 - M1: `MainActivity` 首轮拆分完成并可编译。
@@ -144,6 +173,8 @@ Last Updated: 2026-06-04
 - M5: 电台有独立 session，下一曲由 radio session 内部推进。
 - M6: DSP 正常播放不持续红色，异常状态有明确原因。
 - M7: guardrails、compile、assemble 和回归清单完成。
+- M8: QR refresh 在手机/模拟环境中重复点击、弱网/断网、接口异常时不崩溃，并能在 PostHog/logcat 中看到脱敏诊断链。
+- M9: S5 新功能具备最低可用 PostHog 覆盖，后续 API17 回归可直接采集 `capture ok event=...` 证据。
 
 ## Validation Strategy
 - 本地:
@@ -152,7 +183,9 @@ Last Updated: 2026-06-04
   - `python scripts/check_code_health.py`（当前允许因既有 `MainActivity` 红线失败，但每个拆分任务必须证明红线趋势改善，不得新增 red findings）
   - `gradle :app:compileDebugKotlin --no-daemon`
   - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`
+  - 触及 PostHog/日志时检查敏感字段：不得包含 token、session key、cookie、手机号、验证码、完整 URL query、auth header、API key 或可复用设备凭据。
 - 行为:
+  - QR 刷新按钮连续点击 10 次不崩溃；断网、接口失败、图片下载失败、Activity 生命周期切换都进入可恢复状态。
   - 默认进入酷狗推荐歌曲。
   - 酷狗播放不自动恢复/刷新 Emby 队列。
   - 酷狗 next/previous 在酷狗队列或 radio session 内推进。
@@ -161,6 +194,7 @@ Last Updated: 2026-06-04
 - 文档:
   - 所有酷狗队列/电台/API 行为标注 `.NET` 参考文件。
   - 未确认能力必须标记 Blocked，不进入实现。
+  - 新增/变更 PostHog event 名和关键属性同步到回归清单或事件说明，避免代码与验收脱节。
 
 ## Risks & Assumptions
 - 风险: `MainActivity` 体量大，拆分时容易误动生命周期和 service bridge；后续先拆 Controller/Binder，再评估页面壳拆分。

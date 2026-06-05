@@ -2,6 +2,12 @@
 
 Last Updated: 2026-06-04
 
+## 2026-06-04 - PostHog 日志与敏感信息过滤要求（用户确认）
+- 决策: 后续新增功能必须补足可诊断日志；关键用户动作、异步请求开始/成功/失败、状态机跳转、播放/登录/网络/缓存/DSP 失败路径应有足够的 PostHog 结构化事件或 runtime/logcat 证据。
+- 决策: PostHog 优先记录低频、可聚合、可用于现场定位的事件；禁止把高频进度 tick、逐帧 DSP 状态、UI redraw 或完整 HTTP payload 当作事件上报。
+- 决策: 任何日志和 PostHog 属性必须过滤敏感信息；不得上报 token、session key、cookie、手机号、验证码、密码、完整 URL query、认证 header、私有 API key 或可直接复用的设备凭据。
+- 决策: 需要定位身份/歌曲/设备时，只能使用短 ID、hash、枚举状态、错误码、阶段名、计数、耗时和截断后的非敏感摘要。
+
 ## 2026-06-04 - T-S5-KG-118 direct session validation 执行决策
 - 决策: Android QR success 不能再只缓存 `userid/token/nickname` 后直接视为已登录；必须按 `.NET LoginViewModel` 顺序执行 device init 与 `RefreshSessionAsync()`。
 - 决策: 新增 Android-owned `KugouDirectCrypto` 与 `KugouDirectSessionClient`，按 `.NET KgCrypto`、`RawDeviceApi.RegisterDevAsync`、`RawLoginApi.RefreshTokenAsync` 落地 AES/RSA、dfid/mid/uuid 和 token refresh。

@@ -44,6 +44,9 @@ Existing files above red line must be treated as refactoring targets, not conven
 ## Security / Performance Red Lines
 
 - Do not log secrets, session keys, tokens, phone numbers, or private API credentials.
+- Do not send secrets, session keys, tokens, cookies, passwords, verification codes, phone numbers, full URL queries, auth headers, private API keys, or reusable device credentials to PostHog or runtime logs.
+- Do not mark a new feature Done if key user actions, async request failures, state transitions, and crash-prone paths have no diagnostic evidence path.
 - Do not block the UI thread with network, disk, native DSP, or heavy parsing work.
 - Do not add high-frequency UI polling on the target low-end head unit.
+- Do not use PostHog as a raw log sink for high-frequency progress ticks, audio frame/DSP per-buffer state, UI redraws, or full HTTP payloads.
 - Do not hide playback, cache, network, auth, or native fail-open errors just to keep UI green.

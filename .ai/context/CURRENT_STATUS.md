@@ -4,7 +4,28 @@ Last Updated: 2026-06-04
 
 ## Stage
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
-- 当前主干: `master@5a98e8f`（上一轮已推送 `Add Kugou source mode`）
+- 当前主干: `master@edb006e`（已推送 `Complete S5 corrective playback validation`）
+
+## Execution Progress (T-S5-KG-119 + T-S5-OBS-120, 2026-06-05)
+- 已完成:
+  - `T-S5-KG-119` QR refresh crash hotfix + fail-soft observability。
+  - `T-S5-OBS-120` S5 新功能 PostHog 覆盖补齐与敏感字段审计。
+- 关键改动:
+  - `KugouDirectAuthClient.downloadBitmap()` 将二维码图片 URL/request 构造纳入 `runCatching`，避免无效 URL 抛未捕获异常杀进程。
+  - `KugouAuthConfigBinder` 增加 QR refresh request generation，刷新/登出/停止后的旧异步结果不会再写 UI。
+  - QR refresh 失败会进入失败/可重试状态，不启动无图轮询。
+  - 新增 QR auth 脱敏事件：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_qr_login_success`、`kugou_session_validation_success/failed`。
+  - `KugouContentBinder` 新增低频事件：`kugou_content_load_success/failed`、`kugou_queue_start`、`kugou_radio_session_start`。
+  - `PostHogTracker` 扩展敏感属性 key 过滤，新增 `docs/S5_OBSERVABILITY_COVERAGE.md`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2，未新增 blocking finding。
+- 结果:
+  - 当前可执行代码任务已闭环。
+  - 下一步恢复 API17 A~N 实机回归，重点验证 J10/J11 QR refresh 和 G 组 PostHog 证据。
 
 ## Execution Progress (T-S5-VAL-113, 2026-06-04)
 - 已完成 `T-S5-VAL-113`：

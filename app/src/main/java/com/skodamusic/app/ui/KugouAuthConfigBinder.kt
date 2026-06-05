@@ -1,5 +1,6 @@
 package com.skodamusic.app.ui
 
+import android.graphics.Bitmap
 import android.os.Handler
 import android.view.View
 import android.widget.Button
@@ -15,8 +16,10 @@ import com.skodamusic.app.kugou.KugouDirectSessionClient
 import com.skodamusic.app.kugou.KugouDirectSessionSnapshot
 import com.skodamusic.app.kugou.KugouDirectSessionState
 import com.skodamusic.app.kugou.KugouDirectSessionStore
+import com.skodamusic.app.kugou.KugouDirectSigner
 import com.skodamusic.app.kugou.KugouSessionStore
 import com.skodamusic.app.kugou.KugouWebApiClient
+import com.skodamusic.app.observability.PostHogTracker
 
 class KugouAuthConfigBinder(
     private val activity: AppCompatActivity,
@@ -57,6 +60,7 @@ class KugouAuthConfigBinder(
     private var qrKey: String = ""
     private var qrPollingActive: Boolean = false
     private var qrPollGeneration: Int = 0
+    private var qrRequestGeneration: Int = 0
     private var sessionValidationGeneration: Int = 0
     private var directValidationState: String = KugouDirectSessionState.PENDING_VALIDATION
 
@@ -107,33 +111,49 @@ class KugouAuthConfigBinder(
 
     fun requestQrLogin() {
         if (!ensureWifiConnectedForNetworkRequest("kugou_direct_qr", true)) {
+            captureAuthEvent(
+                eventName = "kugou_qr_refresh_failed",
+                stage = "network_gate",
+                errorCode = "WIFI_NOT_CONNECTED",
+                priority = PostHogTracker.Priority.HIGH
+            )
             return
         }
         stopQrPolling()
         clearSessionState(clearStored = true)
+        val generation = ++qrRequestGeneration
+        val startedAtMs = System.currentTimeMillis()
         setStatusText(activity.getString(R.string.kugou_status_not_logged_in))
         setQrText(activity.getString(R.string.kugou_qr_loading))
         setFeedbackText(activity.getString(R.string.feedback_kugou_qr_loading))
         qrImage.setImageDrawable(null)
+        refreshQrButton.isEnabled = false
+        captureAuthEvent(
+            eventName = "kugou_qr_refresh_start",
+            stage = "qr_key"
+        )
         backgroundExecutor.execute {
-            val qr = directAuthClient.getQrCode()
-            val bitmap = qr?.let { directAuthClient.downloadBitmap(it.imageUrl) }
+            val result = loadQrRefreshResult()
             activity.runOnUiThread {
-                if (qr == null) {
-                    setStatusText(activity.getString(R.string.kugou_status_failed))
-                    setQrText(activity.getString(R.string.kugou_qr_expired))
-                    setFeedbackText(activity.getString(R.string.feedback_kugou_login_failed))
-                    showToast(R.string.toast_kugou_failed)
+                if (!isCurrentQrRequest(generation)) {
+                    return@runOnUiThread
+                }
+                refreshQrButton.isEnabled = !hasSession()
+                val qr = result.qr
+                val bitmap = result.bitmap
+                if (qr == null || bitmap == null) {
+                    handleQrRefreshFailure(result)
                     return@runOnUiThread
                 }
                 qrKey = qr.key
                 qrUrlValue.text = qr.imageUrl
-                if (bitmap != null) {
-                    qrImage.setImageBitmap(bitmap)
-                } else {
-                    qrImage.setImageDrawable(null)
-                }
+                qrImage.setImageBitmap(bitmap)
                 setQrText(activity.getString(R.string.kugou_qr_scan))
+                captureAuthEvent(
+                    eventName = "kugou_qr_refresh_success",
+                    stage = "qr_image",
+                    elapsedMs = System.currentTimeMillis() - startedAtMs
+                )
                 startQrPolling(qr.key)
             }
         }
@@ -141,6 +161,7 @@ class KugouAuthConfigBinder(
 
     fun stop() {
         stopQrPolling()
+        qrRequestGeneration += 1
         sessionValidationGeneration += 1
     }
 
@@ -150,6 +171,7 @@ class KugouAuthConfigBinder(
         lastUserId = ""
         displayName = ""
         qrKey = ""
+        qrRequestGeneration += 1
         directValidationState = KugouDirectSessionState.PENDING_VALIDATION
         sessionValidationGeneration += 1
         if (this::qrImage.isInitialized) {
@@ -219,13 +241,32 @@ class KugouAuthConfigBinder(
                     return
                 }
                 backgroundExecutor.execute {
-                    val status = directAuthClient.checkQrStatus(qrKey)
+                    val status = runCatching {
+                        directAuthClient.checkQrStatus(qrKey)
+                    }.onFailure { error ->
+                        appendRuntimeLog("kugou qr poll exception type=${error.javaClass.simpleName}")
+                        captureAuthEvent(
+                            eventName = "kugou_qr_poll_failed",
+                            stage = "qr_poll",
+                            errorCode = "QR_POLL_EXCEPTION",
+                            errorType = error.javaClass.simpleName,
+                            priority = PostHogTracker.Priority.HIGH
+                        )
+                    }.getOrNull()
                     activity.runOnUiThread {
                         if (!qrPollingActive || generation != qrPollGeneration) {
                             return@runOnUiThread
                         }
                         when {
-                            status == null -> uiProgressHandler.postDelayed(this, pollIntervalMs)
+                            status == null -> {
+                                captureAuthEvent(
+                                    eventName = "kugou_qr_poll_failed",
+                                    stage = "qr_poll",
+                                    errorCode = "QR_POLL_EMPTY_OR_FAILED",
+                                    priority = PostHogTracker.Priority.HIGH
+                                )
+                                uiProgressHandler.postDelayed(this, pollIntervalMs)
+                            }
                             status.status == KugouDirectQrStatus.STATUS_WAITING_FOR_SCAN -> {
                                 setQrText(activity.getString(R.string.kugou_qr_scan))
                                 uiProgressHandler.postDelayed(this, pollIntervalMs)
@@ -238,6 +279,11 @@ class KugouAuthConfigBinder(
                             status.status == KugouDirectQrStatus.STATUS_EXPIRED -> {
                                 stopQrPolling()
                                 setQrText(activity.getString(R.string.kugou_qr_expired))
+                                captureAuthEvent(
+                                    eventName = "kugou_qr_poll_failed",
+                                    stage = "qr_poll",
+                                    errorCode = "QR_EXPIRED"
+                                )
                             }
                             else -> uiProgressHandler.postDelayed(this, pollIntervalMs)
                         }
@@ -279,7 +325,11 @@ class KugouAuthConfigBinder(
         setQrText(activity.getString(R.string.kugou_session_validating))
         refreshLoginUi()
         setFeedbackText(activity.getString(R.string.feedback_kugou_session_validating))
-        appendRuntimeLog("kugou direct qr login success user=$lastUserId validation=pending")
+        appendRuntimeLog("kugou direct qr login success userHash=${safeHash(lastUserId)} validation=pending")
+        captureAuthEvent(
+            eventName = "kugou_qr_login_success",
+            stage = "qr_poll"
+        )
         validateDirectSession(pendingSession)
     }
 
@@ -309,6 +359,12 @@ class KugouAuthConfigBinder(
                     refreshLoginUi()
                     setFeedbackText(activity.getString(R.string.feedback_kugou_session_blocked))
                     appendRuntimeLog("kugou direct session validation blocked reason=${result.message}")
+                    captureAuthEvent(
+                        eventName = "kugou_session_validation_failed",
+                        stage = "session_validation",
+                        errorCode = result.message.ifBlank { "SESSION_VALIDATION_FAILED" },
+                        priority = PostHogTracker.Priority.HIGH
+                    )
                     showToast(R.string.toast_kugou_failed)
                     return@runOnUiThread
                 }
@@ -320,7 +376,11 @@ class KugouAuthConfigBinder(
                 setQrText(activity.getString(R.string.kugou_qr_success))
                 refreshLoginUi()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_login_success))
-                appendRuntimeLog("kugou direct session validated user=$lastUserId")
+                appendRuntimeLog("kugou direct session validated userHash=${safeHash(lastUserId)}")
+                captureAuthEvent(
+                    eventName = "kugou_session_validation_success",
+                    stage = "session_validation"
+                )
                 showToast(R.string.toast_kugou_success)
             }
         }
@@ -342,4 +402,96 @@ class KugouAuthConfigBinder(
         setFeedbackText(activity.getString(R.string.feedback_kugou_sms_direct_pending))
         appendRuntimeLog("kugou direct sms login pending: RawLoginApi LoginByMobile requires AES/RSA port")
     }
+
+    private fun loadQrRefreshResult(): QrRefreshResult {
+        val qr = runCatching {
+            directAuthClient.getQrCode()
+        }.onFailure { error ->
+            appendRuntimeLog("kugou qr refresh exception stage=qr_key type=${error.javaClass.simpleName}")
+        }.getOrNull() ?: return QrRefreshResult(
+            qr = null,
+            bitmap = null,
+            failureStage = "qr_key",
+            errorCode = "QR_KEY_UNAVAILABLE"
+        )
+        val bitmap = runCatching {
+            directAuthClient.downloadBitmap(qr.imageUrl)
+        }.onFailure { error ->
+            appendRuntimeLog("kugou qr refresh exception stage=qr_image type=${error.javaClass.simpleName}")
+        }.getOrNull() ?: return QrRefreshResult(
+            qr = qr,
+            bitmap = null,
+            failureStage = "qr_image",
+            errorCode = "QR_IMAGE_UNAVAILABLE"
+        )
+        return QrRefreshResult(
+            qr = qr,
+            bitmap = bitmap,
+            failureStage = "",
+            errorCode = ""
+        )
+    }
+
+    private fun handleQrRefreshFailure(result: QrRefreshResult) {
+        setStatusText(activity.getString(R.string.kugou_status_failed))
+        setQrText(activity.getString(R.string.kugou_qr_expired))
+        setFeedbackText(activity.getString(R.string.feedback_kugou_login_failed))
+        qrImage.setImageDrawable(null)
+        appendRuntimeLog(
+            "kugou qr refresh failed stage=${result.failureStage} code=${result.errorCode}"
+        )
+        captureAuthEvent(
+            eventName = "kugou_qr_refresh_failed",
+            stage = result.failureStage.ifBlank { "qr_refresh" },
+            errorCode = result.errorCode.ifBlank { "QR_REFRESH_FAILED" },
+            priority = PostHogTracker.Priority.HIGH
+        )
+        showToast(R.string.toast_kugou_failed)
+    }
+
+    private fun isCurrentQrRequest(generation: Int): Boolean {
+        // Async QR results can outlive a refresh/logout/background transition; stale UI writes are ignored.
+        return generation == qrRequestGeneration && !activity.isFinishing && !activity.isDestroyed
+    }
+
+    private fun captureAuthEvent(
+        eventName: String,
+        stage: String,
+        errorCode: String? = null,
+        errorType: String? = null,
+        elapsedMs: Long? = null,
+        priority: PostHogTracker.Priority = PostHogTracker.Priority.NORMAL
+    ) {
+        val properties = linkedMapOf<String, Any?>(
+            "source" to "kugou",
+            "feature" to "kugou_auth",
+            "stage" to stage
+        )
+        if (!errorCode.isNullOrBlank()) {
+            properties["error_code"] = errorCode
+        }
+        if (!errorType.isNullOrBlank()) {
+            properties["error_type"] = errorType
+        }
+        if (elapsedMs != null) {
+            properties["elapsed_ms"] = elapsedMs
+        }
+        PostHogTracker.capture(
+            context = activity.applicationContext,
+            eventName = eventName,
+            properties = properties,
+            priority = priority
+        )
+    }
+
+    private fun safeHash(value: String): String {
+        return KugouDirectSigner.md5(value).take(8).ifBlank { "unknown" }
+    }
+
+    private data class QrRefreshResult(
+        val qr: com.skodamusic.app.kugou.KugouDirectQrCode?,
+        val bitmap: Bitmap?,
+        val failureStage: String,
+        val errorCode: String
+    )
 }

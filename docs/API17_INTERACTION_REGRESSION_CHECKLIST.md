@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4/S5)
 
 Last Updated: 2026-06-04
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113`
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -13,6 +13,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - 酷狗默认来源模式、登录/session、推荐内容、点赞状态验证
 - 纯酷狗播放 source 边界、普通队列、Radio/FM session 验证
 - MainActivity 拆分后导航/页面壳稳定性验证
+- QR refresh crash hotfix 与脱敏 PostHog 观测验证
 - 关键事件与日志证据回传
 
 ## 1. Preconditions
@@ -89,7 +90,9 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - `play_start/play_success/playback_failed`
   - `background_command_received/background_command_result`
   - `update_check_* / update_download_* / update_install_*`
-- [ ] G3 敏感字段未明文上报（token/password/response body 等）。
+  - `kugou_qr_refresh_* / kugou_qr_poll_failed / kugou_session_validation_*`
+  - `kugou_content_load_* / kugou_queue_start / kugou_radio_session_start`
+- [ ] G3 敏感字段未明文上报（token/session key/cookie/手机号/验证码/完整 URL query/auth header/API key/response body 等）。
 
 ### H. Failure & Degrade Path
 - [ ] H1 Emby 配置错误时有清晰失败反馈，不崩溃。
@@ -131,6 +134,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] J7 手机号验证码按钮不会要求填写 WebApi 地址，不发起旧 `/captcha/sent` 代理请求，并显示 SMS direct pending 状态。
 - [ ] J8 device register + token refresh 成功后才显示“已登录”；失败时显示 session 校验失败并保持内容入口锁定。
 - [ ] J9 登出后清理 session、二维码和酷狗内容状态。
+- [ ] J10 连续点击“刷新扫码登录”10 次不崩溃；二维码地址异常、图片下载失败、断网/弱网、切后台/返回后的旧回调都进入失败/可重试状态。
+- [ ] J11 QR refresh 相关 PostHog/logcat 证据脱敏可见：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_session_validation_success/failed`。
 
 ### K. Kugou Content Pages
 - [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
@@ -181,6 +186,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] R5 回归过程中出现崩溃/ANR/连续卡死。
 - [ ] R6 酷狗未登录状态仍请求内容或出现不可操作空白页。
 - [ ] R7 酷狗 session 失效后没有回登录，导致持续失败刷屏。
+- [ ] R8 刷新二维码导致崩溃、ANR 或不可恢复登录状态。
 
 ### 4.2 Evidence Minimum（最小回传集）
 - [ ] EVD1 设备信息 + 构建号（`#versionCode`）。
@@ -243,7 +249,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
 - hifi_dsp: <hifi-dsp config/format/active/bypass/fail 日志样本>
-- kugou: <qr/session/content/like 日志样本>
+- kugou: <qr/session/content/like 日志样本，需包含 QR refresh crash hotfix 证据>
 - kugou_queue_radio: <普通 queue/radio session next/previous/completion 日志样本>
 - main_split: <页面切换/返回键/页面壳评估验证说明>
 - screenshot/video: <说明或路径>
@@ -297,3 +303,21 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - 待外部验证:
   - API17 目标车机需执行 A~N 分组，尤其 M 组 Radio session、I14/I15 DSP 边框语义和 N 组导航/返回键。
   - 真实酷狗登录、内容返回、播放 URL 和 radio 列表仍依赖账号与网络环境。
+
+## 9. Local Validation Snapshot (T-S5-KG-119 / T-S5-OBS-120, 2026-06-05)
+- 覆盖变更:
+  - `T-S5-KG-119`: QR refresh crash hotfix + fail-soft observability。
+  - `T-S5-OBS-120`: S5 新功能 PostHog 覆盖补齐与敏感字段审计。
+- 构建验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败，blocking finding 数为 2，未新增 blocking。
+- 本地回归结论:
+  - QR image URL/request 构造异常已 fail-soft，不应再因无效二维码图片 URL 抛未捕获异常导致闪退。
+  - QR refresh 使用 generation guard 忽略刷新/登出/停止后的旧异步回调。
+  - QR/content/queue/radio 低频 PostHog 事件已补齐，敏感字段过滤规则已扩展。
+- 待外部验证:
+  - 手机/API17 设备连续点击“刷新扫码登录”10 次，覆盖弱网、断网、切后台/返回和接口失败。
+  - 回传 `SkodaPostHog capture ok/failed/exception event=kugou_qr_refresh_*` 或等价日志样本，确认无 token/session/cookie/手机号/验证码/完整 URL query/auth header/API key。

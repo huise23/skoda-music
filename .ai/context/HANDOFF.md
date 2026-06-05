@@ -4,9 +4,9 @@ Last Updated: 2026-06-04
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@5a98e8f`（上一轮已推送 `Add Kugou source mode`）
+- 当前主干: `master@edb006e`（已推送 `Complete S5 corrective playback validation`）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: S5 纠偏本地计划已闭环；下一步执行 API17 实机 A~N 回归并回传证据。
+- 当前执行入口: `T-S5-KG-119` 与 `T-S5-OBS-120` 已完成；下一步恢复 API17 实机 A~N 回归并回传 QR/PostHog 证据。
 
 ## User-Confirmed Requirements (Must Keep)
 - API17 / Android 4.2.2 / AC83xx / 1024x600 横屏为硬约束。
@@ -18,9 +18,27 @@ Last Updated: 2026-06-04
 - 酷狗普通歌曲队列参考 `.NET PlaybackQueueManager`，不是 Emby 队列。
 - 酷狗电台/Radio 是独立 session，同一电台持续播放，下一曲由电台内部推进。
 - 酷狗 API 不应要求用户提供地址。
+- 后续新增功能必须有足够 PostHog/运行时诊断日志；日志与事件属性必须过滤 token、session、手机号、验证码、完整 URL query、认证 header 等敏感信息。
 - `MainActivity.kt` 过大问题当前必须优化，不再只是记录债务。
 - “保持单 Activity 外壳”不是长期硬约束；允许在 API17 兼容且不破坏左侧一级快速切换的前提下，后续拆 Activity、页面壳、Fragment、Controller 或 Binder。
 - 点赞后播放缓存上传到 Emby 入库继续阻塞；本地缓存设计目标最大不超过 `100MB`。
+
+## Latest Delta (T-S5-KG-119 + T-S5-OBS-120 Done, 2026-06-05)
+- 已完成:
+  - QR refresh crash hotfix：二维码图片 URL/request 构造异常 fail-soft，刷新/登出/停止后的旧异步回调被 generation guard 忽略。
+  - QR 失败态可恢复：二维码 key/image 失败时显示失败/可重试，不启动无图轮询。
+  - QR auth 事件：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_qr_login_success`、`kugou_session_validation_success/failed`。
+  - S5 观测补齐：`kugou_content_load_success/failed`、`kugou_queue_start`、`kugou_radio_session_start`。
+  - 新增 `docs/S5_OBSERVABILITY_COVERAGE.md`，同步 `docs/POSTHOG_EVENT_DICTIONARY.md` 与 API17 回归清单。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败；blocking finding 数为 2。
+- 下一步:
+  - 手机/API17 设备执行 A~N 回归。
+  - 重点验证 J10/J11：连续刷新二维码 10 次、弱网/异常/切后台不崩溃；PostHog/logcat 无敏感字段。
 
 ## Latest Delta (T-S5-VAL-113 Done, 2026-06-04)
 - 已完成:

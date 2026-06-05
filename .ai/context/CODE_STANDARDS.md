@@ -14,6 +14,8 @@ These standards keep changes readable, reviewable, modular, and compatible with 
 6. Add comments for non-obvious compatibility, lifecycle, threading, native, networking, or recovery behavior.
 7. Keep API17 compatibility checks explicit when using Android framework or dependency APIs.
 8. Do not modify `KugouMusic.NET/`; use it as read-only reference only.
+9. New features must include enough diagnostic logging for field triage: key user actions, async request start/success/failure, state-machine transitions, and playback/auth/network/cache/DSP failure paths need PostHog structured events and/or runtime/logcat evidence.
+10. PostHog and logs must redact sensitive data. Never log raw tokens, session keys, cookies, passwords, verification codes, phone numbers, full URL queries, auth headers, private API keys, or reusable device credentials; use short IDs, hashes, enum states, error codes, durations, counts, and truncated non-sensitive summaries instead.
 
 ## Size Thresholds
 
@@ -54,3 +56,10 @@ Run applicable checks after implementation:
 - `gradle :app:assembleDebug --no-daemon`
 
 If validation cannot be run, record why and provide the exact command.
+
+## Observability Standards
+
+- Prefer PostHog for low-frequency, structured events that help compare sessions and diagnose field failures.
+- Keep high-frequency signals out of PostHog: no progress ticks, audio frame/DSP per-buffer events, UI redraw events, or full network payloads.
+- For new flows, define at least start/success/failure events or runtime log equivalents before marking the task Done.
+- Error events should include stable `stage`, `error_code`, `source`/feature name, elapsed time when useful, and a redacted summary.

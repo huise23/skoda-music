@@ -14,6 +14,7 @@
 - [ ] The change does not raise or bypass `minSdk = 17`.
 - [ ] The change ignores `KugouMusic.NET/` unless it is being read as reference.
 - [ ] The change does not require unplanned architecture drift.
+- [ ] New feature observability is identified: required PostHog events and runtime/logcat evidence are listed, with sensitive fields excluded.
 
 ## During Execution
 
@@ -23,6 +24,7 @@
 - [ ] Add comments for non-obvious API17, lifecycle, threading, native, or fail-open behavior.
 - [ ] Preserve user changes in the working tree.
 - [ ] Do not introduce dependencies without compatibility justification.
+- [ ] Add diagnostic logs for new user actions, async request results, state transitions, and failure paths without logging secrets or raw credentials.
 - [ ] Stop if a red line may be violated.
 
 ## Post-Execution
@@ -32,6 +34,7 @@
 - [ ] Check entry points are still thin or have been moved toward extraction.
 - [ ] Check API17 guardrails.
 - [ ] Check code health.
+- [ ] Check new/changed logs and PostHog properties for sensitive information before commit.
 - [ ] Run build/test/lint commands appropriate to the task.
 - [ ] Update `.ai/context/` with status, validation, and remaining risks.
 

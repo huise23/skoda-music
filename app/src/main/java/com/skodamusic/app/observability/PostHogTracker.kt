@@ -38,7 +38,26 @@ object PostHogTracker {
         ?: throw IllegalStateException("json media type parse failed")
 
     private val sensitiveKeyFragments = arrayOf(
-        "password", "passwd", "token", "authorization", "header", "response_body", "raw_body"
+        "password",
+        "passwd",
+        "token",
+        "session_key",
+        "cookie",
+        "phone",
+        "mobile",
+        "verify_code",
+        "verification_code",
+        "authorization",
+        "auth_header",
+        "header",
+        "api_key",
+        "url_query",
+        "query",
+        "credential",
+        "secret",
+        "response_body",
+        "raw_body",
+        "payload"
     )
 
     private val lock = Any()

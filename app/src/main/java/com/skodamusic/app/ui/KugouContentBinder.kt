@@ -12,6 +12,7 @@ import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourcePlaylist
 import com.skodamusic.app.model.SourceRadio
 import com.skodamusic.app.model.SourceTrack
+import com.skodamusic.app.observability.PostHogTracker
 
 class KugouContentBinder(
     private val activity: AppCompatActivity,
@@ -131,6 +132,7 @@ class KugouContentBinder(
                 onFinished?.invoke()
                 if (result == null) {
                     appendRuntimeLog("kugou recommend songs failed")
+                    captureContentEvent("kugou_content_load_failed", "recommend_songs", errorCode = "KUGOU_CONTENT_FAILED")
                     clearSessionState(true)
                     setFeedbackText(activity.getString(R.string.feedback_kugou_recommend_failed))
                     requestQrLogin()
@@ -138,6 +140,7 @@ class KugouContentBinder(
                 }
                 updateSessionKeyIfPresent(result.second)
                 recommendedTracks = mapped
+                captureContentEvent("kugou_content_load_success", "recommend_songs", itemCount = mapped.size)
                 renderHome()
                 setFeedbackText(
                     if (mapped.isEmpty()) {
@@ -184,6 +187,7 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 radioLoading = false
                 if (result == null) {
+                    captureContentEvent("kugou_content_load_failed", "recommended_radios", errorCode = "KUGOU_CONTENT_FAILED")
                     clearSessionState(true)
                     setFeedbackText(activity.getString(R.string.feedback_kugou_radio_failed))
                     requestQrLogin()
@@ -191,6 +195,7 @@ class KugouContentBinder(
                 }
                 updateSessionKeyIfPresent(result.second)
                 recommendedRadios = mapped
+                captureContentEvent("kugou_content_load_success", "recommended_radios", itemCount = mapped.size)
                 renderRadioPage()
                 setFeedbackText(
                     if (mapped.isEmpty()) {
@@ -227,6 +232,7 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
+                    captureContentEvent("kugou_content_load_failed", "discover_tags", errorCode = "KUGOU_CONTENT_FAILED")
                     clearSessionState(true)
                     setFeedbackText(activity.getString(R.string.feedback_kugou_discover_failed))
                     requestQrLogin()
@@ -234,6 +240,7 @@ class KugouContentBinder(
                 }
                 updateSessionKeyIfPresent(result.second)
                 discoverTags = tags
+                captureContentEvent("kugou_content_load_success", "discover_tags", itemCount = tags.size)
                 renderDiscoverPage()
                 if (tags.isNotEmpty()) {
                     requestPlaylistsByTag(tags[0].first)
@@ -251,6 +258,7 @@ class KugouContentBinder(
             limit = limit,
             onTrackClick = { index, track ->
                 appendRuntimeLog("kugou recommend click index=$index hash=${track.playbackRef.hash}")
+                captureContentEvent("kugou_queue_start", "home_recommend", itemCount = recommendedTracks.size)
                 onPlayQueuedTrack(track, recommendedTracks, "home_recommend")
             },
             onLike = { track -> onLikeTrack(track) }
@@ -272,6 +280,7 @@ class KugouContentBinder(
             onRadioClick = { radio -> requestRadioSongs(radio) },
             onTrackClick = { index, track ->
                 appendRuntimeLog("kugou radio song click index=$index hash=${track.playbackRef.hash}")
+                captureContentEvent("kugou_radio_session_start", "radio_songs", itemCount = radioSongs.size)
                 onStartRadioTrack(currentSelectedRadio(), radioSongs, track)
             },
             onLike = { track -> onLikeTrack(track) }
@@ -297,6 +306,7 @@ class KugouContentBinder(
             onPlaylistClick = { playlist -> requestPlaylistSongs(playlist) },
             onTrackClick = { index, track ->
                 appendRuntimeLog("kugou playlist song click index=$index hash=${track.playbackRef.hash}")
+                captureContentEvent("kugou_queue_start", "discover_playlist", itemCount = discoverSongs.size)
                 onPlayQueuedTrack(track, discoverSongs, "discover_playlist")
             },
             onLike = { track -> onLikeTrack(track) }
@@ -343,12 +353,14 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 radioLoading = false
                 if (result == null) {
+                    captureContentEvent("kugou_content_load_failed", "radio_songs", errorCode = "KUGOU_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_radio_songs_failed))
                     renderRadioPage()
                     return@runOnUiThread
                 }
                 updateSessionKeyIfPresent(result.second)
                 radioSongs = mapped
+                captureContentEvent("kugou_content_load_success", "radio_songs", itemCount = mapped.size)
                 renderRadioPage()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_radio_songs_success, mapped.size))
                 mapped.firstOrNull()?.let { firstTrack ->
@@ -395,12 +407,14 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
+                    captureContentEvent("kugou_content_load_failed", "playlists_by_tag", errorCode = "KUGOU_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_failed))
                     renderDiscoverPage()
                     return@runOnUiThread
                 }
                 updateSessionKeyIfPresent(result.second)
                 discoverPlaylists = mapped
+                captureContentEvent("kugou_content_load_success", "playlists_by_tag", itemCount = mapped.size)
                 renderDiscoverPage()
                 setFeedbackText(
                     if (mapped.isEmpty()) {
@@ -454,12 +468,14 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
+                    captureContentEvent("kugou_content_load_failed", "playlist_songs", errorCode = "KUGOU_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_songs_failed))
                     renderDiscoverPage()
                     return@runOnUiThread
                 }
                 updateSessionKeyIfPresent(result.second)
                 discoverSongs = mapped
+                captureContentEvent("kugou_content_load_success", "playlist_songs", itemCount = mapped.size)
                 renderDiscoverPage()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_songs_success, mapped.size))
             }
@@ -470,6 +486,31 @@ class KugouContentBinder(
         if (sessionKey.isNotBlank()) {
             updateSessionKey(sessionKey)
         }
+    }
+
+    private fun captureContentEvent(
+        eventName: String,
+        stage: String,
+        itemCount: Int? = null,
+        errorCode: String? = null
+    ) {
+        val properties = linkedMapOf<String, Any?>(
+            "source" to "kugou",
+            "feature" to "kugou_content",
+            "stage" to stage
+        )
+        if (itemCount != null) {
+            properties["item_count"] = itemCount
+        }
+        if (!errorCode.isNullOrBlank()) {
+            properties["error_code"] = errorCode
+        }
+        PostHogTracker.capture(
+            context = activity.applicationContext,
+            eventName = eventName,
+            properties = properties,
+            priority = if (errorCode.isNullOrBlank()) PostHogTracker.Priority.NORMAL else PostHogTracker.Priority.HIGH
+        )
     }
 
     companion object {

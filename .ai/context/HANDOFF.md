@@ -23,7 +23,21 @@ Last Updated: 2026-06-04
 - “保持单 Activity 外壳”不是长期硬约束；允许在 API17 兼容且不破坏左侧一级快速切换的前提下，后续拆 Activity、页面壳、Fragment、Controller 或 Binder。
 - 点赞后播放缓存上传到 Emby 入库继续阻塞；本地缓存设计目标最大不超过 `100MB`。
 
-## Latest Delta (T-S5-KG-119 + T-S5-OBS-120 Done, 2026-06-05)
+## Latest Delta (T-S5-KG-121 Done, 2026-06-05)
+- 已完成:
+  - QR 扫码登录失败修复：扫码返回 `userid/token` 后立即进入酷狗登录态，贴近 `KugouMusic.NET` 登录流程。
+  - device register/token refresh 变为后台增强校验；失败只记录 `kugou_session_validation_deferred`，不再提示“酷狗登录失败/登录不可用”。
+  - 默认酷狗启动禁止 Emby 自动行为：不恢复 Emby cached queue、不自动播放、不触发 Emby recommendation auto-refresh。
+  - `navLibrary` 和 `testEmbyButton` 是显式 Emby 激活入口。
+- 新增观测:
+  - `kugou_session_validation_deferred`
+  - `resume_restore_skipped`
+  - `emby_auto_refresh_skipped`
+- 下一步重点验证:
+  - 手机扫码成功后登录态可用，内容页能加载。
+  - 冷启动 logcat 无 Emby resume/autoplay；PostHog/logcat 仅记录脱敏 stage/reason，不出现 token/session/URL/账号/密码。
+
+## Previous Delta (T-S5-KG-119 + T-S5-OBS-120 Done, 2026-06-05)
 - 已完成:
   - QR refresh crash hotfix：二维码图片 URL/request 构造异常 fail-soft，刷新/登出/停止后的旧异步回调被 generation guard 忽略。
   - QR 失败态可恢复：二维码 key/image 失败时显示失败/可重试，不启动无图轮询。

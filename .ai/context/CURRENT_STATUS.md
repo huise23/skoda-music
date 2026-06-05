@@ -6,6 +6,19 @@ Last Updated: 2026-06-04
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master@edb006e`（已推送 `Complete S5 corrective playback validation`）
 
+## Execution Progress (T-S5-KG-121, 2026-06-05)
+- 已完成:
+  - QR 扫码登录失败热修：扫码返回 `userid/token` 后立即按 `.NET` 行为进入可用登录态。
+  - device register/token refresh 改为增强校验；失败时记录 `kugou_session_validation_deferred`，不再把 UI 打成“酷狗登录失败/登录不可用”。
+  - 默认酷狗启动 source gate：冷启动不恢复 Emby cached queue，不自动播放 Emby，不触发 Emby recommendation auto-refresh。
+  - Library/Test Emby 作为显式 Emby 入口；未显式进入 Emby 前，Emby 自动恢复与自动刷新均跳过。
+- 观测:
+  - 新增脱敏事件：`kugou_session_validation_deferred`、`resume_restore_skipped`、`emby_auto_refresh_skipped`。
+  - 事件与 runtime log 只记录 stage/reason/trigger/hash，不记录 token、dfid、mid、uuid、Emby URL、账号、密码或 cached queue payload。
+- 待验证:
+  - 手机扫码后不再提示“酷狗登录失败/登录不可用”，内容入口可用。
+  - 冷启动 logcat 不再出现 Emby resume/autoplay，PostHog 可见 source gate skip 事件。
+
 ## Execution Progress (T-S5-KG-119 + T-S5-OBS-120, 2026-06-05)
 - 已完成:
   - `T-S5-KG-119` QR refresh crash hotfix + fail-soft observability。

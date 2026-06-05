@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 2026-06-05
+- Fixed QR scan login blocking: a QR `userid/token` now enters Kugou logged-in state immediately, while device registration/token refresh failures are recorded as `kugou_session_validation_deferred` instead of showing login unavailable.
+- Added default Kugou startup source gate: Emby resume restore, Emby autoplay, and Emby recommendation auto-refresh are skipped until the user explicitly opens Library or tests Emby.
+- Added redacted source-gate events `resume_restore_skipped` and `emby_auto_refresh_skipped`; updated observability docs and API17 checklist for deferred validation.
 - Follow-up QR image fix: normalized Kugou QR image references before download, supporting `http(s)`, protocol-relative URLs, relative paths, bare host/path values, and embedded `data:image` base64 payloads without logging the full image URL/query.
 - Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
 - Completed `T-S5-KG-119`: fixed QR refresh crash risk by wrapping QR image URL/request construction in fail-soft handling, adding QR refresh generation guard, and making failed QR refreshes retryable instead of starting empty polling.

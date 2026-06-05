@@ -24,15 +24,32 @@ class KugouDirectSessionClient(
         .build()
 
     fun validateQrSession(input: KugouDirectSessionSnapshot): KugouDirectSessionValidationResult {
-        val withDevice = ensureDevice(input) ?: return blocked("device_register_failed")
-        val refreshed = refreshToken(withDevice) ?: return blocked("token_refresh_failed")
+        if (input.token.isBlank() || input.userId == "0") {
+            return blocked("qr_session_missing_auth")
+        }
+        val withDevice = ensureDevice(input) ?: run {
+            log("kugou direct session validation deferred stage=device_register")
+            return validated(input, "device_register_deferred")
+        }
+        val refreshed = refreshToken(withDevice) ?: run {
+            log("kugou direct session validation deferred stage=token_refresh")
+            return validated(withDevice, "token_refresh_deferred")
+        }
+        log("kugou direct session validation refreshed")
+        return validated(refreshed, "direct_refresh_ok")
+    }
+
+    private fun validated(
+        snapshot: KugouDirectSessionSnapshot,
+        reason: String
+    ): KugouDirectSessionValidationResult {
         return KugouDirectSessionValidationResult(
-            snapshot = refreshed.copy(
+            snapshot = snapshot.copy(
                 validationState = KugouDirectSessionState.VALID,
-                validationReason = "direct_refresh_ok",
+                validationReason = reason,
                 validatedAtMs = System.currentTimeMillis()
             ),
-            message = "direct_refresh_ok"
+            message = reason
         )
     }
 

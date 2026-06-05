@@ -376,10 +376,17 @@ class KugouAuthConfigBinder(
                 setQrText(activity.getString(R.string.kugou_qr_success))
                 refreshLoginUi()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_login_success))
-                appendRuntimeLog("kugou direct session validated userHash=${safeHash(lastUserId)}")
+                appendRuntimeLog(
+                    "kugou direct session validated userHash=${safeHash(lastUserId)} reason=${validated.validationReason}"
+                )
+                val eventName = if (validated.validationReason.endsWith("_deferred")) {
+                    "kugou_session_validation_deferred"
+                } else {
+                    "kugou_session_validation_success"
+                }
                 captureAuthEvent(
-                    eventName = "kugou_session_validation_success",
-                    stage = "session_validation"
+                    eventName = eventName,
+                    stage = validated.validationReason.ifBlank { "session_validation" }
                 )
                 showToast(R.string.toast_kugou_success)
             }

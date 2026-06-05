@@ -36,7 +36,10 @@ Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120`
 - `kugou_qr_poll_failed`: QR polling failed, expired, or returned no usable status
 - `kugou_qr_login_success`: QR polling returned login success and local validation starts
 - `kugou_session_validation_success`: direct session device/token validation succeeded
+- `kugou_session_validation_deferred`: QR token is usable but device/token refresh was deferred fail-soft
 - `kugou_session_validation_failed`: direct session device/token validation failed and login remains blocked
+- `resume_restore_skipped`: startup source gate skipped Emby resume restore under default Kugou mode
+- `emby_auto_refresh_skipped`: startup source gate skipped Emby recommendation auto-refresh under default Kugou mode
 - `kugou_content_load_success`: Kugou content list loaded, with `stage` and `item_count`
 - `kugou_content_load_failed`: Kugou content list failed and enters retry/login recovery
 - `kugou_queue_start`: normal Kugou queue starts from a visible content context

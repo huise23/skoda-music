@@ -130,12 +130,12 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] J3 设置页不显示 Kugou WebApi Base URL 输入框；可见酷狗登录状态。
 - [ ] J4 点击“刷新扫码登录”不会要求填写地址，会通过 direct `/v2/qrcode` 获取二维码或二维码图片 URL。
 - [ ] J5 扫码轮询约 2 秒一次，走 direct `/v2/get_userinfo_qrcode`，等待扫码、等待确认、成功、过期状态文案可区分。
-- [ ] J6 旧 `X-Kg-Session-Id` / `kugou_webapi_base_url` 缓存在启动后被清理，不被复用；QR success 后进入“校验设备与 Token”状态。
+- [ ] J6 旧 `X-Kg-Session-Id` / `kugou_webapi_base_url` 缓存在启动后被清理，不被复用；QR success 后先进入 direct session 登录态，再执行设备/Token 增强校验。
 - [ ] J7 手机号验证码按钮不会要求填写 WebApi 地址，不发起旧 `/captcha/sent` 代理请求，并显示 SMS direct pending 状态。
-- [ ] J8 device register + token refresh 成功后才显示“已登录”；失败时显示 session 校验失败并保持内容入口锁定。
+- [ ] J8 扫码返回 `userid/token` 后显示“已登录”；device register/token refresh 失败只记录 `kugou_session_validation_deferred`，不提示登录失败；仅缺少 `userid/token` 时阻断。
 - [ ] J9 登出后清理 session、二维码和酷狗内容状态。
 - [ ] J10 连续点击“刷新扫码登录”10 次不崩溃；二维码地址异常、图片下载失败、断网/弱网、切后台/返回后的旧回调都进入失败/可重试状态。
-- [ ] J11 QR refresh 相关 PostHog/logcat 证据脱敏可见：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_session_validation_success/failed`。
+- [ ] J11 QR refresh 相关 PostHog/logcat 证据脱敏可见：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_session_validation_success/deferred/failed`。
 
 ### K. Kugou Content Pages
 - [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
@@ -160,6 +160,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 ### M. Pure Kugou Playback / Queue / Radio Session
 - [ ] M1 默认酷狗模式下点击推荐歌曲后 Now Playing 显示酷狗歌曲标题/歌手，不从 Emby 当前队列推导。
 - [ ] M2 酷狗播放期间 `Prev / PlayPause / Next` 不触发 Emby `loadedTracks/currentTrackIndex` 推进。
+- [ ] M2.1 默认酷狗冷启动不恢复 Emby cached queue、不自动播放 Emby、不触发 Emby recommendation auto-refresh；PostHog 可见 `resume_restore_skipped` / `emby_auto_refresh_skipped`。
 - [ ] M3 酷狗播放时前台通知、浮窗、方向盘/媒体键的当前曲信息与控制结果来自 source playback session。
 - [ ] M4 酷狗普通歌曲队列：推荐歌曲/发现歌单歌曲点击后建立普通 queue；队列页显示“酷狗普通队列”。
 - [ ] M5 普通 queue 的 next/previous 在当前上下文内循环，不进入 Emby 队列。

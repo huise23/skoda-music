@@ -202,6 +202,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
     private var queueTailRefillInFlight: Boolean = false
+    private var explicitEmbyUserActivation: Boolean = false
     private var showingHomeRecommendTab: Boolean = true
     private var previewArtistOverride: String? = null
     private var homeLyricsLines: List<LyricLine> = emptyList()
@@ -750,6 +751,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
 
         testEmbyButton.setOnClickListener {
+            markExplicitEmbyUserActivation("test_emby_button")
             val credentials = EmbyCredentials(
                 baseUrl = embyBaseUrlInput.text.toString().trim(),
                 username = embyUsernameInput.text.toString().trim(),
@@ -1101,6 +1103,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         navLikeStatusButton.setOnClickListener {
             switchPage(PAGE_LIKE_STATUS)
         }
+        navLibraryButton.setOnClickListener {
+            markExplicitEmbyUserActivation("nav_library")
+            switchPage(PAGE_LIBRARY)
+        }
         navSettingsButton.setOnClickListener {
             switchPage(PAGE_SETTINGS)
         }
@@ -1146,6 +1152,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (selectedPage == PAGE_HOME || selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_DISCOVER) {
             refreshKugouLoginUi()
         }
+    }
+
+    private fun markExplicitEmbyUserActivation(source: String) {
+        if (!explicitEmbyUserActivation) {
+            appendRuntimeLog("emby explicit activation source=$source")
+        }
+        explicitEmbyUserActivation = true
     }
 
     private fun restoreKugouSessionFromCache() {
@@ -3047,6 +3060,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun maybeAutoRefreshQueueRecommendations(trigger: String) {
+        if (!explicitEmbyUserActivation) {
+            appendRuntimeLog("queue auto refresh skip trigger=$trigger reason=default-kugou-startup")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "emby_auto_refresh_skipped",
+                properties = mapOf(
+                    "stage" to "startup_source_gate",
+                    "reason" to "default_kugou_startup",
+                    "trigger" to trigger
+                )
+            )
+            return
+        }
         if (loadedTracks.isNotEmpty()) {
             return
         }
@@ -4594,6 +4620,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 clearPersistedPlaybackResumeState()
             }
             resumeRestoreAttempted = true
+            return
+        }
+        if (!explicitEmbyUserActivation) {
+            resumeRestoreAttempted = true
+            appendRuntimeLog("resume restore skipped reason=default-kugou-startup")
+            PostHogTracker.capture(
+                context = applicationContext,
+                eventName = "resume_restore_skipped",
+                properties = mapOf(
+                    "stage" to "startup_source_gate",
+                    "reason" to "default_kugou_startup",
+                    "music_source" to "kugou"
+                )
+            )
             return
         }
         if (resumeRestoreAttempted) {

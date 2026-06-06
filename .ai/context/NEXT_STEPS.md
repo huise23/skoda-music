@@ -3,15 +3,16 @@
 Last Updated: 2026-06-04
 
 ## One-Line Summary
-- QR refresh 崩溃热修和 S5 脱敏观测补齐已完成；下一步恢复 API17 A~N 实机回归。
+- QR 登录默认推荐/播放最小闭环已改为 direct 路径；下一步先做手机扫码实测，再继续 Radio/发现/点赞 direct 化或 API17 A~N 回归。
 
 ## Current Highest Priority
-- API17 实机回归：按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组。
+- 手机扫码实测 `T-S5-KG-122`：确认扫码后立即已登录、推荐歌曲可加载、点击推荐歌曲可获取 direct `/v5/url` 并播放。
 
 ## Guardrail-Adjusted Queue
 - 当前 Ready:
-  - None
+  - 设备验证：手机/API17 环境验证 `T-S5-KG-122` 登录、首页推荐、推荐歌曲播放。
 - 当前 Planned:
+  - `T-S5-KG-123`: Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 化，移除剩余旧 `KugouWebApiClient` baseUrl gate。
   - API17 A~N 实机回归，需真实设备/手机环境回传证据。
 - 当前 In Progress:
   - None
@@ -27,12 +28,11 @@ Last Updated: 2026-06-04
 
 ## Immediate Next Step
 
-- 在手机/目标 API17 设备执行 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` A~N 分组。
-- 重点回传：
-  - J10/J11 QR refresh 连续点击、弱网/异常、PostHog/logcat 脱敏证据。
-  - G 组 `SkodaPostHog capture ok/failed/exception event=...` 样本。
-  - M 组 Kugou playback/queue/radio 证据。
-  - I14/I15 DSP 边框颜色与 direct-buffer bridge/native status 日志。
+- 在手机/模拟器验证：
+  - 刷新二维码 -> 手机确认 -> UI 立即显示已登录，不再等待 token refresh。
+  - 推荐歌曲页可加载推荐歌曲，logcat/PostHog 有 `kugou_direct_content_request` 与 `kugou_content_load_success/failed`。
+  - 点击推荐歌曲可走 `kugou_direct_play_url_request/success/failed`，不再提示缺少 WebApi baseUrl。
+  - 若仍失败，回传 `SkodaMusicEmby|SkodaPostHog|kugou direct` 相关 logcat。
 
 ## Planned After Ready
 - None

@@ -48,6 +48,7 @@ import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
 import com.skodamusic.app.emby.EmbyApi
+import com.skodamusic.app.kugou.KugouDirectContentClient
 import com.skodamusic.app.kugou.KugouWebApiClient
 import com.skodamusic.app.like.LikeStatusItem
 import com.skodamusic.app.like.LikeStatusStore
@@ -307,6 +308,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private val kugouWebApiClient: KugouWebApiClient
         get() = kugouAuthConfigBinder.webApiClient
+    private lateinit var kugouDirectContentClient: KugouDirectContentClient
     private var kugouSessionKey: String
         get() = kugouAuthConfigBinder.sessionKey
         set(value) {
@@ -357,6 +359,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             onSessionCleared = { clearKugouContentState() }
         )
         likeStatusStore = LikeStatusStore(applicationContext)
+        kugouDirectContentClient = KugouDirectContentClient(applicationContext) { message ->
+            appendRuntimeLog(message)
+        }
         sourceRowRenderer = SourceRowRenderer(this)
         kugouContentRenderer = KugouContentRenderer(this, sourceRowRenderer)
         embySessionCache = EmbySessionCache(
@@ -423,6 +428,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             activity = this,
             backgroundExecutor = backgroundExecutor,
             webApiClient = { kugouWebApiClient },
+            directContentClient = { kugouDirectContentClient },
             renderer = kugouContentRenderer,
             resolveBaseUrl = { resolveKugouBaseUrl() },
             getSessionKey = { kugouSessionKey },
@@ -1988,10 +1994,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun playKugouTrack(track: SourceTrack) {
-        val baseUrl = resolveKugouBaseUrl()
         val session = kugouSessionKey.trim()
         val ref = track.playbackRef
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasKugouSession()) {
+        if (session.isEmpty() || !hasKugouSession()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
             requestKugouQrLogin()
             return
@@ -2019,15 +2024,20 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 feedbackText = getString(R.string.feedback_kugou_play_url_loading)
             )
         }
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "kugou_direct_play_url_request",
+            properties = mapOf(
+                "source" to "kugou",
+                "feature" to "kugou_playback",
+                "stage" to "play_url"
+            )
+        )
         backgroundExecutor.execute {
-            val resolved = kugouWebApiClient.getPlayUrl(
-                baseUrl = baseUrl,
-                sessionKey = session,
+            val resolved = kugouDirectContentClient.getPlayUrl(
                 hash = ref.hash,
                 quality = ref.quality.ifBlank { "128" },
-                albumId = ref.albumId,
-                albumAudioId = ref.albumAudioId,
-                freePart = false
+                albumAudioId = ref.albumAudioId
             )
             runOnUiThread {
                 if (requestId != playbackRequestId) {
@@ -2040,12 +2050,29 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             feedbackText = getString(R.string.feedback_kugou_play_url_failed)
                         )
                     }
+                    PostHogTracker.capture(
+                        context = applicationContext,
+                        eventName = "kugou_direct_play_url_failed",
+                        properties = mapOf(
+                            "source" to "kugou",
+                            "feature" to "kugou_playback",
+                            "stage" to "play_url",
+                            "error_code" to "KUGOU_DIRECT_PLAY_URL_FAILED"
+                        ),
+                        priority = PostHogTracker.Priority.HIGH
+                    )
                     showToast(R.string.toast_kugou_play_failed)
                     return@runOnUiThread
                 }
-                if (resolved.sessionKey.isNotBlank()) {
-                    kugouSessionKey = resolved.sessionKey
-                }
+                PostHogTracker.capture(
+                    context = applicationContext,
+                    eventName = "kugou_direct_play_url_success",
+                    properties = mapOf(
+                        "source" to "kugou",
+                        "feature" to "kugou_playback",
+                        "stage" to "play_url"
+                    )
+                )
                 sourcePlaybackSession.markKugouActive(track)
                 prepareAndPlayKugouUrl(track, resolved.url, requestId)
             }

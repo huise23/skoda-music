@@ -40,6 +40,10 @@ Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120`
 - `kugou_session_validation_failed`: direct session device/token validation failed and login remains blocked
 - `resume_restore_skipped`: startup source gate skipped Emby resume restore under default Kugou mode
 - `emby_auto_refresh_skipped`: startup source gate skipped Emby recommendation auto-refresh under default Kugou mode
+- `kugou_direct_content_request`: Android direct Kugou content request started for a minimal direct path
+- `kugou_direct_play_url_request`: Android direct Kugou play URL request started
+- `kugou_direct_play_url_success`: Android direct Kugou play URL resolved
+- `kugou_direct_play_url_failed`: Android direct Kugou play URL failed without exposing URL/query
 - `kugou_content_load_success`: Kugou content list loaded, with `stage` and `item_count`
 - `kugou_content_load_failed`: Kugou content list failed and enters retry/login recovery
 - `kugou_queue_start`: normal Kugou queue starts from a visible content context

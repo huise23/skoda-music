@@ -3,10 +3,11 @@
 Last Updated: 2026-06-05
 
 ## Ready
-- None
+- 设备验证：手机/API17 环境验证 `T-S5-KG-122` 登录、首页推荐、推荐歌曲播放。
 
 ## Pending / Planned
 
+- `T-S5-KG-123`: Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 化，移除剩余旧 `KugouWebApiClient` baseUrl gate。
 - API17 A~N 实机回归：`T-S5-KG-119` 已本地完成，等待手机/API17 设备执行并回传 QR refresh 与 PostHog 证据。
 
 ## Blocked
@@ -38,6 +39,7 @@ Last Updated: 2026-06-05
 - None
 
 ## Done
+- `T-S5-KG-122`: Android QR auth 与 `.NET` 登录态一致化 + 默认推荐/播放 direct 最小闭环；扫码 token 成功即 `VALID`，首页推荐走 direct `/everyday_song_recommend`，推荐歌曲播放 URL 走 direct `/v5/url`，不再依赖旧 WebApi baseUrl。
 - `T-S5-KG-121`: QR 扫码登录失败 + 默认酷狗启动 source gate 热修；扫码 token 成功即登录，设备/token refresh 失败只记录 deferred；默认酷狗冷启动跳过 Emby resume/autoplay/auto-refresh。
 - `T-S5-OBS-120`: S5 新功能 PostHog 覆盖补齐与敏感字段审计；补齐 QR/content/queue/radio 低频事件，新增 `docs/S5_OBSERVABILITY_COVERAGE.md`，DSP 继续用 runtime/logcat 热路径证据。
 - `T-S5-KG-119`: QR refresh crash hotfix + fail-soft observability；修复二维码图片 URL/request 构造未捕获异常，增加 QR refresh generation guard、失败可重试状态和脱敏 PostHog/runtime 事件。

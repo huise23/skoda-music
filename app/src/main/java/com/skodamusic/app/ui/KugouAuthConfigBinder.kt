@@ -312,31 +312,29 @@ class KugouAuthConfigBinder(
 
     private fun applyDirectLogin(status: KugouDirectQrStatus) {
         stopQrPolling()
-        val pendingSession = directSessionStore.newPendingSession(
+        val activeSession = directSessionStore.newValidatedQrSession(
             userId = status.userId.ifBlank { "0" },
             token = status.token,
             nickname = status.nickname
         )
-        directSessionStore.persist(pendingSession)
-        sessionKey = pendingSession.token
-        lastUserId = pendingSession.userId
-        displayName = pendingSession.nickname
-        directValidationState = pendingSession.validationState
-        setQrText(activity.getString(R.string.kugou_session_validating))
+        directSessionStore.persist(activeSession)
+        sessionKey = activeSession.token
+        lastUserId = activeSession.userId
+        displayName = activeSession.nickname
+        directValidationState = activeSession.validationState
+        setQrText(activity.getString(R.string.kugou_qr_success))
         refreshLoginUi()
-        setFeedbackText(activity.getString(R.string.feedback_kugou_session_validating))
-        appendRuntimeLog("kugou direct qr login success userHash=${safeHash(lastUserId)} validation=pending")
+        setFeedbackText(activity.getString(R.string.feedback_kugou_login_success))
+        appendRuntimeLog("kugou direct qr login success userHash=${safeHash(lastUserId)} validation=background")
         captureAuthEvent(
             eventName = "kugou_qr_login_success",
             stage = "qr_poll"
         )
-        validateDirectSession(pendingSession)
+        validateDirectSession(activeSession)
     }
 
     private fun validateDirectSession(snapshot: KugouDirectSessionSnapshot) {
         val generation = ++sessionValidationGeneration
-        directValidationState = KugouDirectSessionState.PENDING_VALIDATION
-        refreshLoginUi()
         backgroundExecutor.execute {
             val result = directSessionClient.validateQrSession(snapshot)
             activity.runOnUiThread {
@@ -345,27 +343,18 @@ class KugouAuthConfigBinder(
                 }
                 val validated = result.snapshot
                 if (validated == null) {
-                    val blocked = snapshot.copy(
-                        validationState = KugouDirectSessionState.BLOCKED,
-                        validationReason = result.message,
-                        validatedAtMs = System.currentTimeMillis()
+                    directSessionStore.persist(
+                        snapshot.copy(
+                            validationState = KugouDirectSessionState.VALID,
+                            validationReason = result.message.ifBlank { "session_validation_deferred" },
+                            validatedAtMs = System.currentTimeMillis()
+                        )
                     )
-                    directSessionStore.persist(blocked)
-                    sessionKey = blocked.token
-                    lastUserId = blocked.userId
-                    displayName = blocked.nickname
-                    directValidationState = blocked.validationState
-                    setQrText(activity.getString(R.string.kugou_session_blocked))
-                    refreshLoginUi()
-                    setFeedbackText(activity.getString(R.string.feedback_kugou_session_blocked))
-                    appendRuntimeLog("kugou direct session validation blocked reason=${result.message}")
+                    appendRuntimeLog("kugou direct session validation deferred reason=${result.message}")
                     captureAuthEvent(
-                        eventName = "kugou_session_validation_failed",
-                        stage = "session_validation",
-                        errorCode = result.message.ifBlank { "SESSION_VALIDATION_FAILED" },
-                        priority = PostHogTracker.Priority.HIGH
+                        eventName = "kugou_session_validation_deferred",
+                        stage = result.message.ifBlank { "session_validation" }
                     )
-                    showToast(R.string.toast_kugou_failed)
                     return@runOnUiThread
                 }
                 directSessionStore.persist(validated)

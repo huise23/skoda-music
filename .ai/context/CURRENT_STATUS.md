@@ -19,6 +19,23 @@ Last Updated: 2026-06-04
   - 手机扫码后不再提示“酷狗登录失败/登录不可用”，内容入口可用。
   - 冷启动 logcat 不再出现 Emby resume/autoplay，PostHog 可见 source gate skip 事件。
 
+## Execution Progress (T-S5-KG-122, 2026-06-06)
+- 状态: Done for default Kugou login/recommend/play minimal loop; Partial for all remaining Kugou content direct migration.
+- 已完成:
+  - QR success 返回 `userid/token` 后立即持久化为 `VALID` session，`hasSession()` 不再等待 device register/token refresh；该语义对齐 `.NET` `LoginClient.CheckQrStatusAsync()` token success 即 `UpdateAuth(...)`。
+  - device register/token refresh 继续后台增强；失败只记录 `kugou_session_validation_deferred`，不覆盖登录态。
+  - 新增 `KugouDirectContentClient`，按 `.NET` `RawDiscoveryApi.GetRecommendSongAsync()` 直连 `/everyday_song_recommend` 获取首页推荐歌曲。
+  - 默认推荐歌曲点击播放改按 `.NET` `RawSongApi.GetUrlAsync()` / `RawSearchApi.GetPlayUrlAsync()` 的 `/v5/url` 直连路径获取播放 URL，不再依赖旧 WebApi `baseUrl`。
+  - 新增脱敏事件：`kugou_direct_content_request`、`kugou_direct_play_url_request/success/failed`。
+- 仍未完成:
+  - Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞仍有旧 `KugouWebApiClient` + `resolveKugouBaseUrl()` 依赖；这些不属于本轮最小登录闭环，需后续 direct 化。
+  - 尚无手机扫码实测证据；本轮只完成本地构建/护栏验证。
+- `.NET` 依据:
+  - `LoginClient.CheckQrStatusAsync()`
+  - `LoginViewModel` QR success 后后台 InitDevice/RefreshSession
+  - `RawDiscoveryApi.GetRecommendSongAsync()`
+  - `RawSongApi.GetUrlAsync()` / `RawSearchApi.GetPlayUrlAsync()`
+
 ## Execution Progress (T-S5-KG-119 + T-S5-OBS-120, 2026-06-05)
 - 已完成:
   - `T-S5-KG-119` QR refresh crash hotfix + fail-soft observability。

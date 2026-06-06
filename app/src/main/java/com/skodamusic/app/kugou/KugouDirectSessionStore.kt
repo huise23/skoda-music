@@ -87,6 +87,14 @@ class KugouDirectSessionStore(context: Context) {
         )
     }
 
+    fun newValidatedQrSession(userId: String, token: String, nickname: String): KugouDirectSessionSnapshot {
+        return newPendingSession(userId, token, nickname).copy(
+            validationState = KugouDirectSessionState.VALID,
+            validationReason = "qr_token_ok",
+            validatedAtMs = System.currentTimeMillis()
+        )
+    }
+
     fun persist(session: KugouDirectSessionSnapshot) {
         prefs.edit()
             .putString(KEY_USER_ID, session.userId.trim())

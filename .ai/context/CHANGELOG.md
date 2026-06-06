@@ -1,6 +1,10 @@
 # CHANGELOG
 
 ## 2026-06-05
+- Completed `T-S5-KG-122`: QR token success now immediately opens the Kugou session gate, while device/token refresh remains background validation.
+- Added `KugouDirectContentClient` for the default direct Kugou loop: recommended songs via `/everyday_song_recommend` and recommended-song play URLs via `/v5/url`, both traceable to `KugouMusic.NET` raw APIs and without requiring a user-provided WebApi base URL.
+- Added redacted PostHog events for direct content/play URL gates: `kugou_direct_content_request`, `kugou_direct_play_url_request`, `kugou_direct_play_url_success`, `kugou_direct_play_url_failed`.
+- Remaining `KugouWebApiClient` baseUrl gates for Radio, discover playlists/songs, and like are deferred to `T-S5-KG-123`.
 - Fixed QR scan login blocking: a QR `userid/token` now enters Kugou logged-in state immediately, while device registration/token refresh failures are recorded as `kugou_session_validation_deferred` instead of showing login unavailable.
 - Added default Kugou startup source gate: Emby resume restore, Emby autoplay, and Emby recommendation auto-refresh are skipped until the user explicitly opens Library or tests Emby.
 - Added redacted source-gate events `resume_restore_skipped` and `emby_auto_refresh_skipped`; updated observability docs and API17 checklist for deferred validation.

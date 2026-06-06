@@ -37,6 +37,22 @@ Last Updated: 2026-06-04
   - 手机扫码成功后登录态可用，内容页能加载。
   - 冷启动 logcat 无 Emby resume/autoplay；PostHog/logcat 仅记录脱敏 stage/reason，不出现 token/session/URL/账号/密码。
 
+## Latest Delta (T-S5-KG-122 Done Locally, 2026-06-06)
+- 已完成:
+  - QR success 有 `userid/token` 时立即持久化为 `VALID` session，`hasSession()` 不再等待 device register/token refresh。
+  - device register/token refresh 仍在后台增强，失败只记录 `kugou_session_validation_deferred`，不覆盖登录态。
+  - 新增 `KugouDirectContentClient`，按 `.NET` `RawDiscoveryApi.GetRecommendSongAsync()` 直连 `/everyday_song_recommend`。
+  - 推荐歌曲播放 URL 按 `.NET` `RawSongApi.GetUrlAsync()` / `RawSearchApi.GetPlayUrlAsync()` 直连 `/v5/url`。
+  - 新增事件：`kugou_direct_content_request`、`kugou_direct_play_url_request/success/failed`。
+- 本地验证:
+  - `compileDebugKotlin` 已通过；其余最终验证见本轮执行结果。
+- 仍未完成:
+  - Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞仍依赖旧 `KugouWebApiClient` + `resolveKugouBaseUrl()`，需 `T-S5-KG-123` direct 化。
+  - 尚无手机扫码实测证据。
+- 下一手:
+  - 先手机/模拟器验证扫码、首页推荐、推荐歌曲播放。
+  - 若通过，再执行 `T-S5-KG-123` 或恢复 API17 A~N 回归。
+
 ## Previous Delta (T-S5-KG-119 + T-S5-OBS-120 Done, 2026-06-05)
 - 已完成:
   - QR refresh crash hotfix：二维码图片 URL/request 构造异常 fail-soft，刷新/登出/停止后的旧异步回调被 generation guard 忽略。

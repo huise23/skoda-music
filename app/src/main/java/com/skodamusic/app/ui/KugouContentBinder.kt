@@ -5,6 +5,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.skodamusic.app.R
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
+import com.skodamusic.app.kugou.KugouDirectContentClient
 import com.skodamusic.app.kugou.KugouWebApiClient
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.SourceCapability
@@ -18,6 +19,7 @@ class KugouContentBinder(
     private val activity: AppCompatActivity,
     private val backgroundExecutor: AppBackgroundExecutor,
     private val webApiClient: () -> KugouWebApiClient,
+    private val directContentClient: () -> KugouDirectContentClient,
     private val renderer: KugouContentRenderer,
     private val resolveBaseUrl: () -> String,
     private val getSessionKey: () -> String,
@@ -85,9 +87,8 @@ class KugouContentBinder(
     }
 
     fun requestRecommendedSongs(onFinished: (() -> Unit)? = null, renderHome: () -> Unit) {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || !hasSession()) {
             onFinished?.invoke()
             renderHome()
             setFeedbackText(activity.getString(R.string.feedback_need_kugou))
@@ -104,9 +105,10 @@ class KugouContentBinder(
         recommendedLoading = true
         renderHome()
         setFeedbackText(activity.getString(R.string.feedback_kugou_recommend_loading))
+        captureContentEvent("kugou_direct_content_request", "recommend_songs")
         backgroundExecutor.execute {
-            val result = webApiClient().getRecommendedSongs(baseUrl, session)
-            val mapped = result?.first.orEmpty().map { song ->
+            val songs = directContentClient().getRecommendedSongs()
+            val mapped = songs.orEmpty().map { song ->
                 SourceTrack(
                     source = MusicSource.KUGOU,
                     sourceTrackId = song.audioId.ifBlank { song.mixSongId.ifBlank { song.hash } },
@@ -130,15 +132,12 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 recommendedLoading = false
                 onFinished?.invoke()
-                if (result == null) {
-                    appendRuntimeLog("kugou recommend songs failed")
-                    captureContentEvent("kugou_content_load_failed", "recommend_songs", errorCode = "KUGOU_CONTENT_FAILED")
-                    clearSessionState(true)
+                if (songs == null) {
+                    appendRuntimeLog("kugou direct recommend songs failed")
+                    captureContentEvent("kugou_content_load_failed", "recommend_songs", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_recommend_failed))
-                    requestQrLogin()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 recommendedTracks = mapped
                 captureContentEvent("kugou_content_load_success", "recommend_songs", itemCount = mapped.size)
                 renderHome()

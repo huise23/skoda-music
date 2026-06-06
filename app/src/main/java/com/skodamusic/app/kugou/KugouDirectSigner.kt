@@ -11,6 +11,7 @@ object KugouDirectSigner {
 
     private const val LITE_SIGNATURE_SALT = "LnT6xpN3khm36zse0QzvmgTZ3waWdRSA"
     private const val WEB_SIGNATURE_SALT = "NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt"
+    private const val V5_KEY_SALT = "185672dd44712f60bb1736df5a377e82"
 
     fun withDefaultParams(params: Map<String, String>, clientTimeSeconds: Long): LinkedHashMap<String, String> {
         val merged = LinkedHashMap(params)
@@ -47,6 +48,10 @@ object KugouDirectSigner {
         }
         raw.append(LITE_SIGNATURE_SALT)
         return md5(raw.toString())
+    }
+
+    fun calcV5Key(hash: String, userId: String, mid: String): String {
+        return md5(hash.lowercase() + V5_KEY_SALT + APP_ID + mid + userId)
     }
 
     fun calcNewMid(value: String): String {

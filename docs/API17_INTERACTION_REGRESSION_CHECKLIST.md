@@ -139,7 +139,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 
 ### K. Kugou Content Pages
 - [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
-- [ ] K2 推荐歌曲页登录后可展示推荐歌曲；失败、空结果、session 失效时有明确反馈并回登录。
+- [ ] K2 推荐歌曲页登录后通过 Android direct `/everyday_song_recommend` 展示推荐歌曲；失败、空结果、session 失效时有明确反馈，不依赖用户填写 Kugou WebApi Base URL。
 - [ ] K3 推荐电台页可展示电台名称和描述。
 - [ ] K4 点击电台后可加载并展示电台歌曲；加载完成后进入 radio session 首曲播放。
 - [ ] K5 发现歌单页可加载分类/标签，分类/标签来自接口返回，不手写固定标签。
@@ -158,7 +158,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] L6 重启后点赞历史仍可查看。
 
 ### M. Pure Kugou Playback / Queue / Radio Session
-- [ ] M1 默认酷狗模式下点击推荐歌曲后 Now Playing 显示酷狗歌曲标题/歌手，不从 Emby 当前队列推导。
+- [ ] M1 默认酷狗模式下点击推荐歌曲后通过 Android direct `/v5/url` 获取播放 URL，Now Playing 显示酷狗歌曲标题/歌手，不从 Emby 当前队列推导。
 - [ ] M2 酷狗播放期间 `Prev / PlayPause / Next` 不触发 Emby `loadedTracks/currentTrackIndex` 推进。
 - [ ] M2.1 默认酷狗冷启动不恢复 Emby cached queue、不自动播放 Emby、不触发 Emby recommendation auto-refresh；PostHog 可见 `resume_restore_skipped` / `emby_auto_refresh_skipped`。
 - [ ] M3 酷狗播放时前台通知、浮窗、方向盘/媒体键的当前曲信息与控制结果来自 source playback session。

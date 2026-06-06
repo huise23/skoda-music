@@ -21,7 +21,7 @@ data class KugouDirectQrStatus(
     val token: String
 ) {
     val isSuccess: Boolean
-        get() = status == STATUS_SUCCESS && token.isNotBlank()
+        get() = status == STATUS_SUCCESS && token.isNotBlank() && userId.isNotBlank() && userId != "0"
 
     companion object {
         const val STATUS_EXPIRED = 0

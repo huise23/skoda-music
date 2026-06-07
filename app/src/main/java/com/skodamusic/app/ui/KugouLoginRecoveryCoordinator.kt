@@ -12,6 +12,7 @@ class KugouLoginRecoveryCoordinator(
         NONE("none"),
         HOME_RECOMMEND("home_recommend"),
         RADIO_PAGE("radio_page"),
+        SCENE_PAGE("scene_page"),
         DISCOVER_PAGE("discover_page"),
         LIKE_ACTION("like_action"),
         PLAY_TRACK("play_track")

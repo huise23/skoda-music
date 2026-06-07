@@ -3,23 +3,23 @@
 Last Updated: 2026-06-07
 
 ## One-Line Summary
-- 已完成酷狗登录后自动加载/弹窗登录恢复，以及 Radio/Discover/Like direct 化；下一步执行手机/API17 实机验证。
+- 已完成首页/Scene/队列/VIP 本地实现，并完成 `RuntimeLogBinder` 与 `EqualizerPageBinder` 提取；下一步是手机/API17 设备回归验证，或重新规划下一批 `MainActivity` 拆分点。
 
 ## Current Highest Priority
-- 手机/API17 环境验证 `M-S5-KG-037` 与 `T-S5-KG-123`。
+- `T-S5-VAL-137`: 手机/API17 设备集成验证。设备窗口不可用时，`M-S5-MAIN-042` 的 RuntimeLog/EQ 提取已完成，继续开发前需规划下一批低耦合拆分任务。
 
 ## Guardrail-Adjusted Queue
 - 当前 Ready:
-  - 设备验证：手机/API17 环境验证 `T-S5-KG-122` 登录、首页推荐、推荐歌曲播放。
-  - 设备验证：手机/API17 环境验证弹窗登录、登录后首页自动加载、Radio/Discover 懒加载失败重试、缺登录态不清内容。
-  - 设备验证：手机/API17 环境验证 Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 路径。
+  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
 - 当前 Planned:
-  - API17 A~N 实机回归，需真实设备/手机环境回传证据。
+  - `T-S5-TRIAGE-140`: 真实设备失败分流与 targeted fix 计划。
+  - 后续 MainActivity 拆分任务：需重新规划。
+  - API17 A~N/P 实机回归，需真实设备/手机环境回传证据。
 - 当前 In Progress:
   - None
 - 原因:
   - `T-S5-PLAY-110/111` 已完成 source boundary 和普通队列。
-  - `KugouContentRenderer` 与 `KugouContentBinder` 已迁出内容页渲染、请求和状态所有权，`MainActivity.kt` 约 6118 -> 5632 行，但仍超过 entry red-line。
+  - `KugouContentRenderer`、`KugouContentBinder`、`RuntimeLogBinder` 与 `EqualizerPageBinder` 已迁出内容页、日志和音效页职责，`MainActivity.kt` 最新约 5755 行，但仍超过 entry red-line。
   - `T-S5-PLAY-112` 已完成：radio active 时 next/previous/completion 由 `KugouRadioSessionManager` 接管，不走普通 queue 或 Emby queue。
   - `T-S4-AUDIO-097` 已完成：non-direct buffer 会走 direct scratch bridge，不再直接把按钮置红。
   - `T-S5-MAIN-116` 已完成：页面壳路线结论为先 Binder 化低耦合页面，再做 Fragment 试点。
@@ -31,6 +31,14 @@ Last Updated: 2026-06-07
 
 ## Immediate Next Step
 
+- 设备窗口可用时推荐执行:
+  - 安装当前 debug APK 到手机/API17 设备，按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 的 K/M/G/N 相关条目回归。
+  - 重点回传 Scene list/song 真实响应是否匹配 Android 解析、Radio/Scene 缩略图弱网表现、首页/队列页自动滚动截图或视频、VIP record/receive/upgrade 与无权限播放提示证据。
+
+- 设备窗口不可用时推荐执行:
+  - 暂停继续堆新功能，回到 planning 为下一批 `MainActivity` 拆分建立任务。
+  - 候选方向：播放/service bridge、下载控制、设置页其余低耦合区块；必须先做边界评估。
+
 - 手机/API17 验证：
   - 未登录首页点击刷新应弹窗显示二维码。
   - 扫码成功后弹窗关闭并自动加载首页推荐。
@@ -39,6 +47,8 @@ Last Updated: 2026-06-07
   - 发现页应加载 tags -> playlists -> playlist songs。
   - 点击喜欢应记录为 pending -> success/failed，PostHog 只记录脱敏 `kugou_like_*` 事件。
   - 运行中本地登录态不可用时弹窗登录，不清当前列表/队列。
+  - 冷启动或扫码登录成功后应后台触发 `kugou_daily_vip_start`，不阻塞每日推荐加载/播放。
+  - 无权限/VIP 歌曲应显示“无权限播放，可能需要 VIP”，并记录 `kugou_direct_play_url_failed` 的 `failure_kind/error_code`。
 
 推荐 logcat:
 
@@ -47,7 +57,9 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 ```
 
 ## Planned After Ready
-- None
+- `T-S5-TRIAGE-140`: 设备验证失败项分流后再进入 targeted fix。
+- 下一批 MainActivity 红线治理：需先 planning，避免误拆播放/service 主链。
+- 若实机发现 Scene 字段不一致，回到 `KugouMusic.NET` 和真实响应核对，修 `KugouSceneContentClient` 字段映射，不猜测协议。
 
 ## Blocked / Deferred
 - `B-KG-EMBY-INGEST-001`: 点赞后将播放缓存上传到 Emby 并纳入媒体库。
@@ -58,6 +70,7 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 
 ## Important Notes
 - 当前主干为 `master@18c4723`；本地有 `M-S5-KG-037` 与 `T-S5-KG-123` 实现改动，尚未推送。
+- 2026-06-07 最新需求已规划：左侧每日推荐、酷狗隐藏 Emby 队列按钮、首页右侧当前队列、Scene `.NET` 来源、Radio/Scene 网格缩略图、Scene tab 展开收缩、所有队列自动滚动到当前歌曲。
 - `M-S5-KG-037` 已新增：Kugou Post-login Loading & Login Recovery。
 - `T-S5-MAIN-108` 已完成：`MainActivity.kt` 由 6443 行降到 6213 行，新增 `SourceRowRenderer`。
 - `T-S5-MAIN-115` 已完成：`KugouContentRenderer`/`KugouContentBinder` 承接内容页渲染、请求和状态，`MainActivity.kt` 当前约 5632 行。
@@ -70,7 +83,8 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 - 酷狗普通歌曲队列需参考 `.NET` `PlaybackQueueManager`，不要复用 Emby `loadedTracks/currentTrackIndex`。
 - 酷狗 API 不应继续要求用户填地址；没有 `KugouMusic.NET` 依据就停下问。
 - 当前 app 已不再要求用户填写 Kugou WebApi Base URL；QR 扫码、首页推荐、播放 URL、Radio、Discover、playlist songs、Like 当前路径均已接入 direct；SMS 仍待 AES/RSA direct port。
+- 当前 app 已接入每日一日 VIP record/receive/upgrade direct 流程；真实账号响应字段仍需设备验证。
 - 新增功能必须有足够 PostHog/runtime/logcat 证据；敏感信息必须过滤，PostHog 不作为高频原始日志池。
 - QR refresh 失败态应可重试；若手机仍崩溃，优先回传 `FATAL EXCEPTION` / `Caused by` 堆栈。
 - DSP 红框只能代表真实 fail-open/bypass/error，正常 native active 应为绿色。
-- `python scripts/check_code_health.py` 当前会因既有 `MainActivity.kt` red-line 失败；拆分任务应记录行数下降趋势，不得新增 red finding。
+- `python scripts/check_code_health.py` 当前会因既有 `MainActivity.kt` red-line 失败；最新本地结果为 5755 行/粗略大方法 4026 行，后续拆分不得新增 red finding。

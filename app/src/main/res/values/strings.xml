@@ -94,6 +94,12 @@
     <string name="feedback_kugou_radio_failed">动作反馈：酷狗推荐电台加载失败</string>
     <string name="feedback_kugou_radio_songs_success">动作反馈：已加载 %1$d 首电台歌曲</string>
     <string name="feedback_kugou_radio_songs_failed">动作反馈：电台歌曲加载失败</string>
+    <string name="feedback_kugou_scene_loading">动作反馈：正在加载酷狗场景</string>
+    <string name="feedback_kugou_scene_success">动作反馈：已加载 %1$d 个酷狗场景</string>
+    <string name="feedback_kugou_scene_empty">动作反馈：酷狗场景为空</string>
+    <string name="feedback_kugou_scene_failed">动作反馈：酷狗场景加载失败</string>
+    <string name="feedback_kugou_scene_songs_success">动作反馈：已加载 %1$d 首场景歌曲</string>
+    <string name="feedback_kugou_scene_songs_failed">动作反馈：场景歌曲加载失败</string>
     <string name="feedback_kugou_discover_loading">动作反馈：正在加载酷狗歌单标签</string>
     <string name="feedback_kugou_discover_success">动作反馈：已加载 %1$d 个酷狗歌单标签</string>
     <string name="feedback_kugou_discover_empty">动作反馈：酷狗歌单标签为空</string>
@@ -109,6 +115,8 @@
     <string name="feedback_kugou_play_deferred">动作反馈：酷狗播放解析将在后续任务接入</string>
     <string name="feedback_kugou_play_url_loading">动作反馈：正在解析酷狗播放地址</string>
     <string name="feedback_kugou_play_url_failed">动作反馈：酷狗播放地址解析失败</string>
+    <string name="feedback_kugou_play_permission_denied">动作反馈：当前歌曲无权限播放，可能需要 VIP</string>
+    <string name="feedback_kugou_play_trial_unavailable">动作反馈：当前歌曲试听不可用</string>
     <string name="feedback_kugou_play_buffering">动作反馈：酷狗缓冲中 %1$s</string>
     <string name="feedback_kugou_play_success">动作反馈：正在播放酷狗歌曲 %1$s</string>
     <string name="feedback_kugou_play_failed">动作反馈：酷狗歌曲播放失败</string>
@@ -235,6 +243,7 @@
     <string name="toast_kugou_sms_sent">验证码已发送</string>
     <string name="toast_kugou_logged_out">酷狗已退出登录</string>
     <string name="toast_kugou_play_failed">酷狗播放失败</string>
+    <string name="toast_kugou_play_permission_denied">无权限播放，可能需要 VIP</string>
     <string name="toast_end_of_queue">已到队列末尾</string>
     <string name="toast_lrcapi_success">LrcApi 测试通过并已保存配置</string>
     <string name="toast_lrcapi_failed">LrcApi 测试失败，配置未保存</string>
@@ -264,8 +273,10 @@
     <string name="notification_channel_playback">播放控制</string>
     <string name="label_nav">导航</string>
     <string name="nav_home">首页</string>
+    <string name="nav_kugou_daily_recommend">每日推荐</string>
     <string name="nav_kugou_recommended_songs">推荐歌曲</string>
     <string name="nav_kugou_recommended_radio">推荐电台</string>
+    <string name="nav_kugou_scene">场景</string>
     <string name="nav_kugou_discover_playlists">发现歌单</string>
     <string name="nav_playback_queue">播放队列</string>
     <string name="nav_like_status">点赞和入库状态</string>
@@ -274,6 +285,8 @@
     <string name="nav_settings">设置</string>
     <string name="kugou_radio_title">推荐电台</string>
     <string name="kugou_radio_songs_title">电台歌曲</string>
+    <string name="kugou_scene_title">场景</string>
+    <string name="kugou_scene_songs_title">场景歌曲</string>
     <string name="kugou_discover_title">发现歌单</string>
     <string name="kugou_playlist_songs_title">歌单歌曲</string>
     <string name="kugou_login_required_state">登录酷狗后可加载内容</string>
@@ -325,6 +338,14 @@
     <string name="queue_kugou_title">酷狗普通队列</string>
     <string name="queue_kugou_radio_empty">酷狗电台队列为空，请先进入推荐电台播放。</string>
     <string name="queue_kugou_radio_title">酷狗电台队列</string>
+    <string name="queue_kugou_radio_history_title">电台历史</string>
+    <string name="queue_kugou_radio_current_title">当前电台歌曲</string>
+    <string name="queue_kugou_radio_upcoming_title">即将播放</string>
+    <string name="home_daily_recommend_empty">每日推荐为空，请稍后再试。</string>
+    <string name="action_scene_expand">展开更多场景</string>
+    <string name="action_scene_collapse">收起场景</string>
+    <string name="feedback_kugou_daily_autoplay">动作反馈：正在播放每日推荐第一首</string>
+    <string name="feedback_kugou_daily_loaded_no_autoplay">动作反馈：每日推荐已加载，本次不抢占当前播放</string>
     <string name="label_library">媒体库</string>
     <string name="hint_library_search">搜索歌曲、歌手、专辑</string>
     <string name="library_placeholder">暂无媒体库数据</string>

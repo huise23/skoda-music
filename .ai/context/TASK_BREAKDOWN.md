@@ -25,6 +25,470 @@ Last Updated: 2026-06-07
   - 车机登录酷狗成功后未自动加载各项列表。
   - 用户确认方案 B：登录成功直接拉默认页；其它页进入时懒加载；失败提示并可手动拉；运行中 token 失效不清内容，弹窗登录，登录后隐藏并继续当前页面。
   - 新增模块 `M-S5-KG-037`；`T-S5-KG-124/125/126/127` 已在本轮本地完成，等待实机验证。
+- 2026-06-07 追加规划 2:
+  - 用户纠正：首页中间播放块不改推荐；左侧新增“每日推荐”按钮。
+  - 首次进入首页加载每日推荐并播放第一首；每日推荐不提供刷新按钮。
+  - 酷狗模式隐藏旧 Emby 队列按钮。
+  - 首页右侧展示当前播放列表/队列；所有队列自动滚动到当前歌曲。
+  - Radio 队列展示 current/upcoming/history。
+  - Radio/Scene 用缩略图网格；Scene tab 不横向滚动，默认两到三排，多余展开/收缩，点击后收缩。
+  - Scene 来源已核对 `.NET`：`SceneClient` / `RawMediaCatalogApi` scene list/audio/module/music raw API。
+- 2026-06-07 追加规划 4:
+  - 本地功能链已完成到 VIP/权限提示，下一阶段转为“设备验证闭环 + MainActivity 红线拆分续作”。
+  - 新增 `M-S5-VAL-041` 与 `M-S5-MAIN-042`。
+  - 设备窗口可用时优先执行 `T-S5-VAL-137`；设备窗口不可用时已完成 `T-S5-MAIN-138/139`，继续开发前需重新规划下一批拆分。
+
+## T-S5-VAL-137
+- Task ID: `T-S5-VAL-137`
+- Module ID: `M-S5-VAL-041`
+- Status: Ready
+- Title: S5 集成设备验证执行包与证据回填
+- Goal: 在手机/API17 设备上验证当前 S5 本地完成链路，并将结果回填为可执行的失败分流。
+- Why: 当前 direct 登录/content/home/scene/vip 均只完成本地编译和静态验证，仍缺真实账号、真实接口字段、车机 UI/性能和无权限歌曲分类证据。
+- Responsibility Boundary:
+  - 本任务只执行验证、采集证据、整理结论。
+  - 不在证据不足时修改协议字段或 UI 逻辑。
+  - 失败修复进入 `T-S5-TRIAGE-140` 后拆 targeted fix。
+- Dependencies:
+  - `M-S5-KG-037` Done locally。
+  - `T-S5-KG-123` Done locally。
+  - `M-S5-HOME-038` Done locally。
+  - `M-S5-SCENE-039` Done locally。
+  - `M-S5-VIP-040` Done locally。
+- Inputs:
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 当前 debug APK。
+  - 手机/API17 设备、可用酷狗账号、可用网络。
+- Expected Outputs:
+  - 每组 PASS/FAIL 结果。
+  - Scene/Radio/Discover/VIP 真实响应字段缺口。
+  - PostHog/logcat/runtime 脱敏证据。
+  - 下一轮 `T-S5-TRIAGE-140` 输入。
+- Expected Files:
+  - `.ai/context/CURRENT_STATUS.md`
+  - `.ai/context/HANDOFF.md`
+  - `.ai/context/NEXT_STEPS.md`
+  - 可选 `docs/S5_DEVICE_VALIDATION_REPORT.md`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 设备失败要按 owner 分流：auth/content/scene/vip/playback/ui/observability。
+  - PostHog 无 query token 时，用 logcat `SkodaPostHog` capture ok 和 runtime logs 作为替代证据。
+- Comment Requirements:
+  - 无代码改动，无新增注释要求。
+- Done Criteria:
+  - 至少覆盖 QR 登录、默认加载、Radio/Discover、Scene、每日推荐、当前队列、VIP、无权限播放提示。
+  - 每个失败项包含复现步骤和至少一项证据。
+  - context 回写可指导下一轮 execution。
+- Validation:
+  - 设备执行 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` K/M/G/N/P 关键条目。
+  - 记录 logcat 命令与结果。
+- Risks:
+  - 设备窗口不可用会阻塞完成。
+  - 无 VIP/无权限样本歌曲时 P4 只能部分验证。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: No
+
+## T-S5-MAIN-138
+- Task ID: `T-S5-MAIN-138`
+- Module ID: `M-S5-MAIN-042`
+- Status: Done
+- Title: `RuntimeLogBinder` 提取（MainActivity 红线治理首刀）
+- Goal: 将 runtime log buffer、preview、fullscreen dialog、copy/clear 行为从 `MainActivity` 迁出到 focused binder。
+- Why: `MainActivity.kt` 当前约 6009 行且仍有 code health blocking；RuntimeLog 是低耦合诊断 UI，适合作为 Phase 3 首刀，并为未来 Fragment 试点准备边界。
+- Responsibility Boundary:
+  - `RuntimeLogBinder`: log buffer、线程安全追加、preview 渲染、fullscreen dialog、copy/clear、销毁。
+  - `MainActivity`: 初始化 binder、传入 showToast/getString/clipboard 所需 Activity context、把 `appendRuntimeLog` 委托给 binder。
+  - 不迁移播放、下载、service bridge 或 PostHog 逻辑。
+- Dependencies:
+  - `T-S5-MAIN-116` Done，已推荐 RuntimeLog 作为首个 Binder 化对象。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt` line 5517 附近 runtime log 方法。
+  - `runtime_log_preview` 和 `runtime_log_label` 现有 XML ID。
+- Expected Outputs:
+  - 新增 `app/src/main/java/com/skodamusic/app/ui/RuntimeLogBinder.kt`。
+  - `MainActivity` runtime log 状态和方法明显减少。
+  - Runtime log 点击展开、复制、清空、预览保持现状。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/RuntimeLogBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（只允许删减和接线）
+  - `app/src/main/res/layout/activity_main.xml`
+- Architecture Notes:
+  - Binder 内部持有 Activity/View 需要提供 `destroy()`，Activity `onDestroy` 调用以 dismiss dialog。
+  - `appendRuntimeLog` 可能从后台线程调用，Binder 必须保留主线程 UI 更新防护。
+- Comment Requirements:
+  - 对后台线程追加日志和 UI 主线程同步策略保留简短注释。
+- Done Criteria:
+  - Runtime log preview 正常更新。
+  - 点击 label/preview 可打开 dialog。
+  - 复制/清空可用。
+  - Activity destroy 时 dialog 被关闭。
+  - `MainActivity.kt` 行数下降，且 code health blocking 不增加。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - `python scripts/check_code_health.py`（允许既有 blocking，但不得新增）
+- Result:
+  - 新增 `RuntimeLogBinder.kt`，`MainActivity` 只保留 append 委托。
+  - 本地验证通过；`check_code_health.py` 仅保留既有 `MainActivity` red-line。
+- Risks:
+  - 多线程日志追加若处理不当会丢失 UI 更新或触发非主线程异常。
+  - Dialog 生命周期若遗漏 dismiss 可能泄漏 Activity。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-MAIN-139
+- Task ID: `T-S5-MAIN-139`
+- Module ID: `M-S5-MAIN-042`
+- Status: Done
+- Title: `EqualizerPageBinder` 提取（音效页 Binder 化）
+- Goal: 将 EQ fullscreen page controls、mode/preset/band rendering 和 back action 从 `MainActivity` 迁出。
+- Why: EQ 页面是低于播放主链风险的页面壳候选；先 Binder 化可以继续压降入口文件并为 Fragment 试点准备边界。
+- Responsibility Boundary:
+  - `EqualizerPageBinder`: EQ 页面 View 绑定、状态渲染、模式按钮、返回回调。
+  - `MainActivity`: 提供 `EqualizerManager`/`HiFiDspController` 状态读取和命令回调，不承载 UI 构造细节。
+  - 不迁移 native DSP processor 或 playback engine。
+- Dependencies:
+  - `T-S5-MAIN-138` 完成。
+- Inputs:
+  - `MainActivity.kt` line 5375 起 EQ render/refresh methods。
+  - `activity_main.xml` existing EQ IDs。
+- Expected Outputs:
+  - 新增 `app/src/main/java/com/skodamusic/app/ui/EqualizerPageBinder.kt`。
+  - `MainActivity` 删除 EQ 页面 UI 构造细节。
+- Result:
+  - 新增 `EqualizerPageBinder.kt`，承接音效页开关、入口、返回、模式按钮和 fullscreen rendering。
+  - `MainActivity` 保留 DSP apply/persist、feedback/toast 和页面切换委托。
+  - 本地验证通过；`MainActivity.kt` 最新约 5755 行，code health blocking 未增加。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/EqualizerPageBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/*`
+- Architecture Notes:
+  - 保持 API17-safe View API，不引入 Fragment 或 Navigation。
+- Comment Requirements:
+  - 对 DSP 状态到 UI 映射保留简短说明。
+- Done Criteria:
+  - EQ 页面打开/返回/切换模式不回归。
+  - `MainActivity.kt` 行数继续下降。
+  - 构建与 guardrails 通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - `python scripts/check_code_health.py`
+- Risks:
+  - EQ 页面和 DSP runtime 状态耦合，需避免把 DSP 控制逻辑搬进 UI binder。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-TRIAGE-140
+- Task ID: `T-S5-TRIAGE-140`
+- Module ID: `M-S5-VAL-041`
+- Status: Planned
+- Title: 真实设备失败分流与 targeted fix 计划
+- Goal: 根据 `T-S5-VAL-137` 的实机证据，把失败项拆成具体、可执行、可验证的修复任务。
+- Why: S5 目前协议面广，不能在没有真实失败证据时猜测修复；分流能避免把多个问题混在一个大补丁。
+- Responsibility Boundary:
+  - 本任务只做 triage 和计划更新。
+  - 具体修复进入后续 focused task，例如 Scene 字段修复、VIP 响应解析修复、缩略图弱网修复等。
+- Dependencies:
+  - `T-S5-VAL-137`
+- Inputs:
+  - Device Report
+  - logcat/runtime/PostHog 证据
+  - 截图/视频说明
+- Expected Outputs:
+  - 更新 `.ai/context/TASK_QUEUE.md` Ready/Pending。
+  - 更新 `.ai/context/CURRENT_STATUS.md` 和 `HANDOFF.md`。
+- Expected Files:
+  - `.ai/context/CURRENT_STATUS.md`
+  - `.ai/context/TASK_QUEUE.md`
+  - `.ai/context/NEXT_STEPS.md`
+  - `.ai/context/HANDOFF.md`
+- Files Not To Expand:
+  - app source files
+- Architecture Notes:
+  - 修复任务必须归属对应 owner：`kugou/*`、`ui/*Binder`、`playback/*`、observability docs。
+- Comment Requirements:
+  - 无代码改动。
+- Done Criteria:
+  - 每个失败项有明确 owner、复现、证据、修复建议、优先级。
+  - Ready 只放依赖满足且边界清晰的问题。
+- Validation:
+  - 文档一致性检查。
+- Risks:
+  - 证据不足时只能标 Pending Confirmation，不得放 Ready。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-HOME-128
+- Task ID: `T-S5-HOME-128`
+- Module ID: `M-S5-HOME-038`
+- Status: Done 2026-06-07
+- Title: 左侧每日推荐入口、酷狗模式隐藏 Emby 队列按钮、首次自动播放每日推荐
+- Goal: 在左侧一级导航新增每日推荐入口；酷狗默认模式隐藏旧 Emby 队列按钮；首次进入首页自动加载每日推荐并播放第一首。
+- Why: 用户明确要求新增的是左侧按钮，不是改首页中间播放块；每日推荐应成为酷狗默认首页体验，且不再暴露 Emby 队列语义干扰酷狗模式。
+- Responsibility Boundary:
+  - `MainActivity` 只负责按钮查找、导航委托和最小接线。
+  - 每日推荐加载/首次播放 guard 放在 `KugouContentBinder` 小范围扩展或 `DailyRecommendCoordinator`。
+  - 播放第一首必须走现有 Kugou queue/source session，不复用 Emby queue。
+- Dependencies:
+  - `T-S5-KG-122` Done。
+  - `T-S5-PLAY-110/111` Done。
+  - `M-S5-KG-037` Done locally。
+- Inputs:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectContentClient.kt`
+- Expected Outputs:
+  - 左侧新增每日推荐按钮。
+  - 酷狗模式下旧 `nav_queue`/Emby 队列入口隐藏或不再作为酷狗默认导航暴露。
+  - 首次进入首页自动拉 `/everyday_song_recommend` 并播放第一首。
+  - 移除每日推荐刷新按钮/刷新交互；当天一批数据复用 existing loading/cache guard。
+  - 脱敏事件或 runtime log 覆盖 daily recommend auto-load/play-first start/success/failure。
+- Expected Files:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`（如需要）
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 不把“首次播放”状态散落在 Activity；用 coordinator 或 binder 内部单一 guard。
+  - 若用户未登录，继续使用现有弹窗登录恢复；登录后恢复 daily recommend auto-play。
+- Comment Requirements:
+  - 对首次自动播放 guard 简短说明，避免重复自动起播。
+- Done Criteria:
+  - 冷启动/首次首页进入时每日推荐自动加载并播放第一首。
+  - 再次进入不会重复抢播当前播放。
+  - 左侧每日推荐入口可手动返回该列表。
+  - 酷狗模式下旧 Emby 队列按钮不可见。
+  - 无每日推荐刷新按钮。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - `python scripts/check_code_health.py`（允许既有 MainActivity red-line，但不得新增 red finding）
+- Risks:
+  - 自动播放可能与 QR 登录成功自动加载重复触发；需要去重。
+  - 如果首次自动播放发生在未登录状态，需要通过 pending action 等待登录成功。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-SCENE-129
+- Task ID: `T-S5-SCENE-129`
+- Module ID: `M-S5-SCENE-039`
+- Status: Done 2026-06-07
+- Title: Scene `.NET` direct 来源映射与 Android client/模型边界
+- Goal: 按 `KugouMusic.NET` `SceneClient` / `RawMediaCatalogApi` 确认 Scene direct API、请求参数和 Android 最小数据模型。
+- Why: 用户要求“场景来源是什么你核对 `.NET` 怎么取”；Scene 不能在未核对协议和字段前直接 UI 实现。
+- Responsibility Boundary:
+  - `kugou/*`: direct 请求、签名参数、JSON 字段解析。
+  - `ui/*`: 不在本任务实现完整网格 UI，只保留必要最小验证入口或接口供后续 UI 使用。
+  - `KugouMusic.NET/`: 只读参考，不修改。
+- Dependencies:
+  - `KugouMusic.NET/` reference exists.
+  - `KugouDirectContentClient` 已有 direct request patterns。
+- Inputs:
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawMediaCatalogApi.cs`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectContentClient.kt`
+  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt`
+- Expected Outputs:
+  - Scene list/audio/module/music API 的 Android direct request implementation 或 focused client scaffold。
+  - 最小 Scene model：scene id/title/subtitle/thumbnail/module/tag/audio source track mapping。
+  - 失败路径返回明确 null/result，不抛到 UI。
+  - 脱敏事件：scene list/audio request success/failure，不记录 token/session/full query。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouSceneContentClient.kt` 或 `KugouDirectContentClient.kt` 小范围扩展
+  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt` 或新 scene model 文件
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`（若新增事件名）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 如果真实响应字段与 `.NET` JsonElement 未建强类型模型不一致，本任务应记录字段缺口，不猜测。
+  - Scene API 如果需要 session token/userid，缺 session 时交给现有登录恢复策略。
+- Comment Requirements:
+  - 对可追溯到 `.NET` 的 endpoint/参数保留简短注释或常量命名。
+- Done Criteria:
+  - Android 端存在可调用的 Scene list + audio/module 最小 direct client。
+  - 字段映射足够支撑后续 tab/grid UI。
+  - 编译通过。
+  - 日志/PostHog 脱敏。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 如能本地真实账号请求，记录脱敏 runtime log；否则标记待设备验证。
+- Risks:
+  - Scene API 可能需要真实 token 或额外签名字段；若 `.NET` 依据不足，停下标记 Blocked。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-HOME-130
+- Task ID: `T-S5-HOME-130`
+- Module ID: `M-S5-HOME-038`
+- Status: Done 2026-06-07
+- Title: 首页右侧当前队列面板与所有来源自动滚动到当前歌曲
+- Goal: 将首页右侧从推荐列表改为当前播放列表/队列，并对每日推荐、普通歌单、Radio、Scene、Emby 显式来源自动滚动到当前歌曲。
+- Why: 用户要求首页右侧作为当前播放列表，不是推荐列表；所有类型播放列表都应自动滚动到当前歌曲。
+- Responsibility Boundary:
+  - 新增 `HomeQueuePanelBinder` 或等价类负责右侧队列 UI 和自动滚动。
+  - 队列数据来自现有 source session/queue managers，不在 UI binder 里重新计算播放语义。
+  - `MainActivity` 只通知播放状态变化或绑定 callbacks。
+- Dependencies:
+  - `T-S5-HOME-128`
+  - `T-S5-SCENE-129`（Scene 来源队列需要）
+- Inputs:
+  - `KugouPlaybackQueueManager.kt`
+  - `KugouRadioSessionManager.kt`
+  - `SourcePlaybackSession.kt`
+  - `activity_main.xml` 首页右侧 panel
+- Expected Outputs:
+  - `HomeQueuePanelBinder`。
+  - source-aware queue display adapter。
+  - Radio current/upcoming/history 展示。
+  - `post { scrollTo/currentRow }` 或 API17-safe 等价自动滚动。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/HomeQueuePanelBinder.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 自动滚动只在当前歌曲变化或列表重渲染后触发，避免高频 UI 滚动。
+- Comment Requirements:
+  - 对延迟滚动的 API17/layout timing guard 保留简短说明。
+- Done Criteria:
+  - 首页右侧显示当前队列而非推荐列表。
+  - 普通队列、Radio、每日推荐、Scene、Emby 显式队列均能定位当前歌曲。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - 当前队列状态来源分散；需要小 adapter，不要把所有来源分支塞进 Activity。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-UI-131
+- Task ID: `T-S5-UI-131`
+- Module ID: `M-S5-SCENE-039`
+- Status: Done 2026-06-07
+- Title: Radio/Scene 缩略图网格与 Scene tab 展开收缩
+- Goal: 将 Radio 和 Scene 内容入口改为带缩略图的网格卡片，并实现 Scene tab 非横向滚动、展开/收缩、点击后收缩。
+- Why: 用户反馈电台和场景未显示为网状、缺缩略图；Scene 分类不能横向滚动。
+- Responsibility Boundary:
+  - Renderer 负责网格和 tab UI。
+  - Binder 负责 selected/expanded/loading state。
+  - Client 负责 thumbnail/title 数据。
+- Dependencies:
+  - `T-S5-SCENE-129`
+  - `T-S5-HOME-128`
+- Inputs:
+  - `KugouContentRenderer.kt`
+  - `KugouContentBinder.kt`
+  - `SourceRadio` / Scene models
+  - `activity_main.xml`
+- Expected Outputs:
+  - Radio grid card rendering with thumbnails.
+  - Scene grid card rendering with thumbnails.
+  - Scene tabs show two or three rows by default; expand/collapse; click collapses.
+  - 1024x600 layout stable with no text overlap.
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt` 或新 grid renderer
+  - `app/src/main/java/com/skodamusic/app/ui/KugouSceneBinder.kt` 或 binder 扩展
+  - `app/src/main/res/layout/activity_main.xml`
+  - 必要 drawable/string
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`（若大幅增加则拆新 binder）
+- Architecture Notes:
+  - 不引入第三方图片库；若需要图片下载，使用已有 OkHttp/Bitmap 路径并做内存/失败保护。
+- Comment Requirements:
+  - 对 tab row limit/expand policy 可用常量命名，少量注释即可。
+- Done Criteria:
+  - Radio/Scene 显示网格缩略图。
+  - Scene tab 不横向滚动，展开收缩正常，点击后收缩。
+  - API17 build pass。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - XML 文件长度已有 warning；如布局复杂，应优先 programmatic renderer 或拆轻量自定义 builder。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-OBS-132
+- Task ID: `T-S5-OBS-132`
+- Module ID: `M-S5-SCENE-039`
+- Status: Done 2026-06-07
+- Title: 首页/Scene/当前队列交互观测与 API17 回归清单
+- Goal: 为每日推荐自动播放、Scene 加载、grid/tab 交互、队列自动滚动补齐脱敏观测和回归清单。
+- Why: 用户已明确后续新增功能必须有足够 PostHog/runtime/logcat 诊断日志且过滤敏感信息。
+- Responsibility Boundary:
+  - 代码侧只记录低频 start/success/failure/state-change。
+  - 文档侧同步事件字典、覆盖矩阵、API17 测试项。
+- Dependencies:
+  - `T-S5-HOME-128`
+  - `T-S5-SCENE-129`
+  - `T-S5-HOME-130`
+  - `T-S5-UI-131`
+- Inputs:
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Expected Outputs:
+  - 事件/日志覆盖：daily recommend auto play、scene list/audio load、scene tab expand/collapse/select、queue auto-scroll。
+  - 敏感字段审计记录。
+  - API17 回归清单覆盖 1024x600 网格、tab、自动滚动。
+- Expected Files:
+  - docs and necessary observability call sites.
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 不为每次滚动像素或 UI redraw 上报 PostHog；只记录 current item changed/scroll requested 等低频事件。
+- Comment Requirements:
+  - 无特别要求。
+- Done Criteria:
+  - 文档与代码事件一致。
+  - 敏感字段过滤通过。
+  - `git diff --check` 通过。
+- Validation:
+  - `git diff --check`
+  - 敏感字段 grep/review
+  - `gradle :app:compileDebugKotlin --no-daemon`（若改代码）
+- Risks:
+  - 事件过多；优先复用 `kugou_content_load_*` stage。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
 
 ## T-S5-KG-124
 - Task ID: `T-S5-KG-124`
@@ -826,6 +1290,47 @@ Last Updated: 2026-06-07
   - 新增 N 组：MainActivity split / page shell decision。
   - 追加 T-S5-VAL-113 本地验证快照。
   - 本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`；`check_code_health.py` 仍因既有 `MainActivity` red-line 失败，blocking finding 数为 2。
+
+## T-S5-VIP-133
+- Task ID: `T-S5-VIP-133`
+- Module ID: `M-S5-VIP-040`
+- Title: VIP direct user client 与记录/领取/升级解析
+- Status: Done 2026-06-07
+- Result:
+  - 新增 `KugouDirectUserClient`，按 `.NET` `RawUserApi` 接入 record/receive/upgrade 三个接口。
+  - 解析 `day/receive_vip/vip_type/status/error_code` 最小字段，成功 upgrade 后写回 session `vipType`。
+
+## T-S5-VIP-134
+- Task ID: `T-S5-VIP-134`
+- Module ID: `M-S5-VIP-040`
+- Title: 每日 VIP coordinator、本地兜底记录与失败重试
+- Status: Done 2026-06-07
+- Result:
+  - 新增 `KugouDailyVipCoordinator`。
+  - 冷启动 cached session 和扫码登录成功后触发。
+  - 服务端 record 优先；record 不可用时本地账号+日期 fallback，并继续尝试 receive/upgrade。
+  - 失败重试有每日次数、冷却和退避，不阻塞启动/登录/每日推荐/播放。
+
+## T-S5-PLAY-135
+- Task ID: `T-S5-PLAY-135`
+- Module ID: `M-S5-VIP-040`
+- Title: 播放 URL 失败分类与无权限/VIP UI 提示
+- Status: Done 2026-06-07
+- Result:
+  - `/v5/url` direct 返回扩展为 `KugouPlayUrlResult`。
+  - 分类 `VIP_REQUIRED/PERMISSION_DENIED/PAID_REQUIRED/TRIAL_UNAVAILABLE/NETWORK/SESSION_REQUIRED/UNKNOWN`。
+  - 无权限/VIP/付费类失败显示明确“无权限播放，可能需要 VIP”。
+
+## T-S5-OBS-136
+- Task ID: `T-S5-OBS-136`
+- Module ID: `M-S5-VIP-040`
+- Title: VIP/权限失败观测、PostHog 查询限制记录与 API17 回归清单
+- Status: Done 2026-06-07
+- Result:
+  - 新增 `kugou_daily_vip_start/success/failed`。
+  - `kugou_direct_play_url_failed` 增加 `failure_kind/error_code/http_code/kg_status/priv_status/err_code`。
+  - 更新 `docs/S5_OBSERVABILITY_COVERAGE.md`、`docs/POSTHOG_EVENT_DICTIONARY.md`、`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`。
+  - 记录当前无 PostHog personal/query token，无法直接查询事件流。
 
 ## Blocked
 

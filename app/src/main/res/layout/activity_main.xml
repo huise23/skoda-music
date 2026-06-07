@@ -39,10 +39,21 @@
             android:layout_width="62dp"
             android:layout_height="62dp"
             android:background="@drawable/button_nav_icon_active"
-            android:contentDescription="@string/nav_kugou_recommended_songs"
+            android:contentDescription="@string/nav_home"
             android:padding="16dp"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_menu_view" />
+
+        <ImageButton
+            android:id="@+id/nav_kugou_daily"
+            android:layout_width="62dp"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/button_nav_icon_inactive"
+            android:contentDescription="@string/nav_kugou_daily_recommend"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_today" />
 
         <ImageButton
             android:id="@+id/nav_kugou_radio"
@@ -54,6 +65,17 @@
             android:padding="16dp"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_menu_upload" />
+
+        <ImageButton
+            android:id="@+id/nav_kugou_scene"
+            android:layout_width="62dp"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/button_nav_icon_inactive"
+            android:contentDescription="@string/nav_kugou_scene"
+            android:padding="16dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_gallery" />
 
         <ImageButton
             android:id="@+id/nav_kugou_discover"
@@ -558,6 +580,59 @@
 
                     <LinearLayout
                         android:id="@+id/kugou_radio_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/page_kugou_scene"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_card"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/kugou_scene_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp" />
+
+                    <TextView
+                        android:id="@+id/kugou_scene_status_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/kugou_login_required_state"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="18sp" />
+
+                    <LinearLayout
+                        android:id="@+id/kugou_scene_tab_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical" />
+
+                    <LinearLayout
+                        android:id="@+id/kugou_scene_song_list"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"

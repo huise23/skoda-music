@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4/S5)
 
 Last Updated: 2026-06-04
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119`
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119` + `T-S5-HOME-128/130` + `T-S5-SCENE-129` + `T-S5-UI-131`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -32,8 +32,9 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - 更新链路（检查 -> 下载 -> 安装触发）。
   - 应用内保真 DSP 音效（开关/模式/持久化/PCM 处理/fail-open）。
   - S5 酷狗来源模式（登录、推荐歌曲、推荐电台、发现歌单、点赞/入库状态）。
-  - 纯酷狗播放 source boundary、普通队列、Radio/FM session。
-  - MainActivity Binder 拆分与页面壳拆分评估后的导航稳定性。
+- 纯酷狗播放 source boundary、普通队列、Radio/FM session。
+- 首页每日推荐、当前队列面板、Radio/Scene 网格缩略图和 Scene tab 展开收缩。
+- MainActivity Binder 拆分与页面壳拆分评估后的导航稳定性。
 - Out of Scope:
   - 新需求（长标题滚动/主屏删除入口）
   - 静默安装/root 安装
@@ -92,6 +93,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
   - `update_check_* / update_download_* / update_install_*`
   - `kugou_qr_refresh_* / kugou_qr_poll_failed / kugou_session_validation_*`
   - `kugou_content_load_* / kugou_queue_start / kugou_radio_session_start`
+  - `kugou_scene_tab_toggle`
 - [ ] G3 敏感字段未明文上报（token/session key/cookie/手机号/验证码/完整 URL query/auth header/API key/response body 等）。
 
 ### H. Failure & Degrade Path
@@ -142,13 +144,18 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
 - [ ] K2 推荐歌曲页登录后通过 Android direct `/everyday_song_recommend` 展示推荐歌曲；失败、空结果、session 失效时有明确反馈，不依赖用户填写 Kugou WebApi Base URL。
 - [ ] K3 推荐电台页进入时懒加载；未登录时弹登录，失败时保留页面并显示点击重试入口。
+- [ ] K3.1 推荐电台以两列网格卡片展示，卡片包含缩略图、标题和辅助信息；1024x600 横屏无重叠。
 - [ ] K4 点击电台后可加载并展示电台歌曲；加载完成后进入 radio session 首曲播放。
-- [ ] K5 发现歌单页进入时懒加载分类/标签；未登录时弹登录，失败时保留页面并显示点击重试入口。
-- [ ] K6 点击标签后可加载歌单。
-- [ ] K7 点击歌单后可加载歌单歌曲。
-- [ ] K8 三个酷狗内容页遇到网络失败、空结果或未登录时有明确反馈，不闪退。
-- [ ] K9 1024x600 横屏下左侧一级导航、登录面板、列表行、点赞按钮不重叠。
-- [ ] K10 `MainActivity` 拆出 `KugouContentBinder` 后，推荐歌曲、推荐电台、发现歌单页面切换和刷新不丢状态、不崩溃。
+- [ ] K5 场景页进入时懒加载 Scene list；来源可追溯到 `.NET` `SceneClient` / `RawMediaCatalogApi` scene list/music/audio 接口。
+- [ ] K5.1 Scene tab 不横向滚动；默认展示两到三排，点击“展开更多场景/收起场景”可展开收缩。
+- [ ] K5.2 点击 Scene tab 后自动收缩，并加载场景歌曲；点击场景歌曲建立普通 Kugou queue 播放。
+- [ ] K5.3 Scene 和 Radio 卡片缩略图弱网/图片失败时显示占位图，不闪退，不记录完整图片 URL。
+- [ ] K6 发现歌单页进入时懒加载分类/标签；未登录时弹登录，失败时保留页面并显示点击重试入口。
+- [ ] K7 点击标签后可加载歌单。
+- [ ] K8 点击歌单后可加载歌单歌曲。
+- [ ] K9 三个酷狗内容页遇到网络失败、空结果或未登录时有明确反馈，不闪退。
+- [ ] K10 1024x600 横屏下左侧一级导航、登录面板、列表行、点赞按钮不重叠。
+- [ ] K11 `MainActivity` 拆出 `KugouContentBinder` / `KugouSceneBinder` 后，推荐歌曲、推荐电台、场景、发现歌单页面切换和刷新不丢状态、不崩溃。
 
 ### L. Kugou Like / Ingest Status
 - [ ] L1 酷狗歌曲行可见点赞按钮。
@@ -166,7 +173,11 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] M4 酷狗普通歌曲队列：推荐歌曲/发现歌单歌曲点击后建立普通 queue；队列页显示“酷狗普通队列”。
 - [ ] M5 普通 queue 的 next/previous 在当前上下文内循环，不进入 Emby 队列。
 - [ ] M6 点击推荐电台或电台歌曲后进入“酷狗电台队列”；队列页展示 current + upcoming。
-- [ ] M7 radio active 时 next 推进 upcoming，previous 从 history 回退；不走普通 Kugou queue 或 Emby queue。
+- [ ] M6.1 首页右侧常驻展示当前播放列表/队列，不显示每日推荐列表；每日推荐只作为左侧入口触发加载/播放。
+- [ ] M6.2 首次进入首页且已有酷狗 session 时自动加载每日推荐并播放第一首；点击左侧“每日推荐”直接播放当日推荐第一首，无刷新按钮。
+- [ ] M6.3 酷狗默认模式下旧 Emby 队列按钮隐藏；显式 Emby 操作后 Emby 队列入口仍可见。
+- [ ] M6.4 首页右侧队列和独立队列页在 Emby、普通 Kugou queue、Scene queue、Radio session 中自动滚动到当前歌曲。
+- [ ] M7 radio active 时 next 推进 upcoming，previous 从 history 回退；队列页展示 history/current/upcoming，不走普通 Kugou queue 或 Emby queue。
 - [ ] M8 radio 当前曲自然结束后，由 radio session 推进下一首；没有 upcoming 时显示队列末尾/不可切换反馈，不崩溃。
 - [ ] M9 从 radio 切到普通 Kugou queue 会清 radio session；切回 Emby 播放会清 Kugou queue/radio session。
 - [ ] M10 旧 WebApi Base URL 输入路径不得恢复；如果内容 API 未可用，应给出登录/接口不可用反馈，而不是要求用户填写地址。
@@ -250,6 +261,22 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - playback_error: <error_code/stage/request_id>
 - update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
+
+## P. Kugou Daily VIP & Permission Playback
+
+- P1 冷启动存在有效酷狗 session:
+  - 预期: 首页仍正常加载每日推荐并播放；后台触发 `kugou_daily_vip_start`。
+  - 预期: 若服务端今日无领取记录，调用一日 VIP 领取后约 1 秒尝试 upgrade；不阻塞 UI。
+- P2 登录成功:
+  - 预期: 登录弹窗关闭后触发每日推荐加载，同时触发每日 VIP 流程。
+  - 预期: 同账号同日不会高频重复请求；失败按冷却重试。
+- P3 服务端记录不可用:
+  - 预期: 使用本地账号+日期 fallback 保护，仍尝试领取并记录 `KUGOU_VIP_RECORD_UNAVAILABLE`。
+- P4 无权限/VIP 播放 URL:
+  - 操作: 播放需要 VIP 或无权限歌曲。
+  - 预期: UI 显示“无权限播放，可能需要 VIP”，PostHog `kugou_direct_play_url_failed` 包含 `KUGOU_PLAY_VIP_REQUIRED` 或 `KUGOU_PLAY_PERMISSION_DENIED`。
+- P5 敏感字段:
+  - 预期: 日志/PostHog 不出现 token、userid、完整 hash、完整 URL query、响应 body。
 - hifi_dsp: <hifi-dsp config/format/active/bypass/fail 日志样本>
 - kugou: <qr/session/content/like 日志样本，需包含 QR refresh crash hotfix 证据>
 - kugou_queue_radio: <普通 queue/radio session next/previous/completion 日志样本>

@@ -2,6 +2,27 @@
 
 Last Updated: 2026-06-07
 
+## 2026-06-07 - 每日首次启动自动领取一日 VIP 与无权限播放提示（用户确认）
+- 决策: Android 端必须补齐 `.NET` 已有的自动领取 VIP 流程；当前实现尚未做，属于 S5 P0 补漏。
+- 决策: 参考 `.NET` `MainWindowViewModel.TryGetVip()`：先查当月 VIP 领取记录；今日无记录则领取一日 VIP；延迟后尝试升级；今日记录为 `tvip` 时也尝试升级。
+- 决策: 参考 `.NET` `RawUserApi`：领取记录 `/youth/v1/activity/get_month_vip_record`；领取一日 VIP `/youth/v1/recharge/receive_vip_listen_song`，参数 `source_id=90139`、`receive_day=yyyy-MM-dd`；升级 `/youth/v1/listen_song/upgrade_vip_reward`，参数 `kugouid`、`ad_type=1`。
+- 决策: “每日首次启动”优先以服务端领取记录为准；若记录接口不可用或无法解析，则使用本地账号+日期记录兜底，避免同日无限重复领取。
+- 决策: VIP 失败必须自动重试，但需退避/冷却/次数限制；失败不得阻塞启动、登录成功、每日推荐加载或播放控制。
+- 决策: 酷狗播放 URL 如果因无权限/VIP/付费导致失败，UI 必须提示“无权限/需要 VIP”，不能只显示“播放地址解析失败”。
+- 决策: 新增 VIP/无权限流程必须有脱敏 PostHog/runtime 事件；不记录 token、userid、session、完整 query、response body、完整 hash、手机号、验证码或设备凭据。
+
+## 2026-06-07 - 酷狗首页/Scene/当前队列交互口径（用户确认）
+- 决策: 首页中间播放块继续保持当前播放控制与 Now Playing，不改成推荐内容。
+- 决策: 左侧一级导航新增“每日推荐”按钮；每日推荐当天只加载一批，不提供刷新按钮。
+- 决策: 首次进入首页时自动加载每日推荐列表，并直接播放第一首。
+- 决策: 酷狗默认模式下隐藏旧 Emby 队列按钮，避免进入 Emby 队列语义；Emby 显式模式仍保留。
+- 决策: 首页右侧作为当前播放列表/队列展示区，适配每日推荐、普通歌单、Radio session、Scene 和 Emby 显式队列；所有队列展示都要自动滚动到当前歌曲。
+- 决策: Radio 队列展示 current/upcoming/history，并自动滚动到 current。
+- 决策: Radio 与 Scene 内容入口用带缩略图的网格展示。
+- 决策: Scene 来源按 `KugouMusic.NET` `SceneClient` / `RawMediaCatalogApi` 移植，重点参考 `/scene/v1/scene/list`、`/scene/v1/scene/audio_list`、`/scene/v1/scene/module`、`/scene/v1/scene/module_info`、`/genesisapi/v1/scene_music/rec_music`；没有字段依据时先核对 `.NET` 和真实响应，不猜测。
+- 决策: Scene 分类 tab 不横向滚动；默认两到三排，超出部分展开/收缩，点击 tab 后自动收缩。
+- 决策: 相关实现必须继续走 focused binder/client/renderer，不把列表渲染、Scene 协议、队列滚动策略堆回 `MainActivity.kt`。
+
 ## 2026-06-07 - 酷狗登录后内容加载与弹窗登录口径（用户确认）
 - 决策: 采用方案 B：酷狗登录成功后默认页优先自动加载，当前默认页为首页推荐歌曲；其他酷狗页进入时懒加载。
 - 决策: 自动加载失败时提示失败并保留手动拉取/重试入口，不应清空其它已加载内容或阻断登录态。

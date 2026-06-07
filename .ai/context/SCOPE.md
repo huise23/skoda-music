@@ -19,6 +19,8 @@ Last Updated: 2026-06-07
   - 2026-06-04 新增热修输入：手机环境点击“刷新二维码”约 1-2 秒后崩溃；API17 车机实机回归需先等待 QR 登录入口稳定。
   - 2026-06-04 新增工程约束：后续新增功能必须有足够 PostHog/runtime/logcat 诊断日志，且必须过滤敏感信息。
   - 2026-06-07 新增用户确认：车机扫码登录酷狗成功后，内容列表应按“默认页优先、其他页懒加载”策略自动加载；运行中 token 失效不得清空现有内容，应弹窗登录，登录成功后隐藏弹窗并继续当前页面。
+  - 2026-06-07 新增用户确认：左侧导航新增“每日推荐”入口；首次进入首页自动加载每日推荐并播放第一首；酷狗模式隐藏旧 Emby 队列按钮；首页右侧常驻展示当前播放列表/队列而非推荐列表；Radio/Scene 使用带缩略图网格，Scene 来源按 `KugouMusic.NET` `SceneClient` / `RawMediaCatalogApi`；所有队列视图自动滚动到当前歌曲。
+  - 2026-06-07 新增用户确认：每日首次启动/登录成功后必须按 `KugouMusic.NET` 自动领取一日 VIP；能查服务端领取记录就查，查不到时用本地记录防重复；失败需自动重试；酷狗播放 URL 因无 VIP/无权限失败时必须明确提示“无权限/需要 VIP”，并用 PostHog/runtime 脱敏记录。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -44,6 +46,24 @@ Last Updated: 2026-06-07
   - 登录成功后隐藏登录弹窗，并继续当前页面/当前列表的加载或重试流程。
   - 首页原有登录区域改为触发登录弹窗，不再以内嵌登录面板作为主要交互。
   - 新增自动加载、懒加载、token 失效弹窗、登录后恢复流程必须有脱敏 PostHog/runtime/logcat 证据。
+- 酷狗首页导航、Scene 与当前队列展示:
+  - 左侧一级导航新增“每日推荐”按钮；该入口不替代首页中间播放块。
+  - 首次进入首页时自动加载每日推荐列表，并直接播放第一首；每日推荐当天只使用一批，不提供刷新按钮。
+  - 酷狗默认模式下隐藏旧 Emby 队列按钮，避免用户进入 Emby 队列语义；Emby 显式入口仍保留。
+  - 首页右侧面板展示当前播放列表/队列，适配每日推荐、普通歌单、Radio session、Scene 来源和 Emby 显式模式。
+  - 当前播放列表/队列必须自动滚动到当前歌曲；Radio 队列展示 current/upcoming/history，并同样自动滚动到 current。
+  - 推荐电台和 Scene 入口使用网格卡片展示，卡片包含缩略图、标题和必要辅助信息。
+  - Scene 来源必须按 `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs` 与 `RawMediaCatalogApi` 的 scene list/module/audio/music 接口核对后移植；不得猜测未确认协议。
+  - Scene 分类 tab 不使用横向滚动；默认显示两到三排，多余分类使用展开/收缩；点击 tab 后自动收缩。
+- 酷狗一日 VIP 与无权限播放处理:
+  - 每日首次启动且存在有效酷狗登录态时，按 `KugouMusic.NET` `MainWindowViewModel.TryGetVip()` / `UserClient` / `RawUserApi` 流程自动尝试领取当天 VIP。
+  - 登录成功后也执行同一 VIP 流程。
+  - VIP 流程优先查询服务端当月领取记录 `/youth/v1/activity/get_month_vip_record`；如果今日无记录，调用 `/youth/v1/recharge/receive_vip_listen_song`，参数 `source_id=90139`、`receive_day=yyyy-MM-dd`；随后按 `.NET` 逻辑延迟后调用 `/youth/v1/listen_song/upgrade_vip_reward`。
+  - 如果今日服务端记录为 `tvip`，按 `.NET` 逻辑调用升级接口；如果已是目标状态则跳过。
+  - 如果领取记录接口不可用或解析失败，使用本地“账号 + 日期”记录避免同日无限重复领取，但仍需按重试策略处理失败。
+  - VIP 领取/升级失败不得阻塞 app 启动、登录弹窗关闭、每日推荐加载或播放控制；但应自动重试，且不能造成高频请求。
+  - 酷狗播放 URL 失败时需区分无权限/VIP/付费/试听不可用等失败类型；无权限时 UI 明确提示“无权限/需要 VIP”，不得只显示普通播放地址解析失败。
+  - VIP 流程和无权限播放失败必须有脱敏 PostHog/runtime/logcat 证据；不记录 token、userid、session、完整 URL query、响应 body、完整 hash 或可复用设备凭据。
 - QR 登录入口稳定性与观测:
   - 修复刷新二维码 1-2 秒后崩溃的问题。
   - QR refresh、QR polling、session validation 的失败路径必须 fail-soft，不得因网络、解析、图片下载、旧回调或生命周期切换导致闪退。
@@ -104,6 +124,20 @@ Last Updated: 2026-06-07
   - 推荐歌曲/发现歌单歌曲点击后建立酷狗歌曲队列。
   - next/previous 按 `.NET` `PlaybackQueueManager` 语义循环。
   - 队列页能显示当前酷狗队列状态。
+- 酷狗首页/Scene/队列 UI 验收:
+  - 左侧可见“每日推荐”入口；点击直接播放当日推荐第一首。
+  - 冷启动/首次进入首页可自动加载每日推荐并播放第一首；无刷新按钮。
+  - 酷狗模式下旧 Emby 队列按钮不可见；显式 Emby 模式不被删除。
+  - 首页右侧显示当前播放队列，不显示推荐列表。
+  - 每日推荐、歌单、Scene、Radio、Emby 显式队列均能自动滚动到当前歌曲。
+  - Radio 队列展示 current/upcoming/history。
+  - Radio/Scene 网格含缩略图，1024x600 横屏无重叠、无横向 tab 滚动。
+- 酷狗一日 VIP / 无权限验收:
+  - 冷启动存在有效酷狗 session 时，每日最多触发一次 VIP 领取流程；登录成功后也能触发，但同账号同日不重复刷接口。
+  - 能查询服务端记录时，以服务端记录为准；查询不可用时，以本地账号+日期记录兜底。
+  - 未领取过当天 VIP 时会调用一日 VIP 领取接口，并在合理延迟后尝试升级 VIP。
+  - VIP 领取或升级失败会自动重试，重试有退避/次数/冷却限制，不阻塞每日推荐和播放。
+  - 因无权限/VIP 导致酷狗播放 URL 不可用时，UI 显示无权限/VIP 提示，PostHog/runtime 有脱敏 error_code/stage。
 - 电台验收:
   - 推荐电台进入 radio session。
   - radio session 激活时 next/previous 走 radio session，而不是普通歌曲队列或 Emby 队列。
@@ -130,6 +164,16 @@ Last Updated: 2026-06-07
   - `SourcePlaybackQueue` / `KugouQueueManager`：普通酷狗歌曲队列。
   - `KugouRadioSessionManager`：电台/FM 会话。
   - `PlaybackControlsBinder`：播放按钮、DSP 状态、service state 桥接。
+- 首页右侧当前队列、Scene tab/网格和每日推荐自动播放应落在 focused binder/client/renderer 中：
+  - `HomeQueuePanelBinder` 或等价类：右侧当前队列展示与自动滚动。
+  - `KugouSceneContentClient` 或扩展 `KugouDirectContentClient`：Scene direct 请求与字段解析。
+  - `KugouSceneBinder` / `KugouContentRenderer` 扩展：Scene tab 展开收缩、网格卡片与缩略图渲染。
+  - `DailyRecommendCoordinator` 或 `KugouContentBinder` 小范围扩展：每日推荐首次加载与直接播放第一首。
+  - `MainActivity` 只做左侧按钮接线和当前 source/page 委托。
+- 一日 VIP 领取应落在 focused `kugou/` client + `ui/`/coordinator 中：
+  - `KugouDirectUserClient` 或等价类：VIP record / receive / upgrade direct 请求与字段解析。
+  - `KugouDailyVipCoordinator` 或等价类：每日触发、服务端记录优先、本地兜底记录、重试/退避、登录后恢复。
+  - `MainActivity` 只在 cached session/login success 时委托调用，不承载 VIP 状态机。
 - 页面壳拆分优先级：设置/日志/EQ 等低耦合页面优先；播放页、后台控制、方向盘按键、浮窗/service bridge 最后拆。
 - 酷狗普通歌曲队列和 radio session 是并列播放会话；当 radio session active 时，next/previous 由 radio session 接管。
 - Emby 作为独立来源保留；切换到 Emby 时才启用 Emby 队列、download-only、resume/refresh 等旧链路。

@@ -402,11 +402,25 @@ class KugouDirectContentClient(
         quality: String,
         albumAudioId: String
     ): KugouPlayUrl? {
+        return getPlayUrlResult(hash, quality, albumAudioId).playUrl
+    }
+
+    fun getPlayUrlResult(
+        hash: String,
+        quality: String,
+        albumAudioId: String
+    ): KugouPlayUrlResult {
         val cleanHash = hash.trim().lowercase()
         if (cleanHash.isEmpty()) {
-            return null
+            return playUrlFailure(
+                failureKind = KugouPlayUrlFailureKind.UNAVAILABLE,
+                errorCode = "KUGOU_PLAY_URL_MISSING_HASH"
+            )
         }
-        val session = sessionStore.load() ?: return null
+        val session = sessionStore.load() ?: return playUrlFailure(
+            failureKind = KugouPlayUrlFailureKind.SESSION_REQUIRED,
+            errorCode = "KUGOU_PLAY_SESSION_REQUIRED"
+        )
         val params = linkedMapOf(
             "album_id" to "0",
             "area_code" to "1",
@@ -427,7 +441,7 @@ class KugouDirectContentClient(
             "module" to ""
         )
         val dfidOverride = KugouDirectCrypto.randomString(24).lowercase()
-        val json = execute(
+        val result = executeResult(
             path = "/v5/url",
             method = "GET",
             body = "",
@@ -437,20 +451,123 @@ class KugouDirectContentClient(
             params = params,
             signatureType = SignatureType.V5,
             dfidOverride = dfidOverride
-        ) ?: return null
+        )
+        if (result.httpCode !in 200..299) {
+            return playUrlFailure(
+                failureKind = if (result.httpCode == -1) {
+                    KugouPlayUrlFailureKind.NETWORK
+                } else {
+                    KugouPlayUrlFailureKind.UNAVAILABLE
+                },
+                errorCode = "KUGOU_DIRECT_PLAY_URL_HTTP_${result.httpCode}",
+                httpCode = result.httpCode
+            )
+        }
+        val json = result.json ?: return playUrlFailure(
+            failureKind = KugouPlayUrlFailureKind.UNKNOWN,
+            errorCode = "KUGOU_DIRECT_PLAY_URL_PARSE_FAILED",
+            httpCode = result.httpCode
+        )
         val data = responseData(json)
-        val urls = data.optJSONArray("url") ?: return null
+        val urls = data.optJSONArray("url")
+        val status = json.optInt("status", data.optInt("status", -1))
+        val privStatus = data.optInt("priv_status", json.optInt("priv_status", 0))
+        val errCode = data.optInt("err_code", json.optInt("err_code", 0))
+        if (urls == null) {
+            return classifyPlayUrlFailure(json, data, result.httpCode, status, privStatus, errCode)
+        }
         val firstUrl = urls.optString(0).trim()
         if (firstUrl.isEmpty()) {
-            return null
+            return classifyPlayUrlFailure(json, data, result.httpCode, status, privStatus, errCode)
         }
-        return KugouPlayUrl(
-            url = firstUrl,
-            hash = data.optString("hash", cleanHash).trim(),
-            privStatus = data.optInt("priv_status", 0),
-            errCode = data.optInt("err_code", 0),
-            sessionKey = session.token
+        return KugouPlayUrlResult(
+            playUrl = KugouPlayUrl(
+                url = firstUrl,
+                hash = data.optString("hash", cleanHash).trim(),
+                privStatus = privStatus,
+                errCode = errCode,
+                sessionKey = session.token
+            ),
+            failureKind = null,
+            errorCode = "",
+            httpCode = result.httpCode,
+            status = status,
+            privStatus = privStatus,
+            errCode = errCode
         )
+    }
+
+    private fun classifyPlayUrlFailure(
+        json: JSONObject,
+        data: JSONObject,
+        httpCode: Int,
+        status: Int,
+        privStatus: Int,
+        errCode: Int
+    ): KugouPlayUrlResult {
+        val rawError = data.optString("error_code")
+            .ifBlank { data.optString("errcode") }
+            .ifBlank { json.optString("error_code") }
+            .ifBlank { if (errCode != 0) errCode.toString() else "" }
+            .trim()
+        val summary = listOf(
+            rawError,
+            data.optString("error_msg"),
+            data.optString("errmsg"),
+            data.optString("msg"),
+            json.optString("error_msg"),
+            json.optString("errmsg"),
+            json.optString("msg")
+        ).joinToString(" ").lowercase()
+        val kind = when {
+            containsAny(summary, "vip", "会员", "svip", "tvip") -> KugouPlayUrlFailureKind.VIP_REQUIRED
+            containsAny(summary, "权限", "priv", "permission", "forbid", "denied") -> KugouPlayUrlFailureKind.PERMISSION_DENIED
+            containsAny(summary, "付费", "购买", "paid", "pay") -> KugouPlayUrlFailureKind.PAID_REQUIRED
+            containsAny(summary, "试听", "freepart", "trial") -> KugouPlayUrlFailureKind.TRIAL_UNAVAILABLE
+            privStatus > 0 -> KugouPlayUrlFailureKind.PERMISSION_DENIED
+            errCode != 0 -> KugouPlayUrlFailureKind.UNAVAILABLE
+            status != 1 -> KugouPlayUrlFailureKind.UNAVAILABLE
+            else -> KugouPlayUrlFailureKind.UNKNOWN
+        }
+        val code = when {
+            kind == KugouPlayUrlFailureKind.VIP_REQUIRED -> "KUGOU_PLAY_VIP_REQUIRED"
+            kind == KugouPlayUrlFailureKind.PERMISSION_DENIED -> "KUGOU_PLAY_PERMISSION_DENIED"
+            kind == KugouPlayUrlFailureKind.PAID_REQUIRED -> "KUGOU_PLAY_PAID_REQUIRED"
+            kind == KugouPlayUrlFailureKind.TRIAL_UNAVAILABLE -> "KUGOU_PLAY_TRIAL_UNAVAILABLE"
+            rawError.isNotBlank() -> "KUGOU_DIRECT_PLAY_URL_FAILED_${rawError.take(24)}"
+            else -> "KUGOU_DIRECT_PLAY_URL_FAILED"
+        }
+        return playUrlFailure(
+            failureKind = kind,
+            errorCode = code,
+            httpCode = httpCode,
+            status = status,
+            privStatus = privStatus,
+            errCode = errCode
+        )
+    }
+
+    private fun playUrlFailure(
+        failureKind: KugouPlayUrlFailureKind,
+        errorCode: String,
+        httpCode: Int = -1,
+        status: Int = -1,
+        privStatus: Int = 0,
+        errCode: Int = 0
+    ): KugouPlayUrlResult {
+        return KugouPlayUrlResult(
+            playUrl = null,
+            failureKind = failureKind,
+            errorCode = errorCode,
+            httpCode = httpCode,
+            status = status,
+            privStatus = privStatus,
+            errCode = errCode
+        )
+    }
+
+    private fun containsAny(value: String, vararg needles: String): Boolean {
+        return needles.any { value.contains(it.lowercase()) }
     }
 
     private fun execute(

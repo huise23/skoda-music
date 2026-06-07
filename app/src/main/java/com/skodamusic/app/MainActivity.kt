@@ -1,8 +1,5 @@
 package com.skodamusic.app
 
-import android.app.Dialog
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -39,7 +36,6 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.SwitchCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.audio.EqualizerManager
 import com.skodamusic.app.audio.dsp.HiFiDspController
@@ -49,6 +45,10 @@ import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
 import com.skodamusic.app.emby.EmbyApi
 import com.skodamusic.app.kugou.KugouDirectContentClient
+import com.skodamusic.app.kugou.KugouDirectUserClient
+import com.skodamusic.app.kugou.KugouPlayUrlFailureKind
+import com.skodamusic.app.kugou.KugouPlayUrlResult
+import com.skodamusic.app.kugou.KugouSceneContentClient
 import com.skodamusic.app.kugou.KugouWebApiClient
 import com.skodamusic.app.like.LikeStatusItem
 import com.skodamusic.app.like.LikeStatusStore
@@ -86,7 +86,14 @@ import com.skodamusic.app.playback.SourcePlaybackSession
 import com.skodamusic.app.ui.KugouAuthConfigBinder
 import com.skodamusic.app.ui.KugouContentBinder
 import com.skodamusic.app.ui.KugouContentRenderer
+import com.skodamusic.app.ui.DailyRecommendCoordinator
+import com.skodamusic.app.ui.EqualizerPageBinder
+import com.skodamusic.app.ui.HomeQueuePanelBinder
+import com.skodamusic.app.ui.KugouDailyVipCoordinator
 import com.skodamusic.app.ui.KugouLoginRecoveryCoordinator
+import com.skodamusic.app.ui.KugouSceneBinder
+import com.skodamusic.app.ui.RemoteThumbnailLoader
+import com.skodamusic.app.ui.RuntimeLogBinder
 import com.skodamusic.app.ui.SourceRowRenderer
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
@@ -102,8 +109,6 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
@@ -121,6 +126,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var lrcApiStatusValue: TextView
     private lateinit var kugouRadioStatusValue: TextView
     private lateinit var kugouRadioList: LinearLayout
+    private lateinit var kugouSceneStatusValue: TextView
+    private lateinit var kugouSceneTabList: LinearLayout
+    private lateinit var kugouSceneSongList: LinearLayout
     private lateinit var kugouDiscoverStatusValue: TextView
     private lateinit var kugouDiscoverTagList: LinearLayout
     private lateinit var kugouDiscoverPlaylistList: LinearLayout
@@ -137,10 +145,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var playbackDurationValue: TextView
     private lateinit var playbackSeekBar: SeekBar
     private lateinit var downloadProgressValue: TextView
-    private lateinit var runtimeLogPreview: TextView
     private lateinit var queueTracksContainer: LinearLayout
     private lateinit var libraryTracksContainer: LinearLayout
     private lateinit var homeRecommendRefresh: SwipeRefreshLayout
+    private lateinit var homeQueueScroll: ScrollView
     private lateinit var prevButton: ImageButton
     private lateinit var playPauseButton: ImageButton
     private lateinit var nextButton: ImageButton
@@ -155,17 +163,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var homeLyricsText: TextView
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
-    private lateinit var eqEnableSwitch: SwitchCompat
-    private lateinit var eqEntryRow: View
-    private lateinit var eqEntryValue: TextView
-    private lateinit var eqNoteValue: TextView
     private lateinit var eqPage: View
-    private lateinit var eqPageStateValue: TextView
-    private lateinit var eqBandsContainer: LinearLayout
-    private lateinit var eqPresetsContainer: LinearLayout
-    private lateinit var eqBackButton: ImageButton
     private lateinit var navHomeButton: ImageButton
+    private lateinit var navKugouDailyButton: ImageButton
     private lateinit var navKugouRadioButton: ImageButton
+    private lateinit var navKugouSceneButton: ImageButton
     private lateinit var navKugouDiscoverButton: ImageButton
     private lateinit var navQueueButton: ImageButton
     private lateinit var navLikeStatusButton: ImageButton
@@ -173,8 +175,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var navSettingsButton: ImageButton
     private lateinit var pageHome: View
     private lateinit var pageKugouRadio: View
+    private lateinit var pageKugouScene: View
     private lateinit var pageKugouDiscover: View
-    private lateinit var pageQueue: View
+    private lateinit var pageQueue: ScrollView
     private lateinit var pageLikeStatus: View
     private lateinit var pageLibrary: ScrollView
     private lateinit var pageSettings: View
@@ -196,10 +199,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var playbackEngine: PlaybackEngine? = null
     private var playbackRequestId: Int = 0
     private var pauseRequestedRequestId: Int = -1
-    private val runtimeLogLines = mutableListOf<String>()
-    private val runtimeLogLock = Any()
-    private var runtimeLogDialog: Dialog? = null
-    private var runtimeLogDialogText: TextView? = null
     private var selectedPage: Int = PAGE_HOME
     private var queueAutoRefreshInFlight: Boolean = false
     private var lastQueueAutoRefreshMs: Long = 0L
@@ -288,20 +287,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var embyApi: EmbyApi
     private lateinit var kugouAuthConfigBinder: KugouAuthConfigBinder
     private lateinit var kugouLoginRecoveryCoordinator: KugouLoginRecoveryCoordinator
+    private lateinit var dailyRecommendCoordinator: DailyRecommendCoordinator
+    private lateinit var kugouDailyVipCoordinator: KugouDailyVipCoordinator
     private lateinit var likeStatusStore: LikeStatusStore
     private lateinit var kugouContentBinder: KugouContentBinder
     private lateinit var kugouContentRenderer: KugouContentRenderer
+    private lateinit var homeQueuePanelBinder: HomeQueuePanelBinder
     private lateinit var sourceRowRenderer: SourceRowRenderer
+    private lateinit var thumbnailLoader: RemoteThumbnailLoader
+    private lateinit var kugouSceneBinder: KugouSceneBinder
     private lateinit var equalizerManager: EqualizerManager
     private lateinit var hiFiDspController: HiFiDspController
+    private lateinit var runtimeLogBinder: RuntimeLogBinder
+    private lateinit var equalizerPageBinder: EqualizerPageBinder
     private var postHogSessionId: String = ""
     private var lastObservedCommandTraceAtMs: Long = 0L
     private var lastObservedAudioSessionId: Int = -1
-    private var eqEnabled: Boolean = false
-    private var eqPresetIndex: Int = 0
-    private var eqMode: EqualizerManager.EqMode = EqualizerManager.EqMode.PRESET
-    private val eqCustomBandLevels = mutableListOf<Int>()
-    private var suppressEqSwitchListener: Boolean = false
     private var systemEqSessionId: Int = -1
     private var lastSystemEqUnavailableToastAtMs: Long = 0L
     private var systemEqFallbackHintShown: Boolean = false
@@ -311,34 +312,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private val kugouWebApiClient: KugouWebApiClient
         get() = kugouAuthConfigBinder.webApiClient
     private lateinit var kugouDirectContentClient: KugouDirectContentClient
+    private lateinit var kugouDirectUserClient: KugouDirectUserClient
+    private lateinit var kugouSceneContentClient: KugouSceneContentClient
     private var kugouSessionKey: String
         get() = kugouAuthConfigBinder.sessionKey
         set(value) {
             kugouAuthConfigBinder.updateSessionKey(value)
         }
 
-    private data class FixedEqBand(
-        val index: Int,
-        val label: String,
-        val frequencyHz: Int
-    )
-
-    private data class FixedEqPreset(
-        val name: String,
-        val levels: IntArray
-    )
-
-    private data class SoundModeOption(
-        val mode: HiFiDspMode,
-        @StringRes val titleRes: Int,
-        @StringRes val descriptionRes: Int
-    )
-
     override fun onCreate(savedInstanceState: Bundle?) {
         val bootStartMs = SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         PlaybackControlBus.attach(this)
+        runtimeLogBinder = RuntimeLogBinder(this, LOG_TAG) { resId -> showToast(resId) }
+        equalizerPageBinder = EqualizerPageBinder(
+            activity = this,
+            onToggleEnabled = { isChecked -> handleSoundToggle(isChecked) },
+            onOpenPage = { switchPage(PAGE_EQ) },
+            onBack = { switchPage(PAGE_SETTINGS) },
+            onModeSelected = { mode -> applySoundModeSelection(mode) }
+        )
         playbackResumeStore = PlaybackResumeStore(applicationContext)
         playbackStateStore = PlaybackStateStore(applicationContext)
         backgroundExecutor = AppBackgroundExecutor(ioThreads = 3)
@@ -350,6 +344,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             },
             appendRuntimeLog = { message -> appendRuntimeLog(message) }
         )
+        dailyRecommendCoordinator = DailyRecommendCoordinator { message -> appendRuntimeLog(message) }
         kugouAuthConfigBinder = KugouAuthConfigBinder(
             activity = this,
             uiProgressHandler = uiProgressHandler,
@@ -375,8 +370,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouDirectContentClient = KugouDirectContentClient(applicationContext) { message ->
             appendRuntimeLog(message)
         }
+        kugouDirectUserClient = KugouDirectUserClient(applicationContext) { message ->
+            appendRuntimeLog(message)
+        }
+        kugouDailyVipCoordinator = KugouDailyVipCoordinator(
+            context = applicationContext,
+            backgroundExecutor = backgroundExecutor,
+            userClient = { kugouDirectUserClient },
+            appendRuntimeLog = { message -> appendRuntimeLog(message) }
+        )
+        kugouSceneContentClient = KugouSceneContentClient(applicationContext) { message ->
+            appendRuntimeLog(message)
+        }
         sourceRowRenderer = SourceRowRenderer(this)
-        kugouContentRenderer = KugouContentRenderer(this, sourceRowRenderer)
+        thumbnailLoader = RemoteThumbnailLoader(backgroundExecutor) { message -> appendRuntimeLog(message) }
+        kugouContentRenderer = KugouContentRenderer(this, sourceRowRenderer, thumbnailLoader)
+        homeQueuePanelBinder = HomeQueuePanelBinder(this, sourceRowRenderer)
         embySessionCache = EmbySessionCache(
             context = applicationContext,
             prefsName = PREFS_EMBY,
@@ -432,39 +441,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         embyStatusValue = findViewById(R.id.emby_status_value)
         lrcApiStatusValue = findViewById(R.id.lrcapi_status_value)
         kugouAuthConfigBinder.bindViews()
-        kugouRadioStatusValue = findViewById(R.id.kugou_radio_status_value)
-        kugouRadioList = findViewById(R.id.kugou_radio_list)
-        kugouDiscoverStatusValue = findViewById(R.id.kugou_discover_status_value)
-        kugouDiscoverTagList = findViewById(R.id.kugou_discover_tag_list)
-        kugouDiscoverPlaylistList = findViewById(R.id.kugou_discover_playlist_list)
-        kugouContentBinder = KugouContentBinder(
-            activity = this,
-            backgroundExecutor = backgroundExecutor,
-            directContentClient = { kugouDirectContentClient },
-            renderer = kugouContentRenderer,
-            getSessionKey = { kugouSessionKey },
-            hasSession = { hasKugouSession() },
-            ensureWifiConnectedForNetworkRequest = { requestTag, promptUser ->
-                ensureWifiConnectedForNetworkRequest(requestTag, promptUser)
-            },
-            setFeedbackText = { feedback -> updateState { it.copy(feedbackText = feedback) } },
-            requestLogin = { reason, action -> requestKugouLogin(reason, action) },
-            appendRuntimeLog = { message -> appendRuntimeLog(message) },
-            onPlayQueuedTrack = { track, contextTracks, source ->
-                playKugouTrackFromQueue(track, contextTracks, source)
-            },
-            onStartRadioTrack = { radio, radioTracks, track ->
-                playKugouRadioTrack(radio, radioTracks, track)
-            },
-            onLikeTrack = { track -> requestLikeTrack(track) }
-        )
-        kugouContentBinder.bindViews(
-            radioStatusValue = kugouRadioStatusValue,
-            radioList = kugouRadioList,
-            discoverStatusValue = kugouDiscoverStatusValue,
-            discoverTagList = kugouDiscoverTagList,
-            discoverPlaylistList = kugouDiscoverPlaylistList
-        )
+        bindKugouContentViews()
         likeStatusList = findViewById(R.id.like_status_list)
         downloadCacheSizeValue = findViewById(R.id.download_cache_size_value)
         clearDownloadCacheButton = findViewById(R.id.btn_clear_download_cache)
@@ -478,8 +455,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackDurationValue = findViewById(R.id.playback_duration_value)
         playbackSeekBar = findViewById(R.id.playback_seek_bar)
         downloadProgressValue = findViewById(R.id.download_progress_value)
-        runtimeLogPreview = findViewById(R.id.runtime_log_preview)
+        runtimeLogBinder.bind(
+            preview = findViewById(R.id.runtime_log_preview),
+            label = findViewById(R.id.runtime_log_label)
+        )
         homeRecommendRefresh = findViewById(R.id.home_recommend_refresh)
+        homeQueueScroll = findViewById(R.id.home_recommend_preview)
         queueTracksContainer = findViewById(R.id.queue_tracks_container)
         libraryTracksContainer = findViewById(R.id.library_tracks_container)
         prevButton = findViewById(R.id.btn_prev)
@@ -495,17 +476,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         homeLyricsText = findViewById(R.id.home_lyrics_text)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
-        eqEnableSwitch = findViewById(R.id.eq_enable_switch)
-        eqEntryRow = findViewById(R.id.eq_entry_row)
-        eqEntryValue = findViewById(R.id.eq_entry_value)
-        eqNoteValue = findViewById(R.id.eq_note_value)
         eqPage = findViewById(R.id.page_eq)
-        eqPageStateValue = findViewById(R.id.eq_page_state_value)
-        eqBandsContainer = findViewById(R.id.eq_bands_container)
-        eqPresetsContainer = findViewById(R.id.eq_presets_container)
-        eqBackButton = findViewById(R.id.btn_eq_back)
+        equalizerPageBinder.bindViews(
+            enableSwitch = findViewById(R.id.eq_enable_switch),
+            entryRow = findViewById(R.id.eq_entry_row),
+            entryValue = findViewById(R.id.eq_entry_value),
+            noteValue = findViewById(R.id.eq_note_value),
+            pageStateValue = findViewById(R.id.eq_page_state_value),
+            bandsContainer = findViewById(R.id.eq_bands_container),
+            presetsContainer = findViewById(R.id.eq_presets_container),
+            backButton = findViewById(R.id.btn_eq_back)
+        )
         navHomeButton = findViewById(R.id.nav_home)
+        navKugouDailyButton = findViewById(R.id.nav_kugou_daily)
         navKugouRadioButton = findViewById(R.id.nav_kugou_radio)
+        navKugouSceneButton = findViewById(R.id.nav_kugou_scene)
         navKugouDiscoverButton = findViewById(R.id.nav_kugou_discover)
         navQueueButton = findViewById(R.id.nav_queue)
         navLikeStatusButton = findViewById(R.id.nav_like_status)
@@ -513,6 +498,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         navSettingsButton = findViewById(R.id.nav_settings)
         pageHome = findViewById(R.id.page_home)
         pageKugouRadio = findViewById(R.id.page_kugou_radio)
+        pageKugouScene = findViewById(R.id.page_kugou_scene)
         pageKugouDiscover = findViewById(R.id.page_kugou_discover)
         pageQueue = findViewById(R.id.page_queue)
         pageLikeStatus = findViewById(R.id.page_like_status)
@@ -587,7 +573,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             captureBootStage(stage = "resume_restore_done", bootStartMs = bootStartMs)
             rebuildTrackLists()
             if (hasKugouSession()) {
-                requestKugouDefaultAutoLoad("cached_session")
+                triggerKugouDailyVip(reason = "cached_session")
+                requestDailyRecommendPlayback(reason = "cached_session", force = false)
             }
             refreshDownloadCacheInfoUi()
             startUiProgressTicker()
@@ -636,7 +623,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         stopUiProgressTicker()
         stopKugouQrPolling()
         cancelNetworkRecoveryRetry()
-        runtimeLogDialog?.dismiss()
+        if (this::runtimeLogBinder.isInitialized) {
+            runtimeLogBinder.destroy()
+        }
         PlaybackControlBus.detach(this)
         maybePersistPlaybackResumeState(force = true)
         super.onDestroy()
@@ -644,6 +633,68 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         stopDownloadController()
         releasePlayer()
         backgroundExecutor.shutdown()
+    }
+
+    private fun bindKugouContentViews() {
+        kugouRadioStatusValue = findViewById(R.id.kugou_radio_status_value)
+        kugouRadioList = findViewById(R.id.kugou_radio_list)
+        kugouSceneStatusValue = findViewById(R.id.kugou_scene_status_value)
+        kugouSceneTabList = findViewById(R.id.kugou_scene_tab_list)
+        kugouSceneSongList = findViewById(R.id.kugou_scene_song_list)
+        kugouDiscoverStatusValue = findViewById(R.id.kugou_discover_status_value)
+        kugouDiscoverTagList = findViewById(R.id.kugou_discover_tag_list)
+        kugouDiscoverPlaylistList = findViewById(R.id.kugou_discover_playlist_list)
+        kugouContentBinder = KugouContentBinder(
+            activity = this,
+            backgroundExecutor = backgroundExecutor,
+            directContentClient = { kugouDirectContentClient },
+            renderer = kugouContentRenderer,
+            getSessionKey = { kugouSessionKey },
+            hasSession = { hasKugouSession() },
+            ensureWifiConnectedForNetworkRequest = { requestTag, promptUser ->
+                ensureWifiConnectedForNetworkRequest(requestTag, promptUser)
+            },
+            setFeedbackText = { feedback -> updateState { it.copy(feedbackText = feedback) } },
+            requestLogin = { reason, action -> requestKugouLogin(reason, action) },
+            appendRuntimeLog = { message -> appendRuntimeLog(message) },
+            onPlayQueuedTrack = { track, contextTracks, source ->
+                playKugouTrackFromQueue(track, contextTracks, source)
+            },
+            onStartRadioTrack = { radio, radioTracks, track ->
+                playKugouRadioTrack(radio, radioTracks, track)
+            },
+            onLikeTrack = { track -> requestLikeTrack(track) }
+        )
+        kugouSceneBinder = KugouSceneBinder(
+            activity = this,
+            backgroundExecutor = backgroundExecutor,
+            sceneClient = { kugouSceneContentClient },
+            renderer = kugouContentRenderer,
+            getSessionKey = { kugouSessionKey },
+            hasSession = { hasKugouSession() },
+            ensureWifiConnectedForNetworkRequest = { requestTag, promptUser ->
+                ensureWifiConnectedForNetworkRequest(requestTag, promptUser)
+            },
+            setFeedbackText = { feedback -> updateState { it.copy(feedbackText = feedback) } },
+            requestLogin = { reason, action -> requestKugouLogin(reason, action) },
+            appendRuntimeLog = { message -> appendRuntimeLog(message) },
+            onPlayQueuedTrack = { track, contextTracks, source ->
+                playKugouTrackFromQueue(track, contextTracks, source)
+            },
+            onLikeTrack = { track -> requestLikeTrack(track) }
+        )
+        kugouContentBinder.bindViews(
+            radioStatusValue = kugouRadioStatusValue,
+            radioList = kugouRadioList,
+            discoverStatusValue = kugouDiscoverStatusValue,
+            discoverTagList = kugouDiscoverTagList,
+            discoverPlaylistList = kugouDiscoverPlaylistList
+        )
+        kugouSceneBinder.bindViews(
+            statusView = kugouSceneStatusValue,
+            tabList = kugouSceneTabList,
+            songList = kugouSceneSongList
+        )
     }
 
     private fun configureModernHomeShell() {
@@ -659,14 +710,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
 
         navHomeButton.setImageResource(android.R.drawable.ic_menu_view)
+        navKugouDailyButton.setImageResource(android.R.drawable.ic_menu_today)
         navKugouRadioButton.setImageResource(android.R.drawable.ic_menu_upload)
+        navKugouSceneButton.setImageResource(android.R.drawable.ic_menu_gallery)
         navKugouDiscoverButton.setImageResource(android.R.drawable.ic_menu_search)
         navQueueButton.setImageResource(android.R.drawable.ic_menu_sort_by_size)
         navLikeStatusButton.setImageResource(android.R.drawable.ic_menu_save)
         navLibraryButton.setImageResource(android.R.drawable.ic_menu_agenda)
         navSettingsButton.setImageResource(android.R.drawable.ic_menu_manage)
-        navHomeButton.contentDescription = getString(R.string.nav_kugou_recommended_songs)
+        navHomeButton.contentDescription = getString(R.string.nav_home)
+        navKugouDailyButton.contentDescription = getString(R.string.nav_kugou_daily_recommend)
         navKugouRadioButton.contentDescription = getString(R.string.nav_kugou_recommended_radio)
+        navKugouSceneButton.contentDescription = getString(R.string.nav_kugou_scene)
         navKugouDiscoverButton.contentDescription = getString(R.string.nav_kugou_discover_playlists)
         navQueueButton.contentDescription = getString(R.string.nav_playback_queue)
         navLikeStatusButton.contentDescription = getString(R.string.nav_like_status)
@@ -689,27 +744,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun bindActions() {
-        runtimeLogPreview.setOnClickListener {
-            showRuntimeLogsFullscreen()
-        }
-        findViewById<TextView>(R.id.runtime_log_label).setOnClickListener {
-            showRuntimeLogsFullscreen()
-        }
+        homeRecommendRefresh.isEnabled = false
         homeRecommendRefresh.setOnRefreshListener {
-            if (!hasKugouSession()) {
-                homeRecommendRefresh.isRefreshing = false
-                updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
-                requestKugouLogin(
-                    reason = "home_refresh_missing_session",
-                    action = KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND
-                )
-                return@setOnRefreshListener
-            }
-            requestKugouRecommendedSongs(onFinished = {
-                runOnUiThread {
-                    homeRecommendRefresh.isRefreshing = false
-                }
-            })
+            homeRecommendRefresh.isRefreshing = false
         }
 
         homeTabRecommendButton.setOnClickListener {
@@ -822,40 +859,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 return@setOnClickListener
             }
             requestLrcApiConnectionTest(credentials)
-        }
-
-        eqEnableSwitch.setOnCheckedChangeListener { _, isChecked ->
-            if (suppressEqSwitchListener) {
-                return@setOnCheckedChangeListener
-            }
-            if (soundEffectEnabled == isChecked) {
-                return@setOnCheckedChangeListener
-            }
-            if (isChecked) {
-                soundEffectEnabled = true
-                if (soundEffectMode == HiFiDspMode.ORIGINAL) {
-                    soundEffectMode = HiFiDspMode.FIDELITY
-                }
-            } else {
-                soundEffectEnabled = false
-            }
-            applySoundEffectConfig("ui_toggle")
-            persistSoundEffectConfig()
-            refreshEqualizerSettingsUi()
-            updateState {
-                it.copy(
-                    feedbackText = getString(
-                        if (isChecked) R.string.feedback_sound_enabled else R.string.feedback_sound_disabled
-                    )
-                )
-            }
-            showToast(if (isChecked) R.string.toast_sound_enabled else R.string.toast_sound_disabled)
-        }
-        eqEntryRow.setOnClickListener {
-            switchPage(PAGE_EQ)
-        }
-        eqBackButton.setOnClickListener {
-            switchPage(PAGE_SETTINGS)
         }
 
         clearDownloadCacheButton.setOnClickListener {
@@ -1112,8 +1115,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         navHomeButton.setOnClickListener {
             switchPage(PAGE_HOME)
         }
+        navKugouDailyButton.setOnClickListener {
+            switchPage(PAGE_HOME)
+            requestDailyRecommendPlayback(reason = "nav_daily", force = true)
+        }
         navKugouRadioButton.setOnClickListener {
             switchPage(PAGE_KUGOU_RADIO)
+        }
+        navKugouSceneButton.setOnClickListener {
+            switchPage(PAGE_KUGOU_SCENE)
         }
         navKugouDiscoverButton.setOnClickListener {
             switchPage(PAGE_KUGOU_DISCOVER)
@@ -1137,6 +1147,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         selectedPage = targetPage
         pageHome.visibility = if (selectedPage == PAGE_HOME) View.VISIBLE else View.GONE
         pageKugouRadio.visibility = if (selectedPage == PAGE_KUGOU_RADIO) View.VISIBLE else View.GONE
+        pageKugouScene.visibility = if (selectedPage == PAGE_KUGOU_SCENE) View.VISIBLE else View.GONE
         pageKugouDiscover.visibility = if (selectedPage == PAGE_KUGOU_DISCOVER) View.VISIBLE else View.GONE
         pageQueue.visibility = if (selectedPage == PAGE_QUEUE) View.VISIBLE else View.GONE
         pageLikeStatus.visibility = if (selectedPage == PAGE_LIKE_STATUS) View.VISIBLE else View.GONE
@@ -1150,6 +1161,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             renderLikeStatusPage()
         } else if (selectedPage == PAGE_KUGOU_RADIO) {
             requestKugouRecommendedRadios()
+        } else if (selectedPage == PAGE_KUGOU_SCENE) {
+            requestKugouScenes()
         } else if (selectedPage == PAGE_KUGOU_DISCOVER) {
             requestKugouDiscoverTags()
         } else if (selectedPage == PAGE_LIBRARY) {
@@ -1162,7 +1175,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             refreshEqualizerSettingsUi()
             renderEqualizerFullscreenPage()
         }
-        if (selectedPage == PAGE_HOME || selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_DISCOVER) {
+        if (selectedPage == PAGE_HOME || selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_SCENE || selectedPage == PAGE_KUGOU_DISCOVER) {
             refreshKugouLoginUi()
         }
     }
@@ -1186,14 +1199,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun handleKugouLoginSucceeded() {
+        triggerKugouDailyVip(reason = "login_success")
         val action = kugouLoginRecoveryCoordinator.consumeLoginSuccessAction()
         when (action) {
             KugouLoginRecoveryCoordinator.PendingAction.RADIO_PAGE -> requestKugouRecommendedRadios()
+            KugouLoginRecoveryCoordinator.PendingAction.SCENE_PAGE -> requestKugouScenes()
             KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE -> requestKugouDiscoverTags()
             KugouLoginRecoveryCoordinator.PendingAction.LIKE_ACTION -> renderLikeStatusPage()
             KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK -> rebuildTrackLists()
             KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND,
-            KugouLoginRecoveryCoordinator.PendingAction.NONE -> requestKugouDefaultAutoLoad(action.eventValue)
+            KugouLoginRecoveryCoordinator.PendingAction.NONE -> requestDailyRecommendPlayback(action.eventValue, force = false)
         }
     }
 
@@ -1207,7 +1222,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 "stage" to stage
             )
         )
-        requestKugouRecommendedSongs()
+        requestDailyRecommendPlayback(reason = stage, force = false)
+    }
+
+    private fun triggerKugouDailyVip(reason: String) {
+        if (!this::kugouDailyVipCoordinator.isInitialized || !hasKugouSession()) {
+            return
+        }
+        kugouDailyVipCoordinator.trigger(reason = reason, userId = kugouAuthConfigBinder.lastUserId)
     }
 
     private fun stopKugouQrPolling() {
@@ -1222,18 +1244,59 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         sourcePlaybackSession.clearKugouIfActive()
         kugouQueueManager.clear()
         kugouRadioSessionManager.clear()
+        if (this::dailyRecommendCoordinator.isInitialized) {
+            dailyRecommendCoordinator.reset()
+        }
+        if (this::kugouDailyVipCoordinator.isInitialized) {
+            kugouDailyVipCoordinator.reset()
+        }
         if (this::kugouContentBinder.isInitialized) {
             kugouContentBinder.clearContentState()
         }
+        if (this::kugouSceneBinder.isInitialized) {
+            kugouSceneBinder.clearContentState()
+        }
         renderHomeRecommendationPreview()
         renderKugouRadioPage()
+        renderKugouScenePage()
         renderKugouDiscoverPage()
     }
 
     private fun requestKugouRecommendedSongs(onFinished: (() -> Unit)? = null) {
         kugouContentBinder.requestRecommendedSongs(
             onFinished = onFinished,
-            renderHome = { renderHomeRecommendationPreview() }
+            renderHome = { renderHomeRecommendationPreview() },
+            onLoaded = { tracks ->
+                dailyRecommendCoordinator.onLoaded(
+                    reason = "recommend_loaded",
+                    tracks = tracks,
+                    playFirst = { firstTrack, contextTracks, source ->
+                        updateState { it.copy(feedbackText = getString(R.string.feedback_kugou_daily_autoplay)) }
+                        playKugouTrackFromQueue(firstTrack, contextTracks, source)
+                    }
+                )
+            }
+        )
+    }
+
+    private fun requestDailyRecommendPlayback(reason: String, force: Boolean) {
+        dailyRecommendCoordinator.requestPlay(
+            reason = reason,
+            force = force,
+            hasSession = hasKugouSession(),
+            tracks = kugouContentBinder.recommendedTracksSnapshot(),
+            requestLogin = {
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
+                requestKugouLogin(
+                    reason = "daily_recommend_missing_session",
+                    action = KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND
+                )
+            },
+            requestLoad = { requestKugouRecommendedSongs() },
+            playFirst = { firstTrack, contextTracks, source ->
+                updateState { it.copy(feedbackText = getString(R.string.feedback_kugou_daily_autoplay)) }
+                playKugouTrackFromQueue(firstTrack, contextTracks, source)
+            }
         )
     }
 
@@ -1244,6 +1307,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun renderKugouRadioPage() {
         if (this::kugouContentBinder.isInitialized) {
             kugouContentBinder.renderRadioPage()
+        }
+    }
+
+    private fun requestKugouScenes() {
+        kugouSceneBinder.requestSceneList()
+    }
+
+    private fun renderKugouScenePage() {
+        if (this::kugouSceneBinder.isInitialized) {
+            kugouSceneBinder.renderScenePage()
         }
     }
 
@@ -1287,12 +1360,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun updateNavigationVisualState() {
         val onSettingsArea = selectedPage == PAGE_SETTINGS || selectedPage == PAGE_EQ
         setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME, android.R.drawable.ic_menu_view)
+        setNavButtonSelected(navKugouDailyButton, false, android.R.drawable.ic_menu_today)
         setNavButtonSelected(navKugouRadioButton, selectedPage == PAGE_KUGOU_RADIO, android.R.drawable.ic_menu_upload)
+        setNavButtonSelected(navKugouSceneButton, selectedPage == PAGE_KUGOU_SCENE, android.R.drawable.ic_menu_gallery)
         setNavButtonSelected(navKugouDiscoverButton, selectedPage == PAGE_KUGOU_DISCOVER, android.R.drawable.ic_menu_search)
         setNavButtonSelected(navQueueButton, selectedPage == PAGE_QUEUE, android.R.drawable.ic_menu_sort_by_size)
         setNavButtonSelected(navLikeStatusButton, selectedPage == PAGE_LIKE_STATUS, android.R.drawable.ic_menu_save)
         setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY, android.R.drawable.ic_menu_agenda)
         setNavButtonSelected(navSettingsButton, onSettingsArea, android.R.drawable.ic_menu_manage)
+        navQueueButton.visibility = if (explicitEmbyUserActivation) View.VISIBLE else View.GONE
     }
 
     private fun setNavButtonSelected(button: ImageButton, selected: Boolean, iconRes: Int) {
@@ -1317,6 +1393,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 emptyRes = R.string.queue_empty,
                 source = ListSource.QUEUE
             )
+            scrollContainerToChild(pageQueue, queueTracksContainer, currentTrackIndex)
         }
         renderTrackContainer(
             container = libraryTracksContainer,
@@ -1477,64 +1554,45 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun renderHomeRecommendationPreview() {
-        homeRecommendList.removeAllViews()
-        if (this::kugouContentBinder.isInitialized && kugouContentBinder.isRecommendedLoading()) {
-            homeRecommendList.addView(
-                sourceRowRenderer.buildEmptyRow(
-                    text = getString(R.string.feedback_kugou_recommend_loading),
-                    centered = true,
-                    horizontalPaddingDp = 12,
-                    verticalPaddingDp = 22
-                ),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-            return
-        }
-        if (hasKugouSession()) {
-            renderKugouRecommendedSongs()
-            return
-        }
-        if (loadedTracks.isEmpty()) {
-            homeRecommendList.addView(
-                sourceRowRenderer.buildEmptyRow(
-                    text = getString(R.string.home_recommend_placeholder),
-                    centered = true,
-                    horizontalPaddingDp = 12,
-                    verticalPaddingDp = 22
-                ),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-            return
-        }
-        val recommendations: List<EmbyTrack> = loadedTracks.take(DEFAULT_HOME_QUEUE_SIZE)
-        recommendations.forEachIndexed { index, track ->
-            val isCurrent = index == currentTrackIndex
-            val row = sourceRowRenderer.buildEmbyTrackRow(
-                track = track,
-                isCurrent = isCurrent,
-                source = ListSource.LIBRARY,
-                onClick = {
-                    playFromList(index, ListSource.QUEUE)
-                },
-                onDelete = {
-                    promptDeleteSourceTrack(track)
-                }
-            )
-            sourceRowRenderer.addRow(homeRecommendList, row, index)
-        }
+        val queueState = buildHomeQueueState()
+        homeQueuePanelBinder.render(
+            scrollView = homeQueueScroll,
+            container = homeRecommendList,
+            state = queueState,
+            onEmbyTrackClick = { index -> playFromList(index, ListSource.QUEUE) },
+            onKugouTrackClick = { track, tracks -> playKugouTrackFromQueue(track, tracks, "home_queue_tap") },
+            onRadioTrackClick = { track -> playKugouRadioQueueTrack(track) },
+            onLike = { track -> requestLikeTrack(track) }
+        )
     }
 
-    private fun renderKugouRecommendedSongs() {
-        kugouContentBinder.renderRecommendedSongs(
-            container = homeRecommendList,
-            limit = DEFAULT_HOME_QUEUE_SIZE
-        )
+    private fun buildHomeQueueState(): HomeQueuePanelBinder.QueueState {
+        if (kugouRadioSessionManager.isActive()) {
+            return HomeQueuePanelBinder.QueueState.Radio(
+                history = kugouRadioSessionManager.historySnapshot(),
+                current = kugouRadioSessionManager.current(),
+                upcoming = kugouRadioSessionManager.upcomingSnapshot()
+            )
+        }
+        if (sourcePlaybackSession.isKugouActive() || kugouQueueManager.snapshot().isNotEmpty()) {
+            return HomeQueuePanelBinder.QueueState.Kugou(
+                tracks = kugouQueueManager.snapshot(),
+                currentTrackId = sourcePlaybackSession.currentKugouTrack()?.sourceTrackId
+            )
+        }
+        if (loadedTracks.isNotEmpty() || explicitEmbyUserActivation) {
+            return HomeQueuePanelBinder.QueueState.Emby(
+                tracks = loadedTracks,
+                currentIndex = currentTrackIndex
+            )
+        }
+        if (hasKugouSession()) {
+            return HomeQueuePanelBinder.QueueState.Kugou(
+                tracks = emptyList(),
+                currentTrackId = null
+            )
+        }
+        return HomeQueuePanelBinder.QueueState.LoginRequired
     }
 
     private fun renderHomeLyricsPreview(currentTrack: String) {
@@ -1902,28 +1960,46 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun renderKugouQueueContainer(container: LinearLayout) {
         if (kugouRadioSessionManager.isActive()) {
-            val tracks = kugouRadioSessionManager.queueSnapshot()
-            val current = kugouRadioSessionManager.current()
-            kugouContentRenderer.renderQueue(
+            homeQueuePanelBinder.render(
+                scrollView = pageQueue,
                 container = container,
-                tracks = tracks,
-                currentTrackId = current?.sourceTrackId,
-                onTrackClick = { track -> playKugouRadioQueueTrack(track) },
-                onLike = { track -> requestLikeTrack(track) },
-                titleRes = R.string.queue_kugou_radio_title,
-                emptyRes = R.string.queue_kugou_radio_empty
+                state = HomeQueuePanelBinder.QueueState.Radio(
+                    history = kugouRadioSessionManager.historySnapshot(),
+                    current = kugouRadioSessionManager.current(),
+                    upcoming = kugouRadioSessionManager.upcomingSnapshot()
+                ),
+                onEmbyTrackClick = { index -> playFromList(index, ListSource.QUEUE) },
+                onKugouTrackClick = { track, tracks -> playKugouTrackFromQueue(track, tracks, "kugou_queue_tap") },
+                onRadioTrackClick = { track -> playKugouRadioQueueTrack(track) },
+                onLike = { track -> requestLikeTrack(track) }
             )
             return
         }
         val tracks = kugouQueueManager.snapshot()
         val current = sourcePlaybackSession.currentKugouTrack()
-        kugouContentRenderer.renderQueue(
+        homeQueuePanelBinder.render(
+            scrollView = pageQueue,
             container = container,
-            tracks = tracks,
-            currentTrackId = current?.sourceTrackId,
-            onTrackClick = { track -> playKugouTrackFromQueue(track, tracks, "kugou_queue_tap") },
+            state = HomeQueuePanelBinder.QueueState.Kugou(
+                tracks = tracks,
+                currentTrackId = current?.sourceTrackId
+            ),
+            onEmbyTrackClick = { index -> playFromList(index, ListSource.QUEUE) },
+            onKugouTrackClick = { track, contextTracks -> playKugouTrackFromQueue(track, contextTracks, "kugou_queue_tap") },
+            onRadioTrackClick = { track -> playKugouRadioQueueTrack(track) },
             onLike = { track -> requestLikeTrack(track) }
         )
+    }
+
+    private fun scrollContainerToChild(scrollView: ScrollView, container: LinearLayout, childIndex: Int) {
+        if (childIndex < 0) {
+            return
+        }
+        scrollView.post {
+            val child = container.getChildAt(childIndex) ?: return@post
+            val target = (child.top - (scrollView.height - child.height) / 2).coerceAtLeast(0)
+            scrollView.smoothScrollTo(0, target)
+        }
     }
 
     private fun requestLikeTrack(track: SourceTrack) {
@@ -2098,7 +2174,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             )
         )
         backgroundExecutor.execute {
-            val resolved = kugouDirectContentClient.getPlayUrl(
+            val resolved = kugouDirectContentClient.getPlayUrlResult(
                 hash = ref.hash,
                 quality = ref.quality.ifBlank { "128" },
                 albumAudioId = ref.albumAudioId
@@ -2107,25 +2183,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (requestId != playbackRequestId) {
                     return@runOnUiThread
                 }
-                if (resolved == null) {
-                    updateState {
-                        it.copy(
-                            playPauseEnabled = false,
-                            feedbackText = getString(R.string.feedback_kugou_play_url_failed)
-                        )
-                    }
-                    PostHogTracker.capture(
-                        context = applicationContext,
-                        eventName = "kugou_direct_play_url_failed",
-                        properties = mapOf(
-                            "source" to "kugou",
-                            "feature" to "kugou_playback",
-                            "stage" to "play_url",
-                            "error_code" to "KUGOU_DIRECT_PLAY_URL_FAILED"
-                        ),
-                        priority = PostHogTracker.Priority.HIGH
-                    )
-                    showToast(R.string.toast_kugou_play_failed)
+                if (!resolved.isSuccess || resolved.playUrl == null) {
+                    handleKugouPlayUrlFailure(resolved)
                     return@runOnUiThread
                 }
                 PostHogTracker.capture(
@@ -2138,9 +2197,56 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 )
                 sourcePlaybackSession.markKugouActive(track)
-                prepareAndPlayKugouUrl(track, resolved.url, requestId)
+                prepareAndPlayKugouUrl(track, resolved.playUrl.url, requestId)
             }
         }
+    }
+
+    private fun handleKugouPlayUrlFailure(result: KugouPlayUrlResult) {
+        val feedbackRes = when (result.failureKind) {
+            KugouPlayUrlFailureKind.VIP_REQUIRED,
+            KugouPlayUrlFailureKind.PERMISSION_DENIED,
+            KugouPlayUrlFailureKind.PAID_REQUIRED -> R.string.feedback_kugou_play_permission_denied
+            KugouPlayUrlFailureKind.TRIAL_UNAVAILABLE -> R.string.feedback_kugou_play_trial_unavailable
+            else -> R.string.feedback_kugou_play_url_failed
+        }
+        val toastRes = when (result.failureKind) {
+            KugouPlayUrlFailureKind.VIP_REQUIRED,
+            KugouPlayUrlFailureKind.PERMISSION_DENIED,
+            KugouPlayUrlFailureKind.PAID_REQUIRED -> R.string.toast_kugou_play_permission_denied
+            else -> R.string.toast_kugou_play_failed
+        }
+        updateState {
+            it.copy(
+                playPauseEnabled = false,
+                feedbackText = getString(feedbackRes)
+            )
+        }
+        val errorCode = result.errorCode.ifBlank { "KUGOU_DIRECT_PLAY_URL_FAILED" }
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "kugou_direct_play_url_failed",
+            properties = mapOf(
+                "source" to "kugou",
+                "feature" to "kugou_playback",
+                "stage" to "play_url",
+                "error_code" to errorCode,
+                "failure_kind" to (result.failureKind?.name ?: "UNKNOWN"),
+                "http_code" to result.httpCode,
+                "kg_status" to result.status,
+                "priv_status" to result.privStatus,
+                "err_code" to result.errCode
+            ),
+            priority = PostHogTracker.Priority.HIGH
+        )
+        if (
+            result.failureKind == KugouPlayUrlFailureKind.VIP_REQUIRED ||
+            result.failureKind == KugouPlayUrlFailureKind.PERMISSION_DENIED ||
+            result.failureKind == KugouPlayUrlFailureKind.PAID_REQUIRED
+        ) {
+            triggerKugouDailyVip(reason = "play_url_permission_failure")
+        }
+        showToast(toastRes)
     }
 
     private fun prepareAndPlayKugouUrl(track: SourceTrack, playUrl: String, requestId: Int) {
@@ -2887,7 +2993,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun openSystemEqualizerSessionIfPossible(sessionId: Int, source: String) {
-        if (!USE_SYSTEM_EQ_INHERIT_MODE || eqEnabled || sessionId <= 0) {
+        if (!USE_SYSTEM_EQ_INHERIT_MODE || soundEffectEnabled || sessionId <= 0) {
             return
         }
         if (systemEqSessionId == sessionId) {
@@ -5204,118 +5310,50 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         refreshDspPlayButtonIndicator()
     }
 
-    private fun refreshEqualizerSettingsUi() {
-        if (!this::eqEnableSwitch.isInitialized) {
+    private fun handleSoundToggle(isChecked: Boolean) {
+        if (soundEffectEnabled == isChecked) {
             return
         }
-        suppressEqSwitchListener = true
-        eqEnableSwitch.isChecked = soundEffectEnabled
-        suppressEqSwitchListener = false
-        eqEnableSwitch.isEnabled = true
-        eqEntryValue.text = if (soundEffectEnabled) {
-            getString(R.string.sound_entry_value_enabled_format, resolveSoundModeName(soundEffectMode))
+        if (isChecked) {
+            soundEffectEnabled = true
+            if (soundEffectMode == HiFiDspMode.ORIGINAL) {
+                soundEffectMode = HiFiDspMode.FIDELITY
+            }
         } else {
-            getString(R.string.sound_entry_value_disabled)
+            soundEffectEnabled = false
         }
-        eqNoteValue.text = getString(R.string.sound_note_fail_open)
-        eqNoteValue.visibility = View.VISIBLE
-        eqEntryRow.alpha = if (soundEffectEnabled) 1f else 0.88f
-        if (selectedPage == PAGE_EQ) {
-            renderEqualizerFullscreenPage()
+        applySoundEffectConfig("ui_toggle")
+        persistSoundEffectConfig()
+        refreshEqualizerSettingsUi()
+        updateState {
+            it.copy(
+                feedbackText = getString(
+                    if (isChecked) R.string.feedback_sound_enabled else R.string.feedback_sound_disabled
+                )
+            )
         }
+        showToast(if (isChecked) R.string.toast_sound_enabled else R.string.toast_sound_disabled)
+    }
+
+    private fun refreshEqualizerSettingsUi() {
+        if (!this::equalizerPageBinder.isInitialized) {
+            return
+        }
+        equalizerPageBinder.renderSettings(
+            enabled = soundEffectEnabled,
+            mode = soundEffectMode,
+            isPageVisible = selectedPage == PAGE_EQ
+        )
     }
 
     private fun renderEqualizerFullscreenPage() {
-        if (!this::eqBandsContainer.isInitialized || !this::eqPresetsContainer.isInitialized) {
+        if (!this::equalizerPageBinder.isInitialized) {
             return
         }
-        renderSoundModeDetails()
-        renderSoundModeButtons()
-        refreshEqualizerFullscreenHeader()
-    }
-
-    private fun renderSoundModeDetails() {
-        eqBandsContainer.removeAllViews()
-        eqBandsContainer.orientation = LinearLayout.VERTICAL
-        eqBandsContainer.gravity = Gravity.CENTER_VERTICAL
-        eqBandsContainer.minimumWidth = dpToPx(360)
-        eqBandsContainer.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
-
-        val title = TextView(this).apply {
-            text = resolveSoundModeName(soundEffectMode)
-            setTextColor(resources.getColor(R.color.text_primary))
-            textSize = 28f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-        eqBandsContainer.addView(
-            title,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        equalizerPageBinder.renderFullscreenPage(
+            enabled = soundEffectEnabled,
+            mode = soundEffectMode
         )
-
-        val description = TextView(this).apply {
-            text = getString(resolveSoundModeDescriptionRes(soundEffectMode))
-            setTextColor(resources.getColor(R.color.text_secondary))
-            textSize = 18f
-            setLineSpacing(0f, 1.16f)
-            setPadding(0, dpToPx(12), 0, 0)
-        }
-        eqBandsContainer.addView(
-            description,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        )
-
-        val chain = TextView(this).apply {
-            text = getString(R.string.sound_page_chain_note)
-            setTextColor(resources.getColor(R.color.text_muted))
-            textSize = 15f
-            setLineSpacing(0f, 1.14f)
-            setPadding(0, dpToPx(18), 0, 0)
-        }
-        eqBandsContainer.addView(
-            chain,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        )
-    }
-
-    private fun renderSoundModeButtons() {
-        eqPresetsContainer.removeAllViews()
-        SOUND_MODE_OPTIONS.forEachIndexed { index, option ->
-            val active = (soundEffectEnabled && soundEffectMode == option.mode) ||
-                (!soundEffectEnabled && option.mode == HiFiDspMode.ORIGINAL)
-            val button = Button(this).apply {
-                text = getString(option.titleRes)
-                isAllCaps = false
-                textSize = 16f
-                minHeight = dpToPx(46)
-                setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
-                setBackgroundResource(if (active) R.drawable.button_eq_preset_active else R.drawable.button_eq_preset_inactive)
-                setTextColor(resources.getColor(if (active) R.color.white else R.color.text_primary))
-                setOnClickListener {
-                    applySoundModeSelection(option.mode)
-                }
-            }
-            eqPresetsContainer.addView(
-                button,
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    if (index > 0) {
-                        topMargin = dpToPx(8)
-                    }
-                }
-            )
-        }
-    }
-
-    private fun refreshEqualizerFullscreenHeader() {
-        if (!this::eqPageStateValue.isInitialized) {
-            return
-        }
-        if (soundEffectEnabled) {
-            eqPageStateValue.text = getString(R.string.sound_page_state_on_format, resolveSoundModeName(soundEffectMode))
-            eqPageStateValue.setTextColor(resources.getColor(R.color.text_primary))
-        } else {
-            eqPageStateValue.text = getString(R.string.sound_page_state_off)
-            eqPageStateValue.setTextColor(resources.getColor(R.color.text_secondary))
-        }
     }
 
     private fun applySoundModeSelection(mode: HiFiDspMode) {
@@ -5332,106 +5370,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun resolveSoundModeName(mode: HiFiDspMode): String {
-        return getString(resolveSoundModeTitleRes(mode))
-    }
-
-    @StringRes
-    private fun resolveSoundModeTitleRes(mode: HiFiDspMode): Int {
-        return SOUND_MODE_OPTIONS.firstOrNull { it.mode == mode }?.titleRes ?: R.string.sound_mode_fidelity
-    }
-
-    @StringRes
-    private fun resolveSoundModeDescriptionRes(mode: HiFiDspMode): Int {
-        return SOUND_MODE_OPTIONS.firstOrNull { it.mode == mode }?.descriptionRes
-            ?: R.string.sound_mode_fidelity_desc
+        return if (this::equalizerPageBinder.isInitialized) {
+            equalizerPageBinder.resolveSoundModeName(mode)
+        } else {
+            getString(R.string.sound_mode_fidelity)
+        }
     }
 
     private fun appendRuntimeLog(message: String) {
-        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
-        val line = "$timestamp $message"
-        val snapshot: String
-        synchronized(runtimeLogLock) {
-            runtimeLogLines.add(line)
-            if (runtimeLogLines.size > MAX_RUNTIME_LOG_LINES) {
-                runtimeLogLines.removeAt(0)
-            }
-            snapshot = runtimeLogLines.joinToString("\n")
-        }
-        Log.d(LOG_TAG, line)
-        if (!this::runtimeLogPreview.isInitialized) {
-            return
-        }
-        runOnUiThread {
-            renderRuntimeLogSnapshot(snapshot)
-        }
-    }
-
-    private fun snapshotRuntimeLogs(): String {
-        synchronized(runtimeLogLock) {
-            if (runtimeLogLines.isEmpty()) {
-                return getString(R.string.runtime_logs_empty)
-            }
-            return runtimeLogLines.joinToString("\n")
-        }
-    }
-
-    private fun renderRuntimeLogSnapshot(snapshot: String) {
-        val preview = if (snapshot.isBlank()) {
-            getString(R.string.runtime_logs_empty)
+        if (this::runtimeLogBinder.isInitialized) {
+            runtimeLogBinder.append(message)
         } else {
-            snapshot
-                .split('\n')
-                .takeLast(RUNTIME_LOG_PREVIEW_LINES)
-                .joinToString("\n")
+            Log.d(LOG_TAG, message)
         }
-        runtimeLogPreview.text = preview
-        runtimeLogDialogText?.text = if (snapshot.isBlank()) {
-            getString(R.string.runtime_logs_empty)
-        } else {
-            snapshot
-        }
-    }
-
-    private fun copyRuntimeLogsToClipboard() {
-        val snapshot = snapshotRuntimeLogs()
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText("Skoda Runtime Logs", snapshot))
-        appendRuntimeLog("runtime logs copied to clipboard")
-        showToast(R.string.toast_runtime_logs_copied)
-    }
-
-    private fun clearRuntimeLogs() {
-        synchronized(runtimeLogLock) {
-            runtimeLogLines.clear()
-        }
-        renderRuntimeLogSnapshot("")
-        showToast(R.string.toast_runtime_logs_cleared)
-    }
-
-    private fun showRuntimeLogsFullscreen() {
-        if (runtimeLogDialog?.isShowing == true) {
-            return
-        }
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        dialog.setContentView(R.layout.dialog_runtime_logs)
-        val fullText = dialog.findViewById<TextView>(R.id.runtime_log_fullscreen_text)
-        dialog.findViewById<Button>(R.id.btn_copy_runtime_logs).setOnClickListener {
-            copyRuntimeLogsToClipboard()
-        }
-        dialog.findViewById<Button>(R.id.btn_clear_runtime_logs).setOnClickListener {
-            clearRuntimeLogs()
-        }
-        dialog.findViewById<Button>(R.id.btn_close_runtime_logs).setOnClickListener {
-            dialog.dismiss()
-        }
-        fullText.text = snapshotRuntimeLogs()
-        runtimeLogDialog = dialog
-        runtimeLogDialogText = fullText
-        dialog.setOnDismissListener {
-            runtimeLogDialog = null
-            runtimeLogDialogText = null
-        }
-        dialog.show()
     }
 
     private fun updateState(reducer: (UiState) -> UiState) {
@@ -5774,8 +5725,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val UI_PROGRESS_REFRESH_MS = 1_000L
         const val SEEK_BAR_MAX = 1000
         const val DOWNLOAD_HEARTBEAT_LOG_INTERVAL_MS = 5_000L
-        const val MAX_RUNTIME_LOG_LINES = 800
-        const val RUNTIME_LOG_PREVIEW_LINES = 2
         const val EXTERNAL_COMMAND_WAIT_MS = 800L
         const val SERVICE_REPORT_POSITION_DELTA_MS = 2_000L
         const val SERVICE_REPORT_HEARTBEAT_MS = 10_000L
@@ -5789,52 +5738,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KUGOU_QR_POLL_INTERVAL_MS = 2_000L
         const val PAGE_HOME = 0
         const val PAGE_KUGOU_RADIO = 1
-        const val PAGE_KUGOU_DISCOVER = 2
-        const val PAGE_QUEUE = 3
-        const val PAGE_LIKE_STATUS = 4
-        const val PAGE_SETTINGS = 5
-        const val PAGE_EQ = 6
-        const val PAGE_LIBRARY = 7
+        const val PAGE_KUGOU_SCENE = 2
+        const val PAGE_KUGOU_DISCOVER = 3
+        const val PAGE_QUEUE = 4
+        const val PAGE_LIKE_STATUS = 5
+        const val PAGE_SETTINGS = 6
+        const val PAGE_EQ = 7
+        const val PAGE_LIBRARY = 8
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32
         const val AUTO_PLAY_FIRST_TRACK_ON_EMBY_LOAD = true
-        const val EQ_LEVEL_MIN_MB = -1200
-        const val EQ_LEVEL_MAX_MB = 1200
-        const val EQ_LEVEL_RANGE_MB = EQ_LEVEL_MAX_MB - EQ_LEVEL_MIN_MB
-        const val FIXED_EQ_CUSTOM_PRESET_INDEX = 9
         val FIXED_EQ_FLAT_LEVELS = intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-        val FIXED_EQ_BANDS = listOf(
-            FixedEqBand(0, "31", 31),
-            FixedEqBand(1, "62", 62),
-            FixedEqBand(2, "125", 125),
-            FixedEqBand(3, "250", 250),
-            FixedEqBand(4, "500", 500),
-            FixedEqBand(5, "1k", 1000),
-            FixedEqBand(6, "2k", 2000),
-            FixedEqBand(7, "4k", 4000),
-            FixedEqBand(8, "8k", 8000),
-            FixedEqBand(9, "16k", 16000)
-        )
-        val FIXED_EQ_PRESETS = listOf(
-            FixedEqPreset("默认", intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
-            FixedEqPreset("流行", intArrayOf(-100, 200, 400, 500, 300, -100, -100, 200, 300, 400)),
-            FixedEqPreset("摇滚", intArrayOf(500, 400, 250, 0, -150, -100, 150, 350, 500, 550)),
-            FixedEqPreset("爵士", intArrayOf(300, 250, 150, 250, -100, -100, 0, 150, 300, 350)),
-            FixedEqPreset("古典", intArrayOf(350, 250, 150, 0, 0, 0, 100, 200, 300, 400)),
-            FixedEqPreset("舞曲", intArrayOf(650, 550, 350, 100, 0, -100, 0, 250, 450, 500)),
-            FixedEqPreset("人声", intArrayOf(-250, -150, 0, 250, 450, 500, 350, 150, 0, -100)),
-            FixedEqPreset("低音增强", intArrayOf(800, 700, 500, 250, 0, -100, -100, 0, 100, 150)),
-            FixedEqPreset("高音增强", intArrayOf(-150, -100, 0, 0, 100, 250, 400, 550, 700, 800)),
-            FixedEqPreset("自定义", intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-        )
-        val SOUND_MODE_OPTIONS = listOf(
-            SoundModeOption(HiFiDspMode.ORIGINAL, R.string.sound_mode_original, R.string.sound_mode_original_desc),
-            SoundModeOption(HiFiDspMode.FIDELITY, R.string.sound_mode_fidelity, R.string.sound_mode_fidelity_desc),
-            SoundModeOption(HiFiDspMode.CLARITY, R.string.sound_mode_clarity, R.string.sound_mode_clarity_desc),
-            SoundModeOption(HiFiDspMode.DYNAMIC, R.string.sound_mode_dynamic, R.string.sound_mode_dynamic_desc),
-            SoundModeOption(HiFiDspMode.SOFT, R.string.sound_mode_soft, R.string.sound_mode_soft_desc)
-        )
         @Volatile var downloadCacheClearedAtColdStart = false
     }
 }

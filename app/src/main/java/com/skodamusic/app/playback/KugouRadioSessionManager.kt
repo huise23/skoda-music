@@ -85,6 +85,14 @@ class KugouRadioSessionManager {
         return listOf(current) + upcomingTracks
     }
 
+    fun historySnapshot(): List<SourceTrack> {
+        return historyTracks.toList()
+    }
+
+    fun upcomingSnapshot(): List<SourceTrack> {
+        return upcomingTracks.toList()
+    }
+
     fun clear() {
         activeRadio = null
         currentTrack = null

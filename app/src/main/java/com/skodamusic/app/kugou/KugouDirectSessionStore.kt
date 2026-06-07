@@ -115,6 +115,16 @@ class KugouDirectSessionStore(context: Context) {
             .apply()
     }
 
+    fun persistVipType(vipType: String) {
+        val clean = vipType.trim()
+        if (clean.isEmpty()) {
+            return
+        }
+        prefs.edit()
+            .putString(KEY_VIP_TYPE, clean)
+            .apply()
+    }
+
     fun clear() {
         prefs.edit().clear().apply()
     }

@@ -6,6 +6,83 @@ Last Updated: 2026-06-07
 - Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 - Scope Source: `.ai/context/SCOPE.md`（2026-06-07）
 
+## Planning Refresh (Integrated Device Validation + MainActivity Red-Line Phase 3, 2026-06-07)
+- Trigger:
+  - `M-S5-KG-037`、`T-S5-KG-123`、`M-S5-HOME-038`、`M-S5-SCENE-039`、`M-S5-VIP-040` 已本地完成并通过 compile/assemble。
+  - 当前剩余最高风险已从“功能未实现”转为“真实账号/API17 设备未验证 + `MainActivity.kt` 继续超过 red-line”。
+- Scope Fit:
+  - 设备验证属于 S5 成功标准的一部分，必须覆盖登录、direct content、每日推荐、Scene/Radio grid、队列自动滚动、VIP 与无权限播放提示。
+  - `MainActivity.kt` 红线治理仍在当前 scope 内，且红线文件已回升到约 6009 行；后续开发不得继续扩大入口文件。
+- Architecture Decision:
+  - 新增 `M-S5-VAL-041`: S5 Integrated Device Validation & Evidence Closure，负责把设备验证、PostHog/logcat 证据和真实响应字段缺口结构化闭环。
+  - 新增 `M-S5-MAIN-042`: MainActivity Red-Line Decomposition Phase 3，继续以低耦合 Binder 提取为主；首选 `RuntimeLogBinder`，其次 `EqualizerPageBinder`。
+  - 设备验证失败后的协议/字段修复必须回到对应 focused client/binder；不得在 `MainActivity` 临时补协议逻辑。
+  - 运行日志 UI、EQ 页面 UI、播放/service bridge 等职责不得继续留在入口文件中扩展。
+- Current Code Reality:
+  - `MainActivity.kt` 当前约 6009 行，`check_code_health.py` 仍报 entry red-line 与超长方法 blocking。
+  - 已存在低耦合提取候选：
+    - runtime log buffer/dialog/copy/clear: `MainActivity` 约 line 5517 起。
+    - EQ/settings fullscreen rendering: `MainActivity` 约 line 5375 起。
+  - `KugouDirectContentClient.kt` 约 762 行，处于 warning 边界但未越 red-line；后续若继续加协议，应拆分 song/fm/playlist/user client。
+- New Workstreams:
+  - `W12 S5 Integrated Device Validation`: 用一台手机/API17 设备跑完整 S5 验证，回填真实响应字段、截图/日志/PostHog 证据和失败分级。
+  - `W13 MainActivity Red-Line Phase 3`: 提取 RuntimeLog/EQ 等低耦合页面 binder，为后续 Fragment 试点准备边界，并持续压降入口文件。
+- Ready Queue Update:
+  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
+  - `T-S5-MAIN-138`: `RuntimeLogBinder` 提取（低风险红线治理首刀）。
+  - `T-S5-MAIN-139`: `EqualizerPageBinder` 提取（RuntimeLog 后续）。
+  - `T-S5-TRIAGE-140`: 真实设备失败分流与 targeted fix 计划（依赖设备证据）。
+- Recommended Next:
+  - 若当前环境要继续开发，执行 `T-S5-MAIN-138` Single/Module。
+  - 若设备窗口可用，执行 `T-S5-VAL-137` 并回填证据；失败后再进入 `T-S5-TRIAGE-140`。
+
+## Planning Refresh (Home Daily Recommend, Scene Grid & Current Queue Panel, 2026-06-07)
+- Trigger:
+  - 用户纠正：不是把首页中间播放块改为推荐，而是在左侧按钮新增“每日推荐”。
+  - 用户确认：首次进入首页加载每日推荐并播放第一首；酷狗模式隐藏 Emby 队列按钮；首页右侧展示当前播放列表/队列；Radio/Scene 网格带缩略图；Scene tab 不横向滚动；所有队列自动滚动到当前歌曲。
+- Scope Fit:
+  - 属于 S5 酷狗首页/content/queue/radio 体验纠偏范围。
+  - Scene 来源已在 `KugouMusic.NET` 找到 `SceneClient` / `RawMediaCatalogApi` 依据，可进入规划；未确认字段解析仍需在执行时对照 `.NET` 和真实响应。
+- Architecture Decision:
+  - `MainActivity` 只做左侧按钮和页面委托接线，不承载每日推荐自动播放状态机、Scene 协议、网格渲染或队列自动滚动逻辑。
+  - 首页右侧当前队列面板归属 `HomeQueuePanelBinder` 或等价 focused binder。
+  - Scene direct 请求归属 `KugouSceneContentClient` 或 `KugouDirectContentClient` 的小型 scene 扩展，必须可追溯到 `.NET` scene raw API。
+  - Radio/Scene 网格与 Scene tab 展开收缩归属 `KugouContentRenderer` 扩展或新的轻量 renderer；避免让 `KugouContentBinder` 演化成 god binder。
+  - 每日推荐首次加载并播放第一首归属 `KugouContentBinder` 小范围扩展或 `DailyRecommendCoordinator`；播放仍走现有 Kugou queue/source session。
+- Current Code Reality:
+  - 左侧当前有 Home/Radio/Discover/Queue/Like/Settings；`nav_queue` 是独立队列页入口。
+  - 首页右侧当前仍是 `home_recommend_panel`，并使用 `SwipeRefreshLayout`；新需求不需要每日推荐刷新按钮。
+  - `KugouContentRenderer` 当前 Radio/Discover 仍以行列表渲染，未提供缩略图网格。
+  - `KugouRadioSessionManager` 已有 current/upcoming/history；队列页目前最小展示未覆盖 history 自动滚动。
+  - Scene Android direct client 尚未实现。
+- New Workstreams:
+  - `W10 Kugou Home Daily Recommend & Current Queue Panel`: 左侧每日推荐、隐藏酷狗模式 Emby 队列入口、首页右侧当前队列、所有队列自动滚动到当前歌曲。
+  - `W11 Kugou Scene & Grid Content`: Scene direct 来源、Scene tab 展开收缩、Radio/Scene 缩略图网格。
+- Ready Queue Update:
+  - `T-S5-HOME-128`: 左侧每日推荐入口、酷狗模式隐藏 Emby 队列按钮、首次加载并播放每日推荐第一首。
+  - `T-S5-SCENE-129`: Scene `.NET` direct 来源映射与 Android client/模型边界。
+  - `T-S5-HOME-130`: 首页右侧当前队列面板与所有来源自动滚动到当前歌曲。
+  - `T-S5-UI-131`: Radio/Scene 缩略图网格与 Scene tab 展开收缩。
+  - `T-S5-OBS-132`: 新首页/Scene/队列交互观测与 API17 回归清单。
+
+## Planning Refresh (Daily One-Day VIP + Permission-Aware Playback, 2026-06-07)
+- Trigger:
+  - 用户补充关键验收：每日首次启动还必须调用获取/领取一日 VIP 接口。
+  - 用户确认：参考 `KugouMusic.NET`；能查服务端领取记录就查，不能查时本地按账号+日期记录；失败自动重试；无权限/VIP 播放失败要明确提示；PostHog 可查时应看播放 URL 失败分布。
+- Scope Fit:
+  - 属于 S5 酷狗 direct 登录、播放 URL 和播放失败体验纠偏范围。
+  - `.NET` 依据已确认：`MainWindowViewModel.TryGetVip()`、`UserClient`、`RawUserApi`。
+- Architecture Decision:
+  - `KugouDirectUserClient` 负责 `/youth/v1/activity/get_month_vip_record`、`/youth/v1/recharge/receive_vip_listen_song`、`/youth/v1/listen_song/upgrade_vip_reward` direct 请求和最小字段解析。
+  - `KugouDailyVipCoordinator` 负责每日触发、服务端记录优先、本地账号+日期 fallback、失败重试/退避/冷却和脱敏观测。
+  - `KugouDirectContentClient` 的 `/v5/url` 返回扩展为成功 URL 或分类失败；UI 层根据分类展示“无权限/需要 VIP”。
+  - `MainActivity` 只在 cached session / login success / permission failure 时做委托和 UI 状态更新，不承载 VIP 状态机。
+- Ready Queue Update:
+  - `T-S5-VIP-133`: VIP direct user client 与记录/领取/升级解析。
+  - `T-S5-VIP-134`: 每日 VIP coordinator，本地兜底记录与失败重试。
+  - `T-S5-PLAY-135`: 播放 URL 失败分类与无权限/VIP UI 提示。
+  - `T-S5-OBS-136`: VIP/权限失败观测、PostHog 查询限制记录与 API17 回归清单。
+
 ## Planning Refresh (Post-login Loading + Login Dialog Recovery, 2026-06-07)
 - Trigger:
   - 用户反馈：车机登录酷狗成功，但未自动加载各项列表。
@@ -84,6 +161,10 @@ Last Updated: 2026-06-07
 - 允许在 API17 兼容且不破坏左侧一级快速切换的前提下，后续试点 Fragment 或独立 Activity。
 - 移除用户必填 Kugou WebApi Base URL 路径。
 - 酷狗登录成功后默认页优先自动加载，其它页进入时懒加载。
+- 左侧新增每日推荐入口；首次进入首页自动加载每日推荐并播放第一首，不提供刷新按钮。
+- 首页右侧展示当前播放队列；酷狗模式隐藏旧 Emby 队列按钮。
+- Radio/Scene 网格缩略图；Scene tab 非横向滚动，支持展开/收缩，点击后收缩。
+- 所有队列/播放列表自动滚动到当前歌曲；Radio 展示 current/upcoming/history。
 - token/session 运行中失效时弹窗登录，不清空现有内容，登录成功后恢复当前页面/列表。
 - 纯酷狗 source playback state。
 - 酷狗歌曲队列 `.NET` parity。
@@ -111,6 +192,7 @@ Last Updated: 2026-06-07
   - 电台/FM: `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Services/PersonalFmService.cs`
   - 电台/FM 分流: `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/PlayerViewModel.PersonalFm.cs`
   - SDK 直连 transport/raw api: `KugouMusic.NET/src/Libraries/KuGou.Net/Infrastructure/Http/` 与 `Protocol/Raw/`
+  - Scene: `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs` 与 `RawMediaCatalogApi.cs` scene list/audio/module/music raw API。
 
 ## Architecture Plan
 
@@ -118,6 +200,7 @@ Last Updated: 2026-06-07
 - `MainActivity`: launcher、生命周期、左侧一级导航、播放/service bridge 的薄协调层。
 - `ui/*Binder`: 页面或控件绑定、渲染协调、低频 UI 状态刷新；不得承载协议猜测或播放队列核心语义。
 - `ui/*Coordinator`: 登录成功后动作、登录弹窗恢复、内容页懒加载触发等跨 binder 协调；保持小而聚焦。
+- `ui/*QueuePanelBinder`: 当前播放列表/队列展示、选中项和自动滚动；不负责 API 请求或队列算法。
 - `kugou/*`: 酷狗 API/session/client/store，所有行为必须可追溯到 `KugouMusic.NET/`。
 - `playback/source session`: Emby、KugouSong、KugouRadio 三类播放 session 分流，不复用 Emby queue 语义表达酷狗队列。
 - `audio/dsp`: DSP runtime 状态和 native 处理保持独立，UI 只低频读取状态。
@@ -126,6 +209,7 @@ Last Updated: 2026-06-07
 - `MainActivity` 只能接线 Android 生命周期、导航、顶层回调、后台服务/方向盘按键/浮窗桥接。
 - 不能继续把酷狗登录、酷狗内容页、队列算法、电台 session、歌词解析、下载控制和 DSP 页面细节堆回入口文件。
 - 不应把登录弹窗状态机、post-login pending action、懒加载判断、token 失效恢复策略写入 `MainActivity`。
+- 不应把每日推荐自动播放、Scene 协议字段解析、tab 展开收缩、网格卡片构造、队列自动滚动策略写入 `MainActivity`。
 
 ### Page Shell Split Direction
 - 单 Activity 外壳不是长期硬约束。
@@ -175,6 +259,22 @@ Last Updated: 2026-06-07
 - 目标: 登录成功后默认页自动加载，其它页懒加载；token/session 失效弹窗登录且不清内容，登录后恢复当前页面。
 - 输出: 登录弹窗 UI 协调、post-login action、内容页懒加载状态、失败可重试和脱敏观测。
 
+### W10 Kugou Home Daily Recommend & Current Queue Panel
+- 目标: 左侧每日推荐入口、首次自动加载并播放第一首、酷狗模式隐藏 Emby 队列入口、首页右侧展示当前队列并自动滚动当前歌曲。
+- 输出: Home/current queue focused binder、每日推荐自动播放协调、source-aware queue display adapter。
+
+### W11 Kugou Scene & Grid Content
+- 目标: 按 `.NET` Scene raw API 接入 Scene 内容，并将 Radio/Scene 入口改为带缩略图的网格和非横向滚动 tab。
+- 输出: Scene direct client/model、Scene tab state、Radio/Scene grid renderer、失败可重试和脱敏观测。
+
+### W12 S5 Integrated Device Validation
+- 目标: 在真实手机/API17 环境验证 S5 已完成链路，收集可复盘证据并形成失败分流。
+- 输出: Device Report、真实响应字段缺口、PostHog/logcat 证据、下一轮 targeted fix 任务。
+
+### W13 MainActivity Red-Line Phase 3
+- 目标: 继续从 `MainActivity.kt` 迁出低耦合页面/诊断职责，优先 RuntimeLog，其次 EQ 页面，为后续 Fragment 试点准备 Binder 边界。
+- 输出: `RuntimeLogBinder` / `EqualizerPageBinder` 或等价 focused binder，入口文件行数下降且功能不回归。
+
 ## Dependency Graph
 - `W1/T-S5-MAIN-114 -> W2/T-S5-KG-109 -> W3 -> W4 -> W6`
 - `W1/T-S5-MAIN-114 -> W1/T-S5-MAIN-115 -> W1/T-S5-MAIN-116`
@@ -184,15 +284,19 @@ Last Updated: 2026-06-07
 - `W7/T-S5-KG-119 -> W8/T-S5-OBS-120`
 - `W9/T-S5-KG-124 -> W9/T-S5-KG-125 -> W9/T-S5-KG-126 -> W9/T-S5-OBS-127`
 - `W9` 与 `T-S5-KG-123` 存在接口依赖：旧 baseUrl 页可先接入懒加载/恢复策略，但真实 direct 数据能力仍由 `T-S5-KG-123` 完成。
+- `W10/T-S5-HOME-128 -> W10/T-S5-HOME-130 -> W11/T-S5-UI-131 -> W11/T-S5-OBS-132`
+- `W11/T-S5-SCENE-129 -> W11/T-S5-UI-131`
+- `T-S5-HOME-130` 依赖现有 `KugouPlaybackQueueManager` / `KugouRadioSessionManager`，并需适配 Emby 显式队列。
+- `W10/W11/M-S5-VIP-040/M-S5-KG-037/T-S5-KG-123 -> W12/T-S5-VAL-137`
+- `W12/T-S5-VAL-137 -> T-S5-TRIAGE-140`
+- `W13/T-S5-MAIN-138 -> W13/T-S5-MAIN-139 -> Fragment pilot re-evaluation`
 - `B-KG-EMBY-INGEST-001` 继续阻塞，不参与当前 Ready。
 
 ## Recommended Order
-1. `T-S5-KG-124`: 登录弹窗与 post-login 默认页自动加载协调。
-2. `T-S5-KG-125`: 内容页懒加载与失败可重试策略。
-3. `T-S5-KG-126`: token/session 失效恢复，不清内容并登录后恢复当前页面。
-4. `T-S5-OBS-127`: 观测与 API17 回归清单更新。
-5. `T-S5-KG-123`: Radio/发现/点赞 direct 化，移除剩余旧 WebApi baseUrl gate。
-6. API17 A~N 实机回归与设备验证。
+1. `T-S5-VAL-137`: 设备窗口可用时先跑 S5 集成设备验证，回传证据。
+2. `T-S5-MAIN-138`: 设备窗口不可用时，先提取 `RuntimeLogBinder`，降低入口文件红线。
+3. `T-S5-MAIN-139`: RuntimeLog 稳定后提取 `EqualizerPageBinder`。
+4. `T-S5-TRIAGE-140`: 基于设备验证结果拆 targeted fix，不在证据不足时猜协议。
 
 ## Completed Historical Order
 - `T-S5-KG-119`、`T-S5-OBS-120`、`T-S5-MAIN-114`、`T-S4-AUDIO-097`、`T-S5-KG-109`、`T-S5-MAIN-115`、`T-S5-PLAY-110/111/112`、`T-S5-MAIN-116`、`T-S5-VAL-113` 已完成；保留为历史依据。
@@ -210,6 +314,9 @@ Last Updated: 2026-06-07
 - M8: QR refresh 在手机/模拟环境中重复点击、弱网/断网、接口异常时不崩溃，并能在 PostHog/logcat 中看到脱敏诊断链。
 - M9: S5 新功能具备最低可用 PostHog 覆盖，后续 API17 回归可直接采集 `capture ok event=...` 证据。
 - M10: 酷狗登录成功后首页推荐自动加载；其它酷狗页进入时懒加载；token 失效时弹窗登录且不清内容；登录后恢复当前页面。
+- M11: 左侧每日推荐入口可用，首次进首页自动加载并播放第一首；酷狗模式隐藏 Emby 队列按钮。
+- M12: 首页右侧当前队列覆盖每日推荐、歌单、Radio、Scene、Emby 显式来源，并自动滚动到当前歌曲。
+- M13: Scene direct 来源可追溯到 `.NET`，Radio/Scene 网格缩略图和 Scene tab 展开收缩在 1024x600/API17 上可验收。
 
 ## Validation Strategy
 - 本地:

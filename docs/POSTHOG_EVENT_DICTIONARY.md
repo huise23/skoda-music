@@ -43,7 +43,10 @@ Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120` + `T-S5-KG-123/124/125/12
 - `kugou_direct_content_request`: Android direct Kugou content request started for a minimal direct path
 - `kugou_direct_play_url_request`: Android direct Kugou play URL request started
 - `kugou_direct_play_url_success`: Android direct Kugou play URL resolved
-- `kugou_direct_play_url_failed`: Android direct Kugou play URL failed without exposing URL/query
+- `kugou_direct_play_url_failed`: Android direct Kugou play URL failed without exposing URL/query; includes `failure_kind`, `error_code`, `priv_status`, `err_code`
+- `kugou_daily_vip_start`: Daily one-day VIP flow started
+- `kugou_daily_vip_success`: Daily one-day VIP flow completed, skipped because already received, or local fallback skip applied
+- `kugou_daily_vip_failed`: Daily one-day VIP record/receive/upgrade failed with retry cooldown
 - `kugou_content_load_success`: Kugou content list loaded, with `stage` and `item_count`
 - `kugou_content_load_failed`: Kugou content list failed and enters retry/login recovery
 - `kugou_auth_dialog_shown`: login dialog opened for a missing/expired Kugou session; properties use redacted `stage` and `pending_action`

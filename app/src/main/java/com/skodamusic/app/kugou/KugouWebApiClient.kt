@@ -116,6 +116,30 @@ data class KugouPlayUrl(
     val sessionKey: String
 )
 
+enum class KugouPlayUrlFailureKind {
+    VIP_REQUIRED,
+    PERMISSION_DENIED,
+    PAID_REQUIRED,
+    TRIAL_UNAVAILABLE,
+    UNAVAILABLE,
+    NETWORK,
+    SESSION_REQUIRED,
+    UNKNOWN
+}
+
+data class KugouPlayUrlResult(
+    val playUrl: KugouPlayUrl?,
+    val failureKind: KugouPlayUrlFailureKind?,
+    val errorCode: String,
+    val httpCode: Int,
+    val status: Int,
+    val privStatus: Int,
+    val errCode: Int
+) {
+    val isSuccess: Boolean
+        get() = playUrl != null
+}
+
 class KugouWebApiClient(
     private val log: (String) -> Unit
 ) {

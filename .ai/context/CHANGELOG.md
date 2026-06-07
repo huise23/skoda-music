@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 2026-06-07
+- Completed local Home/Scene/VIP/MainActivity S5 batch: added daily recommend playback entry, current queue panel, Scene direct/grid UI, daily one-day VIP flow, permission-aware play URL failure handling, `RuntimeLogBinder`, and `EqualizerPageBinder`.
+- Added focused files `KugouDirectUserClient`, `KugouSceneContentClient`, `DailyRecommendCoordinator`, `HomeQueuePanelBinder`, `KugouDailyVipCoordinator`, `KugouSceneBinder`, `RemoteThumbnailLoader`, `RuntimeLogBinder`, and `EqualizerPageBinder`; `MainActivity.kt` is reduced to about 5755 lines but remains a tracked refactoring target.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
 - Completed local `T-S5-KG-123`: Radio recommend/songs, discover tags/playlists/songs, and like now use Android direct Kugou paths traceable to `KugouMusic.NET` RawFmApi/RawDiscoveryApi/RawPlaylistApi/FavoritePlaylistService instead of old `KugouWebApiClient` baseUrl gates.
 - Added redacted direct-like events `kugou_like_request`, `kugou_like_success`, and `kugou_like_failed`; no token/session/userid/hash/title/full query/body is sent to PostHog.
 - Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.

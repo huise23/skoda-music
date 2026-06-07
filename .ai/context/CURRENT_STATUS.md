@@ -6,6 +6,142 @@ Last Updated: 2026-06-07
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master@18c4723`（本地已完成 `M-S5-KG-037` + `T-S5-KG-123`，尚未推送）
 
+## Planning Refresh (Integrated Validation + MainActivity Phase 3, 2026-06-07)
+- 新增模块:
+  - `M-S5-VAL-041`: S5 Integrated Device Validation & Evidence Closure。
+  - `M-S5-MAIN-042`: MainActivity Red-Line Decomposition Phase 3。
+- Ready:
+  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
+- Done locally:
+  - `T-S5-MAIN-138`: `RuntimeLogBinder` 提取。
+  - `T-S5-MAIN-139`: `EqualizerPageBinder` 提取。
+- Planned:
+  - `T-S5-TRIAGE-140`: 真实设备失败分流与 targeted fix 计划。
+  - 后续 MainActivity 拆分任务需重新 planning。
+- 规划结论:
+  - 设备窗口可用时优先完成 `T-S5-VAL-137`，因为当前功能链真实接口/设备证据不足。
+  - 设备窗口不可用时已完成 `T-S5-MAIN-138/139`；继续拆分前需重新规划下一批低耦合目标。
+  - 后续失败修复不得在没有证据时猜协议，必须按 owner 分流到 focused client/binder。
+
+## Execution Progress (M-S5-MAIN-042, 2026-06-07)
+- 状态: `T-S5-MAIN-138`、`T-S5-MAIN-139` 本地完成；等待手机/API17 UI smoke 验证。
+- 已完成:
+  - 新增 `RuntimeLogBinder`，迁出 runtime log buffer、preview、fullscreen dialog、copy/clear 和 Activity destroy dismiss。
+  - `MainActivity.appendRuntimeLog()` 保留为薄委托；binder 内保留后台线程 append 后主线程渲染防护。
+  - 新增 `EqualizerPageBinder`，迁出音效页开关、入口、返回、模式按钮、页面文案和 fullscreen rendering。
+  - `MainActivity` 继续负责 DSP 状态 apply/persist、feedback/toast 和页面切换，不把 native/playback 状态机迁入 binder。
+  - `MainActivity.kt` 行数约 `6009 -> 5755`；新增 `RuntimeLogBinder.kt` 143 行、`EqualizerPageBinder.kt` 207 行。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file 5755 行和粗略大方法 4026 行；未新增 blocking。
+- 注意:
+  - 曾并行运行 compile/assemble 时触发 Kotlin incremental cache 并发异常；串行重跑 `compileDebugKotlin` 后通过。
+  - 设备验证窗口仍不可用，`T-S5-VAL-137` 保持 Ready。
+
+## Execution Progress (M-S5-VIP-040, 2026-06-07)
+- 状态: `T-S5-VIP-133/134`、`T-S5-PLAY-135`、`T-S5-OBS-136` 本地完成；等待手机/API17 设备与真实账号验证。
+- 已完成:
+  - 新增 `KugouDirectUserClient`，按 `.NET` `RawUserApi` direct 接入：
+    - `GET /youth/v1/activity/get_month_vip_record?latest_limit=100`
+    - `POST /youth/v1/recharge/receive_vip_listen_song?source_id=90139&receive_day=yyyy-MM-dd`
+    - `POST /youth/v1/listen_song/upgrade_vip_reward?kugouid=<userid>&ad_type=1`
+  - 新增 `KugouDailyVipCoordinator`，冷启动 cached session 与扫码登录成功后触发；服务端记录优先，record 不可用时使用本地账号+日期 fallback 并继续尝试领取。
+  - VIP receive 成功后按 `.NET` 延迟约 1s 调用 upgrade；今日记录为 `tvip` 时直接尝试 upgrade；已领取非 `tvip` 时跳过。
+  - VIP 失败自动重试已有次数/冷却限制：每日最多 5 次，退避为约 1 分钟、5 分钟、30 分钟，且不阻塞启动、登录关闭、每日推荐或播放控制。
+  - `/v5/url` 播放 URL 结果扩展为 `KugouPlayUrlResult`，可区分 `VIP_REQUIRED`、`PERMISSION_DENIED`、`PAID_REQUIRED`、`TRIAL_UNAVAILABLE`、`NETWORK`、`SESSION_REQUIRED`、`UNKNOWN`。
+  - 无权限/VIP/付费类失败 UI 显示“当前歌曲无权限播放，可能需要 VIP”，Toast 显示“无权限播放，可能需要 VIP”，并触发 VIP flow 尝试补救。
+  - 新增/扩展脱敏事件：`kugou_daily_vip_start/success/failed`、`kugou_direct_play_url_failed` 的 `failure_kind/error_code/http_code/kg_status/priv_status/err_code`。
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`、`docs/POSTHOG_EVENT_DICTIONARY.md`、`docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已补 VIP 与无权限播放回归项。
+- PostHog 查询:
+  - 本轮再次检查环境变量和仓库：只有 capture/project key，未发现 personal/query API token，无法直接拉取 PostHog 事件流。
+  - 后续如提供 query token，应按 `kugou_direct_play_url_failed` 分组 `error_code/failure_kind/priv_status/err_code` 查询最近失败分布。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：blocking 仍为既有 `MainActivity.kt` entry file 6009 行和粗略大方法 4218 行；新增 `KugouDirectSessionStore.kt` warning 来自既有 `load()` 方法 129 行，未新增新的 blocking。
+- 未验证:
+  - 真实酷狗账号下 VIP record/receive/upgrade 响应字段。
+  - 真实 VIP/无权限歌曲的 `/v5/url` 失败字段是否完全匹配当前分类。
+  - 车机/API17 上冷启动、扫码登录成功、播放无权限歌曲时的 PostHog/logcat 证据。
+
+## Requirement Confirmation (Daily One-Day VIP + Permission-Aware Playback, 2026-06-07)
+- 用户确认:
+  - 每日首次启动还必须调用“获取/领取一日 VIP”接口。
+  - 实现参考 `KugouMusic.NET`。
+  - 能查服务端领取记录就查；不能查时用本地记录兜底。
+  - VIP 领取失败要自动重试，因为很多歌曲无 VIP 无法播放。
+  - 如果播放失败是无权限/VIP 导致，UI 必须提示无权限。
+  - PostHog 当前应有播放 URL 失败事件；本轮已检查仓库和环境，只有 capture/project key，没有查询用 personal API key，无法直接在线拉取事件流。
+- `.NET` 核对:
+  - `MainWindowViewModel.TryGetVip()` 在加载本地 session 和登录成功后后台执行。
+  - `RawUserApi.GetVipRecordAsync()` -> `GET /youth/v1/activity/get_month_vip_record?latest_limit=100`。
+  - `RawUserApi.GetOneDayVipAsync()` -> `POST /youth/v1/recharge/receive_vip_listen_song?source_id=90139&receive_day=yyyy-MM-dd`。
+  - `RawUserApi.UpgradeVipAsync(userid)` -> `POST /youth/v1/listen_song/upgrade_vip_reward?kugouid=<userid>&ad_type=1`。
+- 当前 Android 状态:
+  - 已本地实现一日 VIP record/receive/upgrade direct client。
+  - 已本地实现每日 VIP coordinator、本地账号+日期兜底记录、失败自动重试。
+  - 已将 `kugou_direct_play_url_failed` 细分为权限/VIP/付费/试听不可用等 failure kind，并补 UI 提示和 error_code。
+- 建议:
+  - 进入手机/API17 设备验证 `M-S5-VIP-040`，重点确认真实响应字段、失败分类和 PostHog/logcat 脱敏证据。
+
+## Planning Progress (M-S5-HOME-038 + M-S5-SCENE-039, 2026-06-07)
+- 触发:
+  - 用户纠正：首页中间播放块不改推荐；左侧新增“每日推荐”按钮。
+  - 用户确认：首次进入首页自动加载每日推荐并播放第一首；每日推荐不需要刷新按钮。
+  - 用户确认：酷狗模式隐藏旧 Emby 队列按钮。
+  - 用户确认：首页右侧作为当前播放列表/队列，适配各类场景；所有播放列表自动滚动到当前歌曲。
+  - 用户确认：电台展示 current/upcoming/history 并自动滚动。
+  - 用户确认：Radio/Scene 展示为网格缩略图；Scene 需要 tab，tab 不横向滚动，默认两到三排，多余展开/收缩，点击后收缩。
+- `.NET` 核对:
+  - Scene 来源为 `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs`。
+  - Raw API 依据为 `RawMediaCatalogApi.GetSceneListsAsync()` `/scene/v1/scene/list`、`GetSceneAudiosAsync()` `/scene/v1/scene/audio_list`、`GetSceneModulesAsync()` `/scene/v1/scene/module`、`GetSceneModuleInfoAsync()` `/scene/v1/scene/module_info`、`GetSceneMusicAsync()` `/genesisapi/v1/scene_music/rec_music`。
+  - 每日推荐仍为 `RawDiscoveryApi.GetRecommendSongAsync()` `/everyday_song_recommend`。
+  - 电台仍为 `RawFmApi.GetRecommendAsync()` `/v1/rcmd_list` 与 `RawFmApi.GetSongsAsync()` `/v1/app_song_list_offset`。
+- 新增模块:
+  - `M-S5-HOME-038`: Kugou Home Daily Recommend & Current Queue Panel。
+  - `M-S5-SCENE-039`: Kugou Scene & Grid Content。
+- 本轮已执行:
+  - `T-S5-HOME-128`: 左侧每日推荐入口、酷狗模式隐藏 Emby 队列按钮、首次自动播放每日推荐。
+  - `T-S5-SCENE-129`: Scene `.NET` direct 来源映射与 Android client/模型边界。
+  - `T-S5-HOME-130`: 首页右侧当前队列面板与所有来源自动滚动到当前歌曲。
+  - `T-S5-UI-131`: Radio/Scene 缩略图网格与 Scene tab 展开收缩。
+  - `T-S5-OBS-132`: 首页/Scene/当前队列交互观测与 API17 回归清单。
+- 架构约束:
+  - `MainActivity.kt` 只允许做左侧按钮和 binder 接线，不承载每日推荐自动播放状态机、Scene 协议、网格渲染或队列滚动策略。
+  - `KugouMusic.NET/` 只读，不修改。
+  - 新功能必须有脱敏 PostHog/runtime/logcat 证据。
+  - API17 / 1024x600 横屏为验收基线。
+
+## Execution Progress (M-S5-HOME-038 + M-S5-SCENE-039, 2026-06-07)
+- 状态: `T-S5-HOME-128`、`T-S5-SCENE-129`、`T-S5-HOME-130`、`T-S5-UI-131`、`T-S5-OBS-132` 本地完成；等待手机/API17 设备验证。
+- 已完成:
+  - 左侧新增“每日推荐”入口；首页中间播放块保持 Now Playing/播放控制，不改成推荐列表。
+  - `DailyRecommendCoordinator` 负责首次/手动每日推荐播放 guard；缓存 session 首次进入首页会加载每日推荐并播放第一首，手动点击每日推荐直接播放第一首。
+  - 首页每日推荐刷新行为关闭；每日推荐继续使用 direct `/everyday_song_recommend` 当日一批。
+  - 酷狗默认模式隐藏旧 Emby 队列按钮；显式 Emby 激活后仍可进入 Emby 队列/媒体库。
+  - 新增 `HomeQueuePanelBinder`，首页右侧展示当前播放列表/队列，覆盖 Emby、普通 Kugou queue、Scene queue、Radio session；渲染后 API17-safe 自动滚动到当前歌曲。
+  - `KugouRadioSessionManager` 新增只读 `historySnapshot()` / `upcomingSnapshot()`；Radio 队列展示 history/current/upcoming。
+  - 新增 `KugouSceneContentClient`，按 `.NET` `SceneClient` / `RawMediaCatalogApi` 映射 scene list/module/audio/music direct 请求和最小模型。
+  - 新增 Scene 左侧入口与独立 Scene 页面；`KugouSceneBinder` 负责 Scene list/song 加载、tab selected/expanded 状态、点击 tab 后自动收缩、失败重试和播放队列回调。
+  - `KugouContentRenderer` 将 Radio 入口改为两列缩略图网格；Scene tab 也用两列缩略图网格，默认 6 个（两到三排），多余使用展开/收缩。
+  - 新增 `RemoteThumbnailLoader` 轻量异步缩略图加载与内存小缓存；失败显示占位图，日志只记录 host/错误类型，不记录完整图片 URL。
+  - `docs/S5_OBSERVABILITY_COVERAGE.md` 和 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 已覆盖每日推荐、Scene、grid/tab、当前队列自动滚动验证与脱敏事件。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：剩余 blocking 为既有 `MainActivity.kt` entry file 5952 行和粗略大方法 4188 行；本轮新增的 `onCreate` blocking 已通过 `bindKugouContentViews()` 拆分降级为 refactor。
+- 未验证:
+  - 尚未在手机/API17 设备验证每日推荐自动播放、Scene direct 真实响应字段、Radio/Scene 缩略图显示、Scene tab 展开/收缩、队列自动滚动和 PostHog/logcat 证据。
+- 安全结论:
+  - 新增 Scene/PostHog 事件只记录 source/feature/stage/item_count/error_code；runtime log 只保留短 ID 或 host，不记录 token、session、userid、dfid、mid、完整 URL query、body、完整 hash、完整图片 URL、手机号或验证码。
+
 ## Execution Progress (T-S5-KG-123, 2026-06-07)
 - 状态: 本地完成；等待手机/API17 设备验证。
 - 已完成:

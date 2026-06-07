@@ -85,7 +85,11 @@ class KugouContentBinder(
         selectedPlaylistId = ""
     }
 
-    fun requestRecommendedSongs(onFinished: (() -> Unit)? = null, renderHome: () -> Unit) {
+    fun requestRecommendedSongs(
+        onFinished: (() -> Unit)? = null,
+        renderHome: () -> Unit,
+        onLoaded: ((List<SourceTrack>) -> Unit)? = null
+    ) {
         val session = getSessionKey().trim()
         if (session.isEmpty() || !hasSession()) {
             onFinished?.invoke()
@@ -141,6 +145,7 @@ class KugouContentBinder(
                 recommendedTracks = mapped
                 captureContentEvent("kugou_content_load_success", "recommend_songs", itemCount = mapped.size)
                 renderHome()
+                onLoaded?.invoke(mapped)
                 setFeedbackText(
                     if (mapped.isEmpty()) {
                         activity.getString(R.string.feedback_kugou_recommend_empty)
@@ -270,6 +275,10 @@ class KugouContentBinder(
             },
             onLike = { track -> onLikeTrack(track) }
         )
+    }
+
+    fun recommendedTracksSnapshot(): List<SourceTrack> {
+        return recommendedTracks
     }
 
     fun renderRadioPage() {

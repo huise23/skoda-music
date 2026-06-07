@@ -86,6 +86,7 @@ import com.skodamusic.app.playback.SourcePlaybackSession
 import com.skodamusic.app.ui.KugouAuthConfigBinder
 import com.skodamusic.app.ui.KugouContentBinder
 import com.skodamusic.app.ui.KugouContentRenderer
+import com.skodamusic.app.ui.KugouLoginRecoveryCoordinator
 import com.skodamusic.app.ui.SourceRowRenderer
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
@@ -286,6 +287,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var embySessionCache: EmbySessionCache
     private lateinit var embyApi: EmbyApi
     private lateinit var kugouAuthConfigBinder: KugouAuthConfigBinder
+    private lateinit var kugouLoginRecoveryCoordinator: KugouLoginRecoveryCoordinator
     private lateinit var likeStatusStore: LikeStatusStore
     private lateinit var kugouContentBinder: KugouContentBinder
     private lateinit var kugouContentRenderer: KugouContentRenderer
@@ -341,6 +343,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackStateStore = PlaybackStateStore(applicationContext)
         backgroundExecutor = AppBackgroundExecutor(ioThreads = 3)
         wifiNetworkGate = WifiNetworkGate(this) { message -> appendRuntimeLog(message) }
+        kugouLoginRecoveryCoordinator = KugouLoginRecoveryCoordinator(
+            context = applicationContext,
+            showLoginDialog = { reason ->
+                kugouAuthConfigBinder.showLoginDialog(reason, captureDialogEvent = false)
+            },
+            appendRuntimeLog = { message -> appendRuntimeLog(message) }
+        )
         kugouAuthConfigBinder = KugouAuthConfigBinder(
             activity = this,
             uiProgressHandler = uiProgressHandler,
@@ -356,7 +365,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             },
             showToast = { resId -> showToast(resId) },
             appendRuntimeLog = { message -> appendRuntimeLog(message) },
-            onSessionCleared = { clearKugouContentState() }
+            onSessionCleared = {
+                kugouLoginRecoveryCoordinator.clear()
+                clearKugouContentState()
+            },
+            onLoginSucceeded = { handleKugouLoginSucceeded() }
         )
         likeStatusStore = LikeStatusStore(applicationContext)
         kugouDirectContentClient = KugouDirectContentClient(applicationContext) { message ->
@@ -427,19 +440,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouContentBinder = KugouContentBinder(
             activity = this,
             backgroundExecutor = backgroundExecutor,
-            webApiClient = { kugouWebApiClient },
             directContentClient = { kugouDirectContentClient },
             renderer = kugouContentRenderer,
-            resolveBaseUrl = { resolveKugouBaseUrl() },
             getSessionKey = { kugouSessionKey },
-            updateSessionKey = { value -> kugouSessionKey = value },
             hasSession = { hasKugouSession() },
             ensureWifiConnectedForNetworkRequest = { requestTag, promptUser ->
                 ensureWifiConnectedForNetworkRequest(requestTag, promptUser)
             },
             setFeedbackText = { feedback -> updateState { it.copy(feedbackText = feedback) } },
-            clearSessionState = { clearStored -> clearKugouSessionState(clearStored) },
-            requestQrLogin = { requestKugouQrLogin() },
+            requestLogin = { reason, action -> requestKugouLogin(reason, action) },
             appendRuntimeLog = { message -> appendRuntimeLog(message) },
             onPlayQueuedTrack = { track, contextTracks, source ->
                 playKugouTrackFromQueue(track, contextTracks, source)
@@ -577,6 +586,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             appendRuntimeLog("boot stage=resume_restore_done +${SystemClock.elapsedRealtime() - bootStartMs}ms")
             captureBootStage(stage = "resume_restore_done", bootStartMs = bootStartMs)
             rebuildTrackLists()
+            if (hasKugouSession()) {
+                requestKugouDefaultAutoLoad("cached_session")
+            }
             refreshDownloadCacheInfoUi()
             startUiProgressTicker()
             reportPlaybackStateToService(force = true)
@@ -687,7 +699,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             if (!hasKugouSession()) {
                 homeRecommendRefresh.isRefreshing = false
                 updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
-                requestKugouQrLogin()
+                requestKugouLogin(
+                    reason = "home_refresh_missing_session",
+                    action = KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND
+                )
                 return@setOnRefreshListener
             }
             requestKugouRecommendedSongs(onFinished = {
@@ -1134,17 +1149,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         } else if (selectedPage == PAGE_LIKE_STATUS) {
             renderLikeStatusPage()
         } else if (selectedPage == PAGE_KUGOU_RADIO) {
-            if (hasKugouSession()) {
-                requestKugouRecommendedRadios()
-            } else {
-                renderKugouRadioPage()
-            }
+            requestKugouRecommendedRadios()
         } else if (selectedPage == PAGE_KUGOU_DISCOVER) {
-            if (hasKugouSession()) {
-                requestKugouDiscoverTags()
-            } else {
-                renderKugouDiscoverPage()
-            }
+            requestKugouDiscoverTags()
         } else if (selectedPage == PAGE_LIBRARY) {
             ensureLibraryTracksLoaded("enter-library-page")
         } else if (selectedPage == PAGE_SETTINGS) {
@@ -1171,8 +1178,36 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouAuthConfigBinder.restoreFromCache()
     }
 
-    private fun requestKugouQrLogin() {
-        kugouAuthConfigBinder.requestQrLogin()
+    private fun requestKugouLogin(
+        reason: String,
+        action: KugouLoginRecoveryCoordinator.PendingAction
+    ) {
+        kugouLoginRecoveryCoordinator.requestLogin(reason, action)
+    }
+
+    private fun handleKugouLoginSucceeded() {
+        val action = kugouLoginRecoveryCoordinator.consumeLoginSuccessAction()
+        when (action) {
+            KugouLoginRecoveryCoordinator.PendingAction.RADIO_PAGE -> requestKugouRecommendedRadios()
+            KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE -> requestKugouDiscoverTags()
+            KugouLoginRecoveryCoordinator.PendingAction.LIKE_ACTION -> renderLikeStatusPage()
+            KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK -> rebuildTrackLists()
+            KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND,
+            KugouLoginRecoveryCoordinator.PendingAction.NONE -> requestKugouDefaultAutoLoad(action.eventValue)
+        }
+    }
+
+    private fun requestKugouDefaultAutoLoad(stage: String) {
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = "kugou_post_login_auto_load",
+            properties = mapOf(
+                "source" to "kugou",
+                "feature" to "kugou_auth_recovery",
+                "stage" to stage
+            )
+        )
+        requestKugouRecommendedSongs()
     }
 
     private fun stopKugouQrPolling() {
@@ -1895,21 +1930,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (track.source != MusicSource.KUGOU) {
             return
         }
-        val baseUrl = resolveKugouBaseUrl()
         val session = kugouSessionKey.trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasKugouSession()) {
+        if (session.isEmpty() || !hasKugouSession()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
-            requestKugouQrLogin()
+            requestKugouLogin(
+                reason = "like_missing_session",
+                action = KugouLoginRecoveryCoordinator.PendingAction.LIKE_ACTION
+            )
             return
         }
         val pending = buildLikeStatusItem(track, LikeStatusStore.REMOTE_PENDING, LikeStatusStore.INGEST_BLOCKED, "")
         likeStatusStore.upsert(pending)
         renderLikeStatusPage()
         updateState { it.copy(feedbackText = getString(R.string.feedback_kugou_like_pending)) }
+        captureKugouLikeEvent("kugou_like_request", "direct_add")
         backgroundExecutor.execute {
-            val result = kugouWebApiClient.addSongToLikeList(
-                baseUrl = baseUrl,
-                sessionKey = session,
+            val result = kugouDirectContentClient.addSongToLikeList(
                 name = track.title,
                 hash = track.playbackRef.hash,
                 albumId = track.playbackRef.albumId,
@@ -1920,6 +1956,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     kugouSessionKey = result.sessionKey
                 }
                 val success = result.httpCode in 200..299 && result.kgStatus == 1
+                captureKugouLikeEvent(
+                    eventName = if (success) "kugou_like_success" else "kugou_like_failed",
+                    stage = "direct_add",
+                    errorCode = if (success) null else "KUGOU_DIRECT_LIKE_FAILED"
+                )
+                if (!success) {
+                    appendRuntimeLog("kugou direct like failed http=${result.httpCode} status=${result.kgStatus ?: -1}")
+                }
                 val item = buildLikeStatusItem(
                     track = track,
                     remoteStatus = if (success) LikeStatusStore.REMOTE_LIKED else LikeStatusStore.REMOTE_FAILED,
@@ -1939,6 +1983,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 }
             }
         }
+    }
+
+    private fun captureKugouLikeEvent(eventName: String, stage: String, errorCode: String? = null) {
+        val properties = linkedMapOf<String, Any?>(
+            "source" to "kugou",
+            "feature" to "kugou_like",
+            "stage" to stage
+        )
+        if (!errorCode.isNullOrBlank()) {
+            properties["error_code"] = errorCode
+        }
+        PostHogTracker.capture(
+            context = applicationContext,
+            eventName = eventName,
+            properties = properties,
+            priority = if (errorCode.isNullOrBlank()) PostHogTracker.Priority.NORMAL else PostHogTracker.Priority.HIGH
+        )
     }
 
     private fun playKugouTrackFromQueue(track: SourceTrack, contextTracks: List<SourceTrack>, source: String) {
@@ -1998,7 +2059,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val ref = track.playbackRef
         if (session.isEmpty() || !hasKugouSession()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
-            requestKugouQrLogin()
+            requestKugouLogin(
+                reason = "play_missing_session",
+                action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
+            )
             return
         }
         if (ref.hash.isBlank()) {

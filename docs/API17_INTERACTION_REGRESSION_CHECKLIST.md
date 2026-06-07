@@ -126,23 +126,24 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 
 ### J. Kugou Source Mode Login / Session
 - [ ] J1 冷启动默认进入左侧“推荐歌曲”入口，不显示 Home 二级 tab。
-- [ ] J2 未登录时推荐歌曲页展示酷狗扫码登录面板，不后台请求推荐内容。
+- [ ] J2 未登录时推荐歌曲页展示登录入口；点击刷新通过弹窗展示酷狗扫码登录，不后台请求推荐内容。
 - [ ] J3 设置页不显示 Kugou WebApi Base URL 输入框；可见酷狗登录状态。
-- [ ] J4 点击“刷新扫码登录”不会要求填写地址，会通过 direct `/v2/qrcode` 获取二维码或二维码图片 URL。
+- [ ] J4 点击“刷新扫码登录”不会要求填写地址，会弹窗并通过 direct `/v2/qrcode` 获取二维码或二维码图片 URL；首页不直接内嵌显示二维码。
 - [ ] J5 扫码轮询约 2 秒一次，走 direct `/v2/get_userinfo_qrcode`，等待扫码、等待确认、成功、过期状态文案可区分。
 - [ ] J6 旧 `X-Kg-Session-Id` / `kugou_webapi_base_url` 缓存在启动后被清理，不被复用；QR success 后先进入 direct session 登录态，再执行设备/Token 增强校验。
 - [ ] J7 手机号验证码按钮不会要求填写 WebApi 地址，不发起旧 `/captcha/sent` 代理请求，并显示 SMS direct pending 状态。
 - [ ] J8 扫码返回 `userid/token` 后显示“已登录”；device register/token refresh 失败只记录 `kugou_session_validation_deferred`，不提示登录失败；仅缺少 `userid/token` 时阻断。
 - [ ] J9 登出后清理 session、二维码和酷狗内容状态。
 - [ ] J10 连续点击“刷新扫码登录”10 次不崩溃；二维码地址异常、图片下载失败、断网/弱网、切后台/返回后的旧回调都进入失败/可重试状态。
-- [ ] J11 QR refresh 相关 PostHog/logcat 证据脱敏可见：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_session_validation_success/deferred/failed`。
+- [ ] J11 QR refresh / login recovery 相关 PostHog/logcat 证据脱敏可见：`kugou_qr_refresh_start/success/failed`、`kugou_qr_poll_failed`、`kugou_session_validation_success/deferred/failed`、`kugou_auth_dialog_shown`、`kugou_auth_recovery_resume`、`kugou_post_login_auto_load`。
+- [ ] J12 运行中 session/token 不可用时不清空当前酷狗列表/队列/页面内容，只弹登录；扫码成功后弹窗隐藏并继续当前页面或默认页加载。
 
 ### K. Kugou Content Pages
 - [ ] K1 推荐歌曲页未登录时展示登录/待登录状态，不后台刷失败请求。
 - [ ] K2 推荐歌曲页登录后通过 Android direct `/everyday_song_recommend` 展示推荐歌曲；失败、空结果、session 失效时有明确反馈，不依赖用户填写 Kugou WebApi Base URL。
-- [ ] K3 推荐电台页可展示电台名称和描述。
+- [ ] K3 推荐电台页进入时懒加载；未登录时弹登录，失败时保留页面并显示点击重试入口。
 - [ ] K4 点击电台后可加载并展示电台歌曲；加载完成后进入 radio session 首曲播放。
-- [ ] K5 发现歌单页可加载分类/标签，分类/标签来自接口返回，不手写固定标签。
+- [ ] K5 发现歌单页进入时懒加载分类/标签；未登录时弹登录，失败时保留页面并显示点击重试入口。
 - [ ] K6 点击标签后可加载歌单。
 - [ ] K7 点击歌单后可加载歌单歌曲。
 - [ ] K8 三个酷狗内容页遇到网络失败、空结果或未登录时有明确反馈，不闪退。
@@ -151,7 +152,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 
 ### L. Kugou Like / Ingest Status
 - [ ] L1 酷狗歌曲行可见点赞按钮。
-- [ ] L2 点赞调用 `/playlist/tracks/add`，目标列表 ID 为 `2`（我喜欢），成功后记录 `liked`。
+- [ ] L2 点赞调用 Android direct `/cloudlist.service/v6/add_song`，目标列表 ID 为 `2`（我喜欢），成功后记录 `liked`。
 - [ ] L3 点赞失败记录 `failed` 和失败原因。
 - [ ] L4 点赞/入库状态页展示歌曲、来源、远端状态、入库状态和失败原因。
 - [ ] L5 Emby 入库状态显示 `blocked_ingest` 或等价阻塞文案，不误报已入库。

@@ -48,8 +48,10 @@ class KugouContentRenderer(
         hasSession: Boolean,
         loading: Boolean,
         radios: List<SourceRadio>,
+        loadFailed: Boolean,
         selectedRadioId: String,
         radioSongs: List<SourceTrack>,
+        onRetry: () -> Unit,
         onRadioClick: (SourceRadio) -> Unit,
         onTrackClick: (index: Int, track: SourceTrack) -> Unit,
         onLike: (SourceTrack) -> Unit
@@ -61,6 +63,18 @@ class KugouContentRenderer(
                 return
             }
             loading -> statusView.text = context.getString(R.string.feedback_kugou_radio_loading)
+            loadFailed -> {
+                statusView.text = context.getString(R.string.feedback_kugou_radio_failed)
+                val row = rowRenderer.buildEmptyRow(
+                    text = context.getString(R.string.action_kugou_retry_load),
+                    centered = true,
+                    horizontalPaddingDp = 12,
+                    verticalPaddingDp = 22
+                )
+                row.setOnClickListener { onRetry() }
+                list.addView(row, wrapContentParams())
+                return
+            }
             radios.isEmpty() -> statusView.text = context.getString(R.string.feedback_kugou_radio_empty)
             else -> statusView.text = context.getString(R.string.feedback_kugou_radio_success, radios.size)
         }
@@ -94,10 +108,12 @@ class KugouContentRenderer(
         hasSession: Boolean,
         loading: Boolean,
         tags: List<Pair<Int, String>>,
+        loadFailed: Boolean,
         selectedTagId: Int,
         playlists: List<SourcePlaylist>,
         selectedPlaylistId: String,
         songs: List<SourceTrack>,
+        onRetry: () -> Unit,
         onTagClick: (Int) -> Unit,
         onPlaylistClick: (SourcePlaylist) -> Unit,
         onTrackClick: (index: Int, track: SourceTrack) -> Unit,
@@ -111,6 +127,18 @@ class KugouContentRenderer(
                 return
             }
             loading -> statusView.text = context.getString(R.string.feedback_kugou_discover_loading)
+            loadFailed -> {
+                statusView.text = context.getString(R.string.feedback_kugou_discover_failed)
+                val row = rowRenderer.buildEmptyRow(
+                    text = context.getString(R.string.action_kugou_retry_load),
+                    centered = true,
+                    horizontalPaddingDp = 12,
+                    verticalPaddingDp = 22
+                )
+                row.setOnClickListener { onRetry() }
+                tagList.addView(row, wrapContentParams())
+                return
+            }
             tags.isEmpty() -> statusView.text = context.getString(R.string.kugou_discover_category_state)
             else -> statusView.text = context.getString(R.string.feedback_kugou_discover_success, tags.size)
         }

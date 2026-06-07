@@ -1,12 +1,12 @@
 # HANDOFF
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-07
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@edb006e`（已推送 `Complete S5 corrective playback validation`）
+- 当前主干: `master@18c4723`（本地已完成 `M-S5-KG-037` + `T-S5-KG-123`，尚未推送）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: `T-S5-KG-119` 与 `T-S5-OBS-120` 已完成；下一步恢复 API17 实机 A~N 回归并回传 QR/PostHog 证据。
+- 当前执行入口: 已完成“酷狗登录后自动加载与弹窗登录恢复”及 Radio/Discover/Like direct 化本地实现；下一步手机/API17 实机验证。
 
 ## User-Confirmed Requirements (Must Keep)
 - API17 / Android 4.2.2 / AC83xx / 1024x600 横屏为硬约束。
@@ -18,10 +18,64 @@ Last Updated: 2026-06-04
 - 酷狗普通歌曲队列参考 `.NET PlaybackQueueManager`，不是 Emby 队列。
 - 酷狗电台/Radio 是独立 session，同一电台持续播放，下一曲由电台内部推进。
 - 酷狗 API 不应要求用户提供地址。
+- 酷狗登录成功后默认页优先自动加载，其它页进入时懒加载；token/session 运行中失效不得清空现有内容，应弹窗登录，登录成功后隐藏并继续当前页面。
 - 后续新增功能必须有足够 PostHog/运行时诊断日志；日志与事件属性必须过滤 token、session、手机号、验证码、完整 URL query、认证 header 等敏感信息。
 - `MainActivity.kt` 过大问题当前必须优化，不再只是记录债务。
 - “保持单 Activity 外壳”不是长期硬约束；允许在 API17 兼容且不破坏左侧一级快速切换的前提下，后续拆 Activity、页面壳、Fragment、Controller 或 Binder。
 - 点赞后播放缓存上传到 Emby 入库继续阻塞；本地缓存设计目标最大不超过 `100MB`。
+
+## Latest Requirement (2026-06-07)
+- 用户确认方案 B：
+  - 酷狗登录成功后直接拉默认页，当前默认页为首页推荐歌曲。
+  - 推荐电台、发现歌单/歌曲、点赞/相关页面进入时懒加载。
+  - 列表加载失败时提示失败，并保留手动拉取/重试入口。
+  - 运行中 token/session 失效时不清空现有内容，只弹窗登录。
+  - 重新登录成功后隐藏弹窗，并继续当前页面/当前列表流程。
+  - 首页登录入口改为弹窗登录，不再以内嵌登录面板作为主要交互。
+- 状态:
+  - `SCOPE.md`、`DECISIONS.md`、`PLAN.md`、`MODULES.md`、`TASK_BREAKDOWN.md`、`TASK_QUEUE.md` 已更新。
+  - 本地实现已完成并通过构建验证；尚未推送，尚未手机/API17 实机验证。
+- 下一手:
+  - 手机/API17 验证：弹窗登录、登录后首页自动加载、Radio/Discover 懒加载失败重试、缺登录态不清内容。
+  - 手机/API17 验证：Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 路径。
+
+## Latest Delta (T-S5-KG-123 Done Locally, 2026-06-07)
+- 已完成:
+  - Radio 推荐按 `.NET` `RawFmApi.GetRecommendAsync()` 直连 `/v1/rcmd_list`。
+  - 电台歌曲按 `.NET` `RawFmApi.GetSongsAsync()` 直连 `/v1/app_song_list_offset`。
+  - 发现标签按 `.NET` `RawPlaylistApi.GetPlaylistTagsAsync()` 直连 `/pubsongs/v1/get_tags_by_type`。
+  - 发现歌单按 `.NET` `RawDiscoveryApi.GetRecommendedPlaylistsAsync()` 直连 `/v2/special_recommend`。
+  - 歌单歌曲按 `.NET` `RawPlaylistApi.GetPlaylistSongsAsync()` 直连 `/pubsongs/v2/get_other_list_file_nofilt`。
+  - 点赞按 `.NET` `FavoritePlaylistService` 喜欢列表 ID `2` + `RawPlaylistApi.AddSongsToPlaylistAsync()` 直连 `/cloudlist.service/v6/add_song`。
+  - `KugouContentBinder` 当前 Radio/Discover/playlist song 路径不再依赖 `resolveBaseUrl()` 或旧 `KugouWebApiClient`。
+  - 新增脱敏点赞事件：`kugou_like_request`、`kugou_like_success`、`kugou_like_failed`；内容页继续复用 direct content request/success/failed。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：文件 5840 行、粗略大方法 4169 行。
+- 未验证:
+  - 手机/API17 真实账号网络返回字段；如果某 direct endpoint 字段不一致，继续核对 `KugouMusic.NET/`，不要猜。
+
+## Latest Delta (M-S5-KG-037 Done Locally, 2026-06-07)
+- 已完成:
+  - 首页登录入口改为弹窗 QR 登录，首页旧二维码图/URL 文本隐藏。
+  - QR refresh 不再清 session/内容；登录成功或缓存 session 会自动拉首页推荐歌曲。
+  - Radio/Discover 进入时懒加载；失败时保留页面并显示“加载失败，点击重试”。
+  - 本地登录态缺失/不可用时弹窗登录，不清已有列表/队列；显式登出仍清内容。
+  - 新增 `KugouLoginRecoveryCoordinator`，pending action 只保存枚举，不保存 token/session/QR key/URL/手机号/验证码。
+  - 新增事件：`kugou_auth_dialog_shown`、`kugou_auth_recovery_resume`、`kugou_post_login_auto_load`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` red-line 失败：文件 5820 行、粗略大方法 4146 行。
+- 仍未完成:
+  - 手机/API17 实机扫码验证。
+  - Radio/Discover/Like direct 化已在 `T-S5-KG-123` 本地完成，仍待实机验证。
+  - 服务端 auth-invalid 精确识别；当前避免把普通网络/API 缺口误判为 token 失效。
 
 ## Latest Delta (T-S5-KG-121 Done, 2026-06-05)
 - 已完成:
@@ -37,21 +91,30 @@ Last Updated: 2026-06-04
   - 手机扫码成功后登录态可用，内容页能加载。
   - 冷启动 logcat 无 Emby resume/autoplay；PostHog/logcat 仅记录脱敏 stage/reason，不出现 token/session/URL/账号/密码。
 
-## Latest Delta (T-S5-KG-122 Done Locally, 2026-06-06)
+## Latest Delta (T-S5-KG-122 Pushed, 2026-06-06)
 - 已完成:
   - QR success 有 `userid/token` 时立即持久化为 `VALID` session，`hasSession()` 不再等待 device register/token refresh。
+  - QR success 条件与本地 session gate 对齐：必须有有效 `userid` 和 `token`，避免假登录态。
   - device register/token refresh 仍在后台增强，失败只记录 `kugou_session_validation_deferred`，不覆盖登录态。
   - 新增 `KugouDirectContentClient`，按 `.NET` `RawDiscoveryApi.GetRecommendSongAsync()` 直连 `/everyday_song_recommend`。
   - 推荐歌曲播放 URL 按 `.NET` `RawSongApi.GetUrlAsync()` / `RawSearchApi.GetPlayUrlAsync()` 直连 `/v5/url`。
   - 新增事件：`kugou_direct_content_request`、`kugou_direct_play_url_request/success/failed`。
 - 本地验证:
-  - `compileDebugKotlin` 已通过；其余最终验证见本轮执行结果。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍仅因既有 `MainActivity.kt` red-line 失败：文件 5776 行、粗略大方法 4140 行。
 - 仍未完成:
   - Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞仍依赖旧 `KugouWebApiClient` + `resolveKugouBaseUrl()`，需 `T-S5-KG-123` direct 化。
   - 尚无手机扫码实测证据。
+- 工程质量:
+  - 新 direct 协议逻辑在 `kugou/`，`MainActivity.kt` 只做小范围接线；但入口文件仍是 Needs Refactor，不应继续承载新业务逻辑。
+  - 新增 PostHog/runtime 诊断仅记录 stage/error code/http code/exception type，不记录 token、dfid、mid、完整 query、cookie、手机号、验证码或 auth header。
 - 下一手:
   - 先手机/模拟器验证扫码、首页推荐、推荐歌曲播放。
   - 若通过，再执行 `T-S5-KG-123` 或恢复 API17 A~N 回归。
+  - 推荐 logcat: `adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S'`
 
 ## Previous Delta (T-S5-KG-119 + T-S5-OBS-120 Done, 2026-06-05)
 - 已完成:

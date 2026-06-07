@@ -6,7 +6,6 @@ import androidx.appcompat.app.AppCompatActivity
 import com.skodamusic.app.R
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.kugou.KugouDirectContentClient
-import com.skodamusic.app.kugou.KugouWebApiClient
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.SourceCapability
 import com.skodamusic.app.model.SourcePlaybackRef
@@ -18,17 +17,13 @@ import com.skodamusic.app.observability.PostHogTracker
 class KugouContentBinder(
     private val activity: AppCompatActivity,
     private val backgroundExecutor: AppBackgroundExecutor,
-    private val webApiClient: () -> KugouWebApiClient,
     private val directContentClient: () -> KugouDirectContentClient,
     private val renderer: KugouContentRenderer,
-    private val resolveBaseUrl: () -> String,
     private val getSessionKey: () -> String,
-    private val updateSessionKey: (String) -> Unit,
     private val hasSession: () -> Boolean,
     private val ensureWifiConnectedForNetworkRequest: (String, Boolean) -> Boolean,
     private val setFeedbackText: (String) -> Unit,
-    private val clearSessionState: (Boolean) -> Unit,
-    private val requestQrLogin: () -> Unit,
+    private val requestLogin: (String, KugouLoginRecoveryCoordinator.PendingAction) -> Unit,
     private val appendRuntimeLog: (String) -> Unit,
     private val onPlayQueuedTrack: (SourceTrack, List<SourceTrack>, String) -> Unit,
     private val onStartRadioTrack: (SourceRadio?, List<SourceTrack>, SourceTrack) -> Unit,
@@ -45,11 +40,13 @@ class KugouContentBinder(
     private var recommendedRadios: List<SourceRadio> = emptyList()
     private var radioSongs: List<SourceTrack> = emptyList()
     private var radioLoading: Boolean = false
+    private var radioLoadFailed: Boolean = false
     private var selectedRadioId: String = ""
     private var discoverTags: List<Pair<Int, String>> = emptyList()
     private var discoverPlaylists: List<SourcePlaylist> = emptyList()
     private var discoverSongs: List<SourceTrack> = emptyList()
     private var discoverLoading: Boolean = false
+    private var discoverLoadFailed: Boolean = false
     private var selectedDiscoverTagId: Int = -1
     private var selectedPlaylistId: String = ""
 
@@ -77,11 +74,13 @@ class KugouContentBinder(
         recommendedRadios = emptyList()
         radioSongs = emptyList()
         radioLoading = false
+        radioLoadFailed = false
         selectedRadioId = ""
         discoverTags = emptyList()
         discoverPlaylists = emptyList()
         discoverSongs = emptyList()
         discoverLoading = false
+        discoverLoadFailed = false
         selectedDiscoverTagId = -1
         selectedPlaylistId = ""
     }
@@ -92,6 +91,7 @@ class KugouContentBinder(
             onFinished?.invoke()
             renderHome()
             setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+            requestLogin("recommend_missing_session", KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND)
             return
         }
         if (recommendedLoading) {
@@ -153,10 +153,11 @@ class KugouContentBinder(
     }
 
     fun requestRecommendedRadios() {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || !hasSession()) {
             renderRadioPage()
+            setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+            requestLogin("radio_missing_session", KugouLoginRecoveryCoordinator.PendingAction.RADIO_PAGE)
             return
         }
         if (radioLoading || recommendedRadios.isNotEmpty()) {
@@ -167,10 +168,12 @@ class KugouContentBinder(
             return
         }
         radioLoading = true
+        radioLoadFailed = false
         renderRadioPage()
+        captureContentEvent("kugou_direct_content_request", "recommended_radios")
         backgroundExecutor.execute {
-            val result = webApiClient().getRecommendedRadios(baseUrl, session)
-            val mapped = result?.first.orEmpty().map { radio ->
+            val result = directContentClient().getRecommendedRadios()
+            val mapped = result.orEmpty().map { radio ->
                 SourceRadio(
                     source = MusicSource.KUGOU,
                     sourceRadioId = radio.fmId,
@@ -186,14 +189,15 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 radioLoading = false
                 if (result == null) {
-                    captureContentEvent("kugou_content_load_failed", "recommended_radios", errorCode = "KUGOU_CONTENT_FAILED")
-                    clearSessionState(true)
+                    appendRuntimeLog("kugou direct recommended radios failed")
+                    captureContentEvent("kugou_content_load_failed", "recommended_radios", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
+                    radioLoadFailed = true
                     setFeedbackText(activity.getString(R.string.feedback_kugou_radio_failed))
-                    requestQrLogin()
+                    renderRadioPage()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 recommendedRadios = mapped
+                radioLoadFailed = false
                 captureContentEvent("kugou_content_load_success", "recommended_radios", itemCount = mapped.size)
                 renderRadioPage()
                 setFeedbackText(
@@ -208,10 +212,11 @@ class KugouContentBinder(
     }
 
     fun requestDiscoverTags() {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || !hasSession()) {
             renderDiscoverPage()
+            setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+            requestLogin("discover_missing_session", KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE)
             return
         }
         if (discoverLoading || discoverTags.isNotEmpty()) {
@@ -222,23 +227,26 @@ class KugouContentBinder(
             return
         }
         discoverLoading = true
+        discoverLoadFailed = false
         renderDiscoverPage()
+        captureContentEvent("kugou_direct_content_request", "discover_tags")
         backgroundExecutor.execute {
-            val result = webApiClient().getPlaylistTags(baseUrl, session)
-            val tags = result?.first.orEmpty()
+            val result = directContentClient().getPlaylistTags()
+            val tags = result.orEmpty()
                 .take(DISCOVER_TAG_PREVIEW_LIMIT)
                 .map { it.tagId to "${it.categoryName} · ${it.tagName}" }
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
-                    captureContentEvent("kugou_content_load_failed", "discover_tags", errorCode = "KUGOU_CONTENT_FAILED")
-                    clearSessionState(true)
+                    appendRuntimeLog("kugou direct discover tags failed")
+                    captureContentEvent("kugou_content_load_failed", "discover_tags", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
+                    discoverLoadFailed = true
                     setFeedbackText(activity.getString(R.string.feedback_kugou_discover_failed))
-                    requestQrLogin()
+                    renderDiscoverPage()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 discoverTags = tags
+                discoverLoadFailed = false
                 captureContentEvent("kugou_content_load_success", "discover_tags", itemCount = tags.size)
                 renderDiscoverPage()
                 if (tags.isNotEmpty()) {
@@ -256,7 +264,7 @@ class KugouContentBinder(
             tracks = recommendedTracks,
             limit = limit,
             onTrackClick = { index, track ->
-                appendRuntimeLog("kugou recommend click index=$index hash=${track.playbackRef.hash}")
+                appendRuntimeLog("kugou recommend click index=$index hash=${shortId(track.playbackRef.hash)}")
                 captureContentEvent("kugou_queue_start", "home_recommend", itemCount = recommendedTracks.size)
                 onPlayQueuedTrack(track, recommendedTracks, "home_recommend")
             },
@@ -274,11 +282,13 @@ class KugouContentBinder(
             hasSession = hasSession(),
             loading = radioLoading,
             radios = recommendedRadios,
+            loadFailed = radioLoadFailed,
             selectedRadioId = selectedRadioId,
             radioSongs = radioSongs,
+            onRetry = { requestRecommendedRadios() },
             onRadioClick = { radio -> requestRadioSongs(radio) },
             onTrackClick = { index, track ->
-                appendRuntimeLog("kugou radio song click index=$index hash=${track.playbackRef.hash}")
+                appendRuntimeLog("kugou radio song click index=$index hash=${shortId(track.playbackRef.hash)}")
                 captureContentEvent("kugou_radio_session_start", "radio_songs", itemCount = radioSongs.size)
                 onStartRadioTrack(currentSelectedRadio(), radioSongs, track)
             },
@@ -297,14 +307,16 @@ class KugouContentBinder(
             hasSession = hasSession(),
             loading = discoverLoading,
             tags = discoverTags,
+            loadFailed = discoverLoadFailed,
             selectedTagId = selectedDiscoverTagId,
             playlists = discoverPlaylists,
             selectedPlaylistId = selectedPlaylistId,
             songs = discoverSongs,
+            onRetry = { requestDiscoverTags() },
             onTagClick = { tagId -> requestPlaylistsByTag(tagId) },
             onPlaylistClick = { playlist -> requestPlaylistSongs(playlist) },
             onTrackClick = { index, track ->
-                appendRuntimeLog("kugou playlist song click index=$index hash=${track.playbackRef.hash}")
+                appendRuntimeLog("kugou playlist song click index=$index hash=${shortId(track.playbackRef.hash)}")
                 captureContentEvent("kugou_queue_start", "discover_playlist", itemCount = discoverSongs.size)
                 onPlayQueuedTrack(track, discoverSongs, "discover_playlist")
             },
@@ -313,10 +325,11 @@ class KugouContentBinder(
     }
 
     private fun requestRadioSongs(radio: SourceRadio) {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || !hasSession()) {
             renderRadioPage()
+            setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+            requestLogin("radio_songs_missing_session", KugouLoginRecoveryCoordinator.PendingAction.RADIO_PAGE)
             return
         }
         if (!ensureWifiConnectedForNetworkRequest("kugou_fm_songs", true)) {
@@ -326,9 +339,10 @@ class KugouContentBinder(
         radioSongs = emptyList()
         radioLoading = true
         renderRadioPage()
+        captureContentEvent("kugou_direct_content_request", "radio_songs")
         backgroundExecutor.execute {
-            val result = webApiClient().getRadioSongs(baseUrl, session, radio.sourceRadioId, radio.type)
-            val mapped = result?.first.orEmpty().map { song ->
+            val result = directContentClient().getRadioSongs(radio.sourceRadioId, radio.type)
+            val mapped = result.orEmpty().map { song ->
                 SourceTrack(
                     source = MusicSource.KUGOU,
                     sourceTrackId = song.audioId.ifBlank { song.albumAudioId.ifBlank { song.hash } },
@@ -352,12 +366,12 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 radioLoading = false
                 if (result == null) {
-                    captureContentEvent("kugou_content_load_failed", "radio_songs", errorCode = "KUGOU_CONTENT_FAILED")
+                    appendRuntimeLog("kugou direct radio songs failed")
+                    captureContentEvent("kugou_content_load_failed", "radio_songs", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_radio_songs_failed))
                     renderRadioPage()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 radioSongs = mapped
                 captureContentEvent("kugou_content_load_success", "radio_songs", itemCount = mapped.size)
                 renderRadioPage()
@@ -374,10 +388,11 @@ class KugouContentBinder(
     }
 
     private fun requestPlaylistsByTag(tagId: Int) {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
-        if (baseUrl.isEmpty() || session.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || !hasSession()) {
             renderDiscoverPage()
+            setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+            requestLogin("playlists_missing_session", KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE)
             return
         }
         if (!ensureWifiConnectedForNetworkRequest("kugou_top_playlist", true)) {
@@ -389,9 +404,10 @@ class KugouContentBinder(
         discoverSongs = emptyList()
         discoverLoading = true
         renderDiscoverPage()
+        captureContentEvent("kugou_direct_content_request", "playlists_by_tag")
         backgroundExecutor.execute {
-            val result = webApiClient().getPlaylistsByTag(baseUrl, session, tagId)
-            val mapped = result?.first.orEmpty().map { playlist ->
+            val result = directContentClient().getRecommendedPlaylists(categoryId = tagId)
+            val mapped = result.orEmpty().map { playlist ->
                 SourcePlaylist(
                     source = MusicSource.KUGOU,
                     sourcePlaylistId = playlist.listId.ifBlank { playlist.globalId },
@@ -406,12 +422,12 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
-                    captureContentEvent("kugou_content_load_failed", "playlists_by_tag", errorCode = "KUGOU_CONTENT_FAILED")
+                    appendRuntimeLog("kugou direct playlists failed")
+                    captureContentEvent("kugou_content_load_failed", "playlists_by_tag", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_failed))
                     renderDiscoverPage()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 discoverPlaylists = mapped
                 captureContentEvent("kugou_content_load_success", "playlists_by_tag", itemCount = mapped.size)
                 renderDiscoverPage()
@@ -427,11 +443,14 @@ class KugouContentBinder(
     }
 
     private fun requestPlaylistSongs(playlist: SourcePlaylist) {
-        val baseUrl = resolveBaseUrl()
         val session = getSessionKey().trim()
         val playlistId = playlist.globalId.ifBlank { playlist.sourcePlaylistId }
-        if (baseUrl.isEmpty() || session.isEmpty() || playlistId.isEmpty() || !hasSession()) {
+        if (session.isEmpty() || playlistId.isEmpty() || !hasSession()) {
             renderDiscoverPage()
+            if (session.isEmpty() || !hasSession()) {
+                setFeedbackText(activity.getString(R.string.feedback_need_kugou))
+                requestLogin("playlist_songs_missing_session", KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE)
+            }
             return
         }
         if (!ensureWifiConnectedForNetworkRequest("kugou_playlist_songs", true)) {
@@ -441,9 +460,10 @@ class KugouContentBinder(
         discoverSongs = emptyList()
         discoverLoading = true
         renderDiscoverPage()
+        captureContentEvent("kugou_direct_content_request", "playlist_songs")
         backgroundExecutor.execute {
-            val result = webApiClient().getPlaylistSongs(baseUrl, session, playlistId, pageSize = 30)
-            val mapped = result?.first.orEmpty().map { song ->
+            val result = directContentClient().getPlaylistSongs(playlistId, pageSize = 30)
+            val mapped = result.orEmpty().map { song ->
                 SourceTrack(
                     source = MusicSource.KUGOU,
                     sourceTrackId = song.fileId.ifBlank { song.mixSongId.ifBlank { song.hash } },
@@ -467,23 +487,17 @@ class KugouContentBinder(
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
-                    captureContentEvent("kugou_content_load_failed", "playlist_songs", errorCode = "KUGOU_CONTENT_FAILED")
+                    appendRuntimeLog("kugou direct playlist songs failed")
+                    captureContentEvent("kugou_content_load_failed", "playlist_songs", errorCode = "KUGOU_DIRECT_CONTENT_FAILED")
                     setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_songs_failed))
                     renderDiscoverPage()
                     return@runOnUiThread
                 }
-                updateSessionKeyIfPresent(result.second)
                 discoverSongs = mapped
                 captureContentEvent("kugou_content_load_success", "playlist_songs", itemCount = mapped.size)
                 renderDiscoverPage()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_songs_success, mapped.size))
             }
-        }
-    }
-
-    private fun updateSessionKeyIfPresent(sessionKey: String) {
-        if (sessionKey.isNotBlank()) {
-            updateSessionKey(sessionKey)
         }
     }
 
@@ -510,6 +524,11 @@ class KugouContentBinder(
             properties = properties,
             priority = if (errorCode.isNullOrBlank()) PostHogTracker.Priority.NORMAL else PostHogTracker.Priority.HIGH
         )
+    }
+
+    private fun shortId(value: String): String {
+        val clean = value.trim()
+        return if (clean.length <= 8) clean else clean.take(4) + "..." + clean.takeLast(4)
     }
 
     companion object {

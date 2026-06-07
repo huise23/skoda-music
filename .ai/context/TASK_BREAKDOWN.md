@@ -1,6 +1,6 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-07
 
 ## Active Stage: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
@@ -21,6 +21,210 @@ Last Updated: 2026-06-04
   - 手机环境点击刷新二维码 1-2 秒后崩溃，API17 车机实机回归暂缓。
   - 后续新增功能必须补足 PostHog/runtime/logcat 诊断日志，且敏感信息必须过滤。
   - 当前 Ready 转为 `T-S5-KG-119` QR refresh crash hotfix；观测补齐任务 `T-S5-OBS-120` 紧随其后。
+- 2026-06-07 追加规划:
+  - 车机登录酷狗成功后未自动加载各项列表。
+  - 用户确认方案 B：登录成功直接拉默认页；其它页进入时懒加载；失败提示并可手动拉；运行中 token 失效不清内容，弹窗登录，登录后隐藏并继续当前页面。
+  - 新增模块 `M-S5-KG-037`；`T-S5-KG-124/125/126/127` 已在本轮本地完成，等待实机验证。
+
+## T-S5-KG-124
+- Task ID: `T-S5-KG-124`
+- Module ID: `M-S5-KG-037`
+- Status: Done (local validation passed; device validation pending)
+- Title: 登录弹窗与 post-login 默认页自动加载协调
+- Goal: 将首页登录入口改为弹窗登录，并在 QR 登录成功后自动触发首页推荐歌曲加载。
+- Why: 当前车机登录成功后内容不会自动出现；用户期望默认页优先自动加载。
+- Responsibility Boundary:
+  - `KugouAuthConfigBinder` 负责登录弹窗/QR UI 与登录成功通知。
+  - `KugouContentBinder` 负责默认页推荐歌曲加载。
+  - 如需跨 binder 状态，新增 `KugouLoginRecoveryCoordinator` 或等价小类；`MainActivity` 仅接线。
+- Dependencies:
+  - `T-S5-KG-122` Done。
+  - `KugouAuthConfigBinder`、`KugouContentBinder` 已存在。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Expected Outputs:
+  - 首页登录入口触发弹窗登录。
+  - QR 登录成功后触发 `requestRecommendedSongs()`。
+  - 登录成功后弹窗隐藏，首页推荐加载状态可见。
+  - 新增脱敏 runtime/PostHog 事件：post-login auto-load start/success/failure 或复用内容加载事件并补 stage。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouLoginRecoveryCoordinator.kt`（如需要）
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 弹窗 lifecycle 必须和 Activity 生命周期绑定，stop/destroy 时关闭或失效化回调。
+  - 不把 post-login action 状态机写入 `MainActivity`。
+- Comment Requirements:
+  - 若新增 coordinator，说明它只负责登录恢复动作排队，不持有长期业务数据。
+- Done Criteria:
+  - 首页未登录时点击登录触发弹窗。
+  - 扫码成功后自动拉首页推荐歌曲。
+  - 失败时提示但登录态不被清除。
+  - `git diff --check`、API17 guardrails、`compileDebugKotlin` 通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 触及 layout/dialog 时执行 `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - Dialog 在 API17/Activity 生命周期中泄漏。
+  - 自动加载重复触发导致并发请求；需利用 existing loading guard 或 generation。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-KG-125
+- Task ID: `T-S5-KG-125`
+- Module ID: `M-S5-KG-037`
+- Status: Done (local validation passed; direct API gaps deferred to `T-S5-KG-123`)
+- Title: 酷狗内容页懒加载与失败可重试策略
+- Goal: 推荐电台、发现、点赞/相关页面进入时自动懒加载；失败提示并保留手动重试入口。
+- Why: 用户要求其它页进入则加载，而不是登录后全量请求或永远空白。
+- Responsibility Boundary:
+  - `KugouContentBinder` 拥有内容页 loaded/loading/failed 状态与 retry 入口。
+  - 页面导航只通知当前页进入；`MainActivity` 不做懒加载判断。
+  - 旧 WebApi baseUrl gate 不在本任务猜 direct API；若数据仍因 direct 缺口不可用，标记依赖 `T-S5-KG-123`。
+- Dependencies:
+  - `T-S5-KG-124`
+- Inputs:
+  - `KugouContentBinder.kt`
+  - `KugouContentRenderer.kt`
+  - 左侧导航进入 radio/discover/like 的现有委托
+- Expected Outputs:
+  - `onPageEntered(page)` 或等价懒加载入口。
+  - 推荐电台/发现页进入时按缺失状态自动加载。
+  - 失败状态不清空旧内容，提供可点击或现有按钮式重试入口。
+  - 旧 direct 缺口用明确反馈，不提示用户填写 baseUrl。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（导航接线-only）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 懒加载状态应以页面为粒度，避免一个全局 loading 阻塞所有页。
+  - Radio/Discover direct API 缺口保留给 `T-S5-KG-123`。
+- Comment Requirements:
+  - 对“失败不清旧内容”的状态处理保留简短说明。
+- Done Criteria:
+  - 进入推荐电台页会触发推荐电台加载或显示 direct 缺口提示。
+  - 进入发现页会触发 tags/playlists 加载或显示 direct 缺口提示。
+  - 加载失败不清空已有列表。
+  - 可手动重试。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - 旧 WebApi paths 可能仍不可用；本任务要避免把不可用误报成登录失效。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-KG-126
+- Task ID: `T-S5-KG-126`
+- Module ID: `M-S5-KG-037`
+- Status: Done (local validation passed; server auth-invalid classification pending direct API work)
+- Title: token/session 失效弹窗恢复，不清内容
+- Goal: 运行中 session 失效时保留现有内容，弹窗登录；登录成功后恢复当前页面/当前列表加载或重试。
+- Why: 当前部分内容请求失败会 `clearSessionState(true)` 并清空内容，和用户确认口径冲突。
+- Responsibility Boundary:
+  - `KugouContentBinder` 识别需要登录的失败，并请求登录恢复，不直接清内容。
+  - `KugouAuthConfigBinder` 负责弹窗登录和成功回调。
+  - `KugouLoginRecoveryCoordinator` 或等价类记录 pending page/action。
+  - 显式登出仍可清内容；token 失效不可走同一路径。
+- Dependencies:
+  - `T-S5-KG-124`
+  - `T-S5-KG-125`
+- Inputs:
+  - `KugouContentBinder.kt` 中 `clearSessionState(true)` / `requestQrLogin()` 的失败路径
+  - `KugouAuthConfigBinder.kt`
+  - `KugouDirectSessionStore.kt`
+- Expected Outputs:
+  - 区分 explicit logout 与 runtime auth invalid。
+  - token/session 失效时不调用清内容路径。
+  - 登录成功后恢复 pending 页面/列表加载。
+  - 失败/恢复事件脱敏记录。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouLoginRecoveryCoordinator.kt` 或等价类
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 不把 token 本身或完整请求上下文保存到 pending action。
+  - pending action 只保存页面/动作枚举和必要的非敏感短状态。
+- Comment Requirements:
+  - 对 pending action 不保存敏感信息的原因保留说明。
+- Done Criteria:
+  - 模拟内容请求 auth invalid 时旧内容仍显示。
+  - 弹窗登录出现。
+  - 登录成功后弹窗隐藏并重试当前页面/列表。
+  - 显式登出仍清登录态和内容。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - 需要准确区分网络失败、direct API 缺口、auth invalid；无法确认的错误不要清 session。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-OBS-127
+- Task ID: `T-S5-OBS-127`
+- Module ID: `M-S5-KG-037`
+- Status: Done
+- Title: 登录后加载/懒加载/token 恢复观测与回归清单
+- Goal: 为新登录恢复流程补齐 PostHog/runtime/logcat 证据和 API17 回归项。
+- Why: 用户已明确新功能必须有足够日志，且敏感信息过滤。
+- Responsibility Boundary:
+  - 代码侧仅记录低频事件。
+  - 文档侧同步事件字典、覆盖矩阵、API17 检查项。
+- Dependencies:
+  - `T-S5-KG-124`
+  - `T-S5-KG-125`
+  - `T-S5-KG-126`
+- Inputs:
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Expected Outputs:
+  - 新事件或复用事件 stage 记录：post_login_auto_load、lazy_load、auth_recovery_dialog、auth_recovery_resume。
+  - 文档明确禁止 token/session/cookie/full query/phone/code/auth header。
+  - 回归清单覆盖登录成功自动拉、进入页懒加载、失败重试、token 失效弹窗恢复。
+- Expected Files:
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 必要代码埋点文件
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 不为高频 UI 渲染或每次导航 tick 上报。
+- Comment Requirements:
+  - 无特别要求。
+- Done Criteria:
+  - 事件字典、覆盖矩阵、回归清单与代码事件一致。
+  - 敏感字段审计通过。
+  - `git diff --check` 通过。
+- Validation:
+  - `git diff --check`
+  - 敏感字段 grep/review
+  - `gradle :app:compileDebugKotlin --no-daemon`（若改代码）
+- Risks:
+  - 事件过多；应复用现有 `kugou_content_load_*` 并增加 stage 时优先。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
 
 ## T-S5-MAIN-108
 - Task ID: `T-S5-MAIN-108`

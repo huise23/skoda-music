@@ -1,10 +1,92 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-07
 
 ## Stage
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
-- 当前主干: `master@edb006e`（已推送 `Complete S5 corrective playback validation`）
+- 当前主干: `master@18c4723`（本地已完成 `M-S5-KG-037` + `T-S5-KG-123`，尚未推送）
+
+## Execution Progress (T-S5-KG-123, 2026-06-07)
+- 状态: 本地完成；等待手机/API17 设备验证。
+- 已完成:
+  - `KugouDirectContentClient` 按 `.NET` `RawFmApi.GetRecommendAsync()` 直连 `/v1/rcmd_list` 加载 Radio 推荐。
+  - `KugouDirectContentClient` 按 `.NET` `RawFmApi.GetSongsAsync()` 直连 `/v1/app_song_list_offset` 加载电台歌曲。
+  - `KugouDirectContentClient` 按 `.NET` `RawPlaylistApi.GetPlaylistTagsAsync()` 直连 `/pubsongs/v1/get_tags_by_type` 加载发现标签。
+  - `KugouDirectContentClient` 按 `.NET` `RawDiscoveryApi.GetRecommendedPlaylistsAsync()` 直连 `/v2/special_recommend` 加载发现歌单。
+  - `KugouDirectContentClient` 按 `.NET` `RawPlaylistApi.GetPlaylistSongsAsync()` 直连 `/pubsongs/v2/get_other_list_file_nofilt` 加载歌单歌曲。
+  - 点赞按 `.NET` `FavoritePlaylistService` 喜欢列表 ID `2` + `RawPlaylistApi.AddSongsToPlaylistAsync()` 直连 `/cloudlist.service/v6/add_song`。
+  - `KugouContentBinder` 当前 Radio/Discover/playlist song 路径已不再依赖 `resolveBaseUrl()` 或旧 `KugouWebApiClient`。
+  - 新增/复用脱敏事件：`kugou_direct_content_request`、`kugou_content_load_success/failed`、`kugou_like_request/success/failed`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：文件 5840 行、粗略大方法 4169 行；另有既有 warning/refactor 项。
+- 待验证:
+  - 尚未在手机/API17 设备用真实账号验证 Radio 推荐、电台歌曲、发现标签/歌单/歌曲、点赞 direct 返回字段。
+- 安全结论:
+  - 新 direct 请求日志只记录 label/http/异常类型；内容点击 runtime log 只保留短 hash ID；PostHog 只记录 source/feature/stage/item_count/error_code，不记录 token、userid、session、完整 URL query、body、完整 hash 或歌名。
+
+## Requirement Confirmation (2026-06-07)
+- 用户确认方案 B：酷狗登录成功后默认页优先自动加载，其他页进入时懒加载。
+- 默认页优先加载对象：当前默认页为首页推荐歌曲；登录成功后直接拉取。
+- 其他页策略：推荐电台、发现歌单/歌曲、点赞/相关页面进入时再加载；失败时提示并保留手动拉取/重试入口。
+- token/session 运行中失效策略：不清空现有内容，弹窗登录即可；重新登录成功后隐藏弹窗并继续当前页面/当前列表流程。
+- 首页登录交互：从内嵌登录面板调整为弹窗登录入口。
+- 状态: 已实现并通过本地构建验证；等待手机/API17 实机验证。
+
+## Planning Progress (M-S5-KG-037, 2026-06-07)
+- 新增模块: `M-S5-KG-037` Kugou Post-login Loading & Login Recovery。
+- Ready:
+  - `T-S5-KG-124`: 登录弹窗与 post-login 默认页自动加载协调。
+- Planned:
+  - `T-S5-KG-125`: 内容页懒加载与失败可重试策略。
+  - `T-S5-KG-126`: token/session 失效弹窗恢复，不清内容。
+  - `T-S5-OBS-127`: 登录后加载/懒加载/token 恢复观测与回归清单。
+- 架构约束:
+  - `KugouAuthConfigBinder` 负责登录弹窗/QR 生命周期/session 状态 UI/登录成功回调。
+  - `KugouContentBinder` 负责内容页加载状态、默认页自动加载、懒加载、失败提示和手动重试。
+  - 如需跨 binder 协调，新增 `KugouLoginRecoveryCoordinator` 或等价小类；`MainActivity.kt` 只做接线。
+  - `T-S5-KG-123` 已在后续本地执行中完成 direct 化；自动加载/恢复机制与 direct 内容路径仍需设备验证。
+
+## Execution Progress (M-S5-KG-037, 2026-06-07)
+- 状态: `T-S5-KG-124/125/126/127` 本地完成；尚未推送，尚未实机验证。
+- 已完成:
+  - 新增 `KugouLoginRecoveryCoordinator`，只保存脱敏 pending action 枚举，不保存 token/session/QR key/URL/手机号/验证码。
+  - 首页登录入口改为弹窗登录；首页旧二维码图和 URL 文本隐藏，二维码只在弹窗中展示。
+  - QR refresh 不再调用 `clearSessionState(true)`，连续刷新不会清空酷狗内容。
+  - QR 登录成功后隐藏弹窗并触发默认页首页推荐歌曲自动加载；缓存 session 启动后也自动拉首页推荐。
+  - Radio/Discover 进入页面时由 `KugouContentBinder` 懒加载；缺 session 弹登录，加载失败保留页面并显示点击重试入口。
+  - Radio/Discover 旧 WebApi/baseUrl 缺口已由 `T-S5-KG-123` 本地 direct 化；失败现在记录为 `KUGOU_DIRECT_CONTENT_FAILED` 并保留重试入口。
+  - 点赞/播放遇到本地登录态缺失时弹登录并保留当前内容，不清空已有列表/队列；登录后隐藏弹窗并刷新当前可见状态。
+  - 新增脱敏事件：`kugou_auth_dialog_shown`、`kugou_auth_recovery_resume`、`kugou_post_login_auto_load`；继续复用 `kugou_content_load_success/failed`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：文件 5820 行、粗略大方法 4146 行。
+- 未验证:
+  - 尚无手机/API17 设备扫码实测。
+  - 服务端明确 auth-invalid 错误码识别仍未完成；当前只对本地 session 缺失/不可用走弹窗恢复，普通网络/API 缺口失败不会误判为 token 失效。
+  - Radio/发现/点赞真实数据已本地 direct 化，仍需实机/真实账号网络验证。
+
+## Review Snapshot (2026-06-06)
+- 状态: `T-S5-KG-122` 已提交并推送；功能口径为 Done for default Kugou QR login + 首页推荐 + 推荐歌曲播放最小 direct loop，Partial for full Kugou direct migration。
+- 已验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败，但仅因既有 `MainActivity.kt` red-line：文件 5776 行、粗略大方法 4140 行；未新增 blocking finding。
+- 工程结论:
+  - 新增 direct recommend/play URL 协议逻辑位于 `kugou/`，入口文件只做小范围接线，未修改 `KugouMusic.NET/`，未引入新依赖，未触碰 `minSdk=17`。
+  - 新增 PostHog/runtime 事件为低频、脱敏事件；不记录 token、session key、dfid、mid、完整 URL query、cookie、手机号、验证码或认证 header。
+  - `MainActivity.kt` 仍是 Needs Refactor 风险，后续功能不应继续向入口文件增加业务逻辑。
+- 未验证:
+  - 尚无手机/目标 API17 设备扫码实测；需要验证扫码后 UI 立即已登录、推荐歌曲加载、推荐歌曲播放 URL direct 成功。
+  - Radio、发现歌单/歌单歌曲、点赞当前路径已移除旧 `KugouWebApiClient`/baseUrl gate，等待 `T-S5-KG-123` 设备验证。
 
 ## Execution Progress (T-S5-KG-121, 2026-06-05)
 - 已完成:

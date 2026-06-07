@@ -1,8 +1,8 @@
 # PostHog Event Dictionary (S4)
 
-Last Updated: 2026-06-05
-Module: `M-S4-OBS-006` + `M-S5-KG-035` + `M-S5-OBS-036`
-Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120`
+Last Updated: 2026-06-07
+Module: `M-S4-OBS-006` + `M-S5-KG-035` + `M-S5-OBS-036` + `M-S5-KG-037`
+Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120` + `T-S5-KG-123/124/125/126/127`
 
 ## Common Properties
 - `session_id`
@@ -46,6 +46,12 @@ Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120`
 - `kugou_direct_play_url_failed`: Android direct Kugou play URL failed without exposing URL/query
 - `kugou_content_load_success`: Kugou content list loaded, with `stage` and `item_count`
 - `kugou_content_load_failed`: Kugou content list failed and enters retry/login recovery
+- `kugou_auth_dialog_shown`: login dialog opened for a missing/expired Kugou session; properties use redacted `stage` and `pending_action`
+- `kugou_auth_recovery_resume`: login succeeded and a pending recovery action is consumed; properties use redacted `stage` and `pending_action`
+- `kugou_post_login_auto_load`: default Kugou home recommendation load is triggered after login or cached session restore
+- `kugou_like_request`: direct Kugou like add request started
+- `kugou_like_success`: direct Kugou like add succeeded
+- `kugou_like_failed`: direct Kugou like add failed without exposing song hash, token, or payload
 - `kugou_queue_start`: normal Kugou queue starts from a visible content context
 - `kugou_radio_session_start`: Kugou radio/FM session starts from radio songs
 
@@ -65,6 +71,8 @@ Tasks: `T-S4-OBS-034` + `T-S5-KG-119` + `T-S5-OBS-120`
 - `QR_EXPIRED`
 - `SESSION_VALIDATION_FAILED`
 - `KUGOU_CONTENT_FAILED`
+- `KUGOU_DIRECT_CONTENT_FAILED`
+- `KUGOU_DIRECT_LIKE_FAILED`
 - `UNKNOWN_FAILURE` / `UNKNOWN_<code>`
 
 ## Explicitly Forbidden Events

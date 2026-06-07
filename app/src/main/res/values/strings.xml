@@ -25,6 +25,7 @@
     <string name="action_kugou_sms_login">验证码登录</string>
     <string name="action_kugou_logout">退出酷狗登录</string>
     <string name="action_kugou_like">点赞</string>
+    <string name="action_kugou_retry_load">加载失败，点击重试</string>
     <string name="hint_emby_base_url">Base URL（例如 http://192.168.1.2:8096）</string>
     <string name="label_cf_ref_domain">CF 优选参考域名</string>
     <string name="hint_cf_ref_domain">仅用于参考解析，例如 speed.cloudflare.example</string>

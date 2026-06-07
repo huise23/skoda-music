@@ -50,6 +50,10 @@ object KugouDirectSigner {
         return md5(raw.toString())
     }
 
+    fun calcLoginKey(clientTime: Long): String {
+        return md5(APP_ID + LITE_SIGNATURE_SALT + CLIENT_VER + clientTime)
+    }
+
     fun calcV5Key(hash: String, userId: String, mid: String): String {
         return md5(hash.lowercase() + V5_KEY_SALT + APP_ID + mid + userId)
     }

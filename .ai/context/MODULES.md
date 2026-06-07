@@ -1,9 +1,14 @@
 # MODULES
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-07
 
 ## Active Stage
 - S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
+
+## Planning Refresh (Post-login Loading + Login Dialog Recovery, 2026-06-07)
+- 用户确认方案 B：登录成功后默认页优先自动加载，其它页进入时懒加载；运行中 token/session 失效不清现有内容，弹窗登录，登录成功后恢复当前页面。
+- 新增模块:
+  - `M-S5-KG-037`: Kugou Post-login Loading & Login Recovery。
 
 ## Planning Refresh (QR Refresh Crash + Observability, 2026-06-04)
 - 手机环境已暴露 QR 刷新崩溃，API17 实机 A~N 回归暂缓到 QR 登录入口稳定后执行。
@@ -344,6 +349,67 @@ Last Updated: 2026-06-04
 - Risks:
   - 真实登录/电台返回仍依赖外部账号和网络环境。
 - Suitable For Module Execution?: No
+
+## M-S5-KG-037
+- Module ID: `M-S5-KG-037`
+- Name: Kugou Post-login Loading & Login Recovery
+- Goal: 登录成功后默认页自动加载，其它酷狗页懒加载；token/session 失效时弹窗登录且不清内容，登录成功后恢复当前页面。
+- Why it matters: 车机扫码登录已经成功，但内容不会自动出现；运行中失效若清空内容会造成可见状态丢失和体验中断。
+- Responsibility Boundary:
+  - `KugouAuthConfigBinder`: 登录弹窗/QR 生命周期/session 状态 UI/登录成功回调。
+  - `KugouContentBinder`: 内容页加载状态、默认页自动加载、懒加载、失败提示、手动重试入口。
+  - 新增 `KugouLoginRecoveryCoordinator` 或等价小类：跨 auth/content 的 post-login pending action、token 失效恢复、当前页恢复。
+  - `MainActivity`: 只保留生命周期、导航和 binder/coordinator 接线，不承载状态机。
+  - `kugou/*Client`: 继续只做 API 请求/解析，不承担 UI 恢复策略。
+- In Scope:
+  - 首页登录入口改为弹窗登录。
+  - 登录成功后触发首页推荐歌曲自动加载。
+  - 推荐电台、发现、点赞等其它酷狗页进入时触发懒加载。
+  - 加载失败时提示并保留手动重试，不清空其它内容。
+  - token/session 失效时保留现有内容，弹窗登录，登录成功后继续当前页/当前列表。
+  - 补齐脱敏 PostHog/runtime/logcat 事件。
+- Out of Scope:
+  - SMS 登录 direct port。
+  - 一次性完成 Radio/发现/点赞 direct 化。
+  - MainActivity 大规模重写或页面壳迁移。
+  - 修改 `KugouMusic.NET/`。
+- Dependencies:
+  - `T-S5-KG-122` Done。
+  - `KugouAuthConfigBinder` 与 `KugouContentBinder` 已存在。
+- Entry Points Involved:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）
+  - `app/src/main/res/layout/activity_main.xml`（仅当弹窗需要复用或隐藏内嵌登录面板时小改）
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Files Expected:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouLoginRecoveryCoordinator.kt` 或等价小类
+  - `app/src/main/java/com/skodamusic/app/ui/KugouAuthConfigBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+- Files To Avoid Expanding:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Size / God Object Risk:
+  - Medium: `KugouAuthConfigBinder` and `KugouContentBinder` are near/over preferred size; add small helpers/coordinator instead of concentrating new state there.
+  - High: `MainActivity.kt` remains entry red-line; only small wiring changes are acceptable.
+- Milestone / Done Criteria:
+  - Login success automatically loads home recommended songs.
+  - Entering radio/discover/like pages triggers lazy load when data is missing.
+  - Failed list load shows retryable feedback and preserves already loaded content.
+  - Token/session invalidation opens login dialog without clearing visible content.
+  - Successful re-login closes dialog and resumes current page/list action.
+  - Observability docs and runtime/PostHog events cover start/success/failure/recovery with sensitive data filtered.
+- Related Tasks: `T-S5-KG-124`, `T-S5-KG-125`, `T-S5-KG-126`, `T-S5-OBS-127`
+- Priority: P0
+- Status: Done (local validation passed; device validation pending)
+- Risks:
+  - Android dialog lifecycle on API17 still needs real-device confirmation, though `KugouAuthConfigBinder.stop()` now dismisses the dialog.
+  - Radio/Discover/Like direct paths were added by `T-S5-KG-123`, but real-device/account response fields still need validation.
+  - Server-side auth-invalid error classification remains incomplete; unknown network/API failures are not treated as token invalid to avoid false relogin prompts.
+- Suitable For Module Execution?: Yes
+- Suitable For Full Plan Execution?: Yes
 
 ## Blocked / Deferred Modules
 

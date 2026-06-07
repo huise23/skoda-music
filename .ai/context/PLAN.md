@@ -1,10 +1,36 @@
 # PLAN
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-07
 
 ## Current Stage
 - Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- Scope Source: `.ai/context/SCOPE.md`（2026-06-04）
+- Scope Source: `.ai/context/SCOPE.md`（2026-06-07）
+
+## Planning Refresh (Post-login Loading + Login Dialog Recovery, 2026-06-07)
+- Trigger:
+  - 用户反馈：车机登录酷狗成功，但未自动加载各项列表。
+  - 用户确认方案 B：登录成功直接拉默认页；其它页进入时懒加载；失败提示并保留手动拉取；运行中 token 失效不清现有内容，弹窗登录，登录后隐藏并继续当前页面。
+- Scope Fit:
+  - 属于当前 S5 酷狗登录/content 体验纠偏范围。
+  - 不需要回 requirement；scope 和 decisions 已确认。
+- Architecture Decision:
+  - 新增或扩展轻量 UI/协调层处理登录弹窗、post-login action、内容加载触发，不把状态机塞回 `MainActivity.kt`。
+  - `KugouAuthConfigBinder` 负责登录 UI/弹窗、QR 生命周期、登录成功回调。
+  - `KugouContentBinder` 负责内容页加载状态、懒加载、失败提示和手动重试。
+  - 如需跨 auth/content 协调，新增 `KugouLoginRecoveryCoordinator` 或等价小类；`MainActivity` 只接线。
+  - `kugou/*` client 仍只负责 direct/API 请求，不承担 UI 策略。
+- Current Code Reality:
+  - `KugouContentBinder.requestRecommendedSongs()` 已走 direct 推荐歌曲。
+  - `requestRecommendedRadios()`、`requestDiscoverTags()`、playlist/radio song 相关路径仍有旧 `resolveBaseUrl()`/`KugouWebApiClient` gate，失败时存在 `clearSessionState(true)` + `requestQrLogin()` 行为，需改成登录弹窗恢复且保留内容。
+  - `KugouAuthConfigBinder.refreshLoginUi()` 仍控制首页登录 panel 可见性，尚未弹窗化。
+- Ready Queue Update:
+  - `T-S5-KG-124`: 登录弹窗与 post-login 默认页自动加载协调。
+  - `T-S5-KG-125`: 内容页懒加载与失败可重试策略。
+  - `T-S5-KG-126`: token/session 失效恢复，不清内容并登录后恢复当前页面。
+  - `T-S5-OBS-127`: 对上述流程补齐脱敏观测和回归清单。
+- Relationship To `T-S5-KG-123`:
+  - `T-S5-KG-124/125/126` 可先落地交互策略。
+  - 旧 baseUrl gate 仍会限制 Radio/发现/点赞真实数据加载；若执行中触碰这些 API，应与 `T-S5-KG-123` 建依赖或合并到 direct 化任务。
 
 ## Planning Refresh (QR Refresh Crash + Observability, 2026-06-04)
 - Trigger:
@@ -57,6 +83,8 @@ Last Updated: 2026-06-04
 - MainActivity 持续可编译拆分，包含 Controller/Binder 拆分与页面壳拆分评估。
 - 允许在 API17 兼容且不破坏左侧一级快速切换的前提下，后续试点 Fragment 或独立 Activity。
 - 移除用户必填 Kugou WebApi Base URL 路径。
+- 酷狗登录成功后默认页优先自动加载，其它页进入时懒加载。
+- token/session 运行中失效时弹窗登录，不清空现有内容，登录成功后恢复当前页面/列表。
 - 纯酷狗 source playback state。
 - 酷狗歌曲队列 `.NET` parity。
 - 酷狗 radio/FM session `.NET` parity。
@@ -89,6 +117,7 @@ Last Updated: 2026-06-04
 ### Module / Layer Direction
 - `MainActivity`: launcher、生命周期、左侧一级导航、播放/service bridge 的薄协调层。
 - `ui/*Binder`: 页面或控件绑定、渲染协调、低频 UI 状态刷新；不得承载协议猜测或播放队列核心语义。
+- `ui/*Coordinator`: 登录成功后动作、登录弹窗恢复、内容页懒加载触发等跨 binder 协调；保持小而聚焦。
 - `kugou/*`: 酷狗 API/session/client/store，所有行为必须可追溯到 `KugouMusic.NET/`。
 - `playback/source session`: Emby、KugouSong、KugouRadio 三类播放 session 分流，不复用 Emby queue 语义表达酷狗队列。
 - `audio/dsp`: DSP runtime 状态和 native 处理保持独立，UI 只低频读取状态。
@@ -96,6 +125,7 @@ Last Updated: 2026-06-04
 ### Entry File Responsibility
 - `MainActivity` 只能接线 Android 生命周期、导航、顶层回调、后台服务/方向盘按键/浮窗桥接。
 - 不能继续把酷狗登录、酷狗内容页、队列算法、电台 session、歌词解析、下载控制和 DSP 页面细节堆回入口文件。
+- 不应把登录弹窗状态机、post-login pending action、懒加载判断、token 失效恢复策略写入 `MainActivity`。
 
 ### Page Shell Split Direction
 - 单 Activity 外壳不是长期硬约束。
@@ -141,6 +171,10 @@ Last Updated: 2026-06-04
 - 目标: 对 S5 新增酷狗内容、普通 queue、radio session、DSP direct-buffer bridge 等低频关键路径补齐结构化观测。
 - 输出: 事件字典/代码埋点/回归清单一致，避免后续新功能无日志完成。
 
+### W9 Kugou Post-login Loading & Recovery
+- 目标: 登录成功后默认页自动加载，其它页懒加载；token/session 失效弹窗登录且不清内容，登录后恢复当前页面。
+- 输出: 登录弹窗 UI 协调、post-login action、内容页懒加载状态、失败可重试和脱敏观测。
+
 ## Dependency Graph
 - `W1/T-S5-MAIN-114 -> W2/T-S5-KG-109 -> W3 -> W4 -> W6`
 - `W1/T-S5-MAIN-114 -> W1/T-S5-MAIN-115 -> W1/T-S5-MAIN-116`
@@ -148,20 +182,20 @@ Last Updated: 2026-06-04
 - `W5` 可与 `W1/W2` 并行；`T-S4-AUDIO-097` 依赖已满足，可作为并行 Ready，但最终进入 `W6`。
 - `W7/T-S5-KG-119 -> W6/API17 real-device regression`
 - `W7/T-S5-KG-119 -> W8/T-S5-OBS-120`
+- `W9/T-S5-KG-124 -> W9/T-S5-KG-125 -> W9/T-S5-KG-126 -> W9/T-S5-OBS-127`
+- `W9` 与 `T-S5-KG-123` 存在接口依赖：旧 baseUrl 页可先接入懒加载/恢复策略，但真实 direct 数据能力仍由 `T-S5-KG-123` 完成。
 - `B-KG-EMBY-INGEST-001` 继续阻塞，不参与当前 Ready。
 
 ## Recommended Order
-1. `T-S5-KG-119`: 修复手机上 QR 刷新 1-2 秒后崩溃，并补齐 QR direct auth 的脱敏 PostHog/runtime logs。
-2. `T-S5-OBS-120`: 补齐 S5 新功能低频 PostHog 事件覆盖，优先 QR/queue/radio/DSP 失败路径。
-3. `T-S5-MAIN-114`: MainActivity 第二轮拆分：Kugou Auth/Config Binder，先把下一步 API 地址纠偏会触碰的登录/配置 UI 迁出入口文件。
-4. `T-S4-AUDIO-097`: DSP 持续红框诊断与修正（可与 MainActivity 拆分并行，但建议独立单任务完成）。
-5. `T-S5-KG-109`: Kugou WebApi Base URL 产品路径纠偏与 `.NET` direct API 可行性确认；执行时不得向 `MainActivity` 添加新大块逻辑。
-6. `T-S5-MAIN-115`: MainActivity 第三轮拆分：Kugou 内容页 Binder；若 `T-S5-KG-109` 实际需要大面积触碰内容页，先执行本任务。
-7. `T-S5-PLAY-110`: 纯酷狗播放状态边界，切断 Emby 队列叠加。
-8. `T-S5-PLAY-111`: Kugou 普通歌曲队列按 `.NET PlaybackQueueManager` 实现。
-9. `T-S5-PLAY-112`: Kugou Radio/FM session 按 `.NET PersonalFmService` 实现。
-10. `T-S5-MAIN-116`: 页面壳拆分试点评估，优先设置/日志/EQ 或酷狗内容页，不影响左侧一级导航。
-11. `T-S5-VAL-113`: API17 回归与构建验证。
+1. `T-S5-KG-124`: 登录弹窗与 post-login 默认页自动加载协调。
+2. `T-S5-KG-125`: 内容页懒加载与失败可重试策略。
+3. `T-S5-KG-126`: token/session 失效恢复，不清内容并登录后恢复当前页面。
+4. `T-S5-OBS-127`: 观测与 API17 回归清单更新。
+5. `T-S5-KG-123`: Radio/发现/点赞 direct 化，移除剩余旧 WebApi baseUrl gate。
+6. API17 A~N 实机回归与设备验证。
+
+## Completed Historical Order
+- `T-S5-KG-119`、`T-S5-OBS-120`、`T-S5-MAIN-114`、`T-S4-AUDIO-097`、`T-S5-KG-109`、`T-S5-MAIN-115`、`T-S5-PLAY-110/111/112`、`T-S5-MAIN-116`、`T-S5-VAL-113` 已完成；保留为历史依据。
 
 ## Milestones
 - M1: `MainActivity` 首轮拆分完成并可编译。
@@ -175,6 +209,7 @@ Last Updated: 2026-06-04
 - M7: guardrails、compile、assemble 和回归清单完成。
 - M8: QR refresh 在手机/模拟环境中重复点击、弱网/断网、接口异常时不崩溃，并能在 PostHog/logcat 中看到脱敏诊断链。
 - M9: S5 新功能具备最低可用 PostHog 覆盖，后续 API17 回归可直接采集 `capture ok event=...` 证据。
+- M10: 酷狗登录成功后首页推荐自动加载；其它酷狗页进入时懒加载；token 失效时弹窗登录且不清内容；登录后恢复当前页面。
 
 ## Validation Strategy
 - 本地:
@@ -186,6 +221,9 @@ Last Updated: 2026-06-04
   - 触及 PostHog/日志时检查敏感字段：不得包含 token、session key、cookie、手机号、验证码、完整 URL query、auth header、API key 或可复用设备凭据。
 - 行为:
   - QR 刷新按钮连续点击 10 次不崩溃；断网、接口失败、图片下载失败、Activity 生命周期切换都进入可恢复状态。
+  - 登录成功后首页推荐自动加载，失败提示且可手动重试。
+  - 推荐电台/发现页进入时触发懒加载；旧内容在失败或 token 失效时不被清空。
+  - token/session 失效时出现登录弹窗，登录成功后弹窗隐藏并继续当前页面。
   - 默认进入酷狗推荐歌曲。
   - 酷狗播放不自动恢复/刷新 Emby 队列。
   - 酷狗 next/previous 在酷狗队列或 radio session 内推进。

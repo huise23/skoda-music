@@ -383,7 +383,8 @@
                                     android:background="@drawable/panel_card"
                                     android:contentDescription="@string/kugou_qr_image_desc"
                                     android:padding="8dp"
-                                    android:scaleType="fitCenter" />
+                                    android:scaleType="fitCenter"
+                                    android:visibility="gone" />
 
                                 <TextView
                                     android:id="@+id/kugou_qr_url_value"
@@ -394,7 +395,8 @@
                                     android:maxLines="2"
                                     android:text="@string/kugou_qr_waiting"
                                     android:textColor="@color/text_muted"
-                                    android:textSize="12sp" />
+                                    android:textSize="12sp"
+                                    android:visibility="gone" />
 
                                 <Button
                                     android:id="@+id/btn_kugou_refresh_qr"

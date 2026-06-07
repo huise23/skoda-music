@@ -1,11 +1,14 @@
 package com.skodamusic.app.ui
 
+import android.app.Dialog
 import android.graphics.Bitmap
 import android.os.Handler
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.skodamusic.app.R
@@ -30,7 +33,8 @@ class KugouAuthConfigBinder(
     private val setFeedbackText: (String) -> Unit,
     private val showToast: (Int) -> Unit,
     private val appendRuntimeLog: (String) -> Unit,
-    private val onSessionCleared: () -> Unit
+    private val onSessionCleared: () -> Unit,
+    private val onLoginSucceeded: () -> Unit
 ) {
     val webApiClient = KugouWebApiClient { message -> appendRuntimeLog(message) }
 
@@ -63,6 +67,10 @@ class KugouAuthConfigBinder(
     private var qrRequestGeneration: Int = 0
     private var sessionValidationGeneration: Int = 0
     private var directValidationState: String = KugouDirectSessionState.PENDING_VALIDATION
+    private var loginDialog: Dialog? = null
+    private var dialogQrStatusValue: TextView? = null
+    private var dialogQrImage: ImageView? = null
+    private var dialogRefreshQrButton: Button? = null
 
     fun bindViews() {
         statusValue = activity.findViewById(R.id.kugou_status_value)
@@ -78,7 +86,7 @@ class KugouAuthConfigBinder(
         logoutButton = activity.findViewById(R.id.btn_kugou_logout)
         homeLoginPanel = activity.findViewById(R.id.kugou_home_login_panel)
 
-        refreshQrButton.setOnClickListener { requestQrLogin() }
+        refreshQrButton.setOnClickListener { showLoginDialog("home_login") }
         sendSmsButton.setOnClickListener { requestSmsCode() }
         smsLoginButton.setOnClickListener { requestSmsLogin() }
         logoutButton.setOnClickListener { requestLogout() }
@@ -110,6 +118,7 @@ class KugouAuthConfigBinder(
     }
 
     fun requestQrLogin() {
+        ensureLoginDialogVisible("qr_refresh", captureDialogEvent = false)
         if (!ensureWifiConnectedForNetworkRequest("kugou_direct_qr", true)) {
             captureAuthEvent(
                 eventName = "kugou_qr_refresh_failed",
@@ -120,14 +129,14 @@ class KugouAuthConfigBinder(
             return
         }
         stopQrPolling()
-        clearSessionState(clearStored = true)
+        qrKey = ""
         val generation = ++qrRequestGeneration
         val startedAtMs = System.currentTimeMillis()
         setStatusText(activity.getString(R.string.kugou_status_not_logged_in))
         setQrText(activity.getString(R.string.kugou_qr_loading))
         setFeedbackText(activity.getString(R.string.feedback_kugou_qr_loading))
-        qrImage.setImageDrawable(null)
-        refreshQrButton.isEnabled = false
+        clearQrImage()
+        setRefreshButtonsEnabled(false)
         captureAuthEvent(
             eventName = "kugou_qr_refresh_start",
             stage = "qr_key"
@@ -138,7 +147,7 @@ class KugouAuthConfigBinder(
                 if (!isCurrentQrRequest(generation)) {
                     return@runOnUiThread
                 }
-                refreshQrButton.isEnabled = !hasSession()
+                setRefreshButtonsEnabled(!hasSession())
                 val qr = result.qr
                 val bitmap = result.bitmap
                 if (qr == null || bitmap == null) {
@@ -147,7 +156,7 @@ class KugouAuthConfigBinder(
                 }
                 qrKey = qr.key
                 qrUrlValue.text = qr.imageUrl
-                qrImage.setImageBitmap(bitmap)
+                setQrImageBitmap(bitmap)
                 setQrText(activity.getString(R.string.kugou_qr_scan))
                 captureAuthEvent(
                     eventName = "kugou_qr_refresh_success",
@@ -159,10 +168,16 @@ class KugouAuthConfigBinder(
         }
     }
 
+    fun showLoginDialog(reason: String, captureDialogEvent: Boolean = true) {
+        ensureLoginDialogVisible(reason, captureDialogEvent)
+        requestQrLogin()
+    }
+
     fun stop() {
         stopQrPolling()
         qrRequestGeneration += 1
         sessionValidationGeneration += 1
+        dismissLoginDialog()
     }
 
     fun clearSessionState(clearStored: Boolean) {
@@ -177,6 +192,7 @@ class KugouAuthConfigBinder(
         if (this::qrImage.isInitialized) {
             qrImage.setImageDrawable(null)
         }
+        dialogQrImage?.setImageDrawable(null)
         if (this::qrUrlValue.isInitialized) {
             qrUrlValue.text = activity.getString(R.string.kugou_qr_waiting)
         }
@@ -185,7 +201,9 @@ class KugouAuthConfigBinder(
             directSessionStore.clear()
         }
         refreshLoginUi()
-        onSessionCleared()
+        if (clearStored) {
+            onSessionCleared()
+        }
     }
 
     fun refreshLoginUi() {
@@ -205,6 +223,7 @@ class KugouAuthConfigBinder(
         setStatusText(statusText)
         homeLoginPanel.visibility = if (hasSession) View.GONE else View.VISIBLE
         refreshQrButton.isEnabled = !hasSession
+        dialogRefreshQrButton?.isEnabled = !hasSession
         logoutButton.isEnabled = sessionKey.isNotBlank()
     }
 
@@ -305,6 +324,7 @@ class KugouAuthConfigBinder(
 
     private fun requestLogout() {
         stopQrPolling()
+        dismissLoginDialog()
         clearSessionState(clearStored = true)
         setFeedbackText(activity.getString(R.string.feedback_kugou_logged_out))
         showToast(R.string.toast_kugou_logged_out)
@@ -324,6 +344,7 @@ class KugouAuthConfigBinder(
         directValidationState = activeSession.validationState
         setQrText(activity.getString(R.string.kugou_qr_success))
         refreshLoginUi()
+        dismissLoginDialog()
         setFeedbackText(activity.getString(R.string.feedback_kugou_login_success))
         appendRuntimeLog("kugou direct qr login success userHash=${safeHash(lastUserId)} validation=background")
         captureAuthEvent(
@@ -331,6 +352,7 @@ class KugouAuthConfigBinder(
             stage = "qr_poll"
         )
         validateDirectSession(activeSession)
+        onLoginSucceeded()
     }
 
     private fun validateDirectSession(snapshot: KugouDirectSessionSnapshot) {
@@ -364,6 +386,7 @@ class KugouAuthConfigBinder(
                 directValidationState = validated.validationState
                 setQrText(activity.getString(R.string.kugou_qr_success))
                 refreshLoginUi()
+                dismissLoginDialog()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_login_success))
                 appendRuntimeLog(
                     "kugou direct session validated userHash=${safeHash(lastUserId)} reason=${validated.validationReason}"
@@ -389,6 +412,7 @@ class KugouAuthConfigBinder(
 
     private fun setQrText(text: String) {
         qrStatusValue.text = text
+        dialogQrStatusValue?.text = text
         if (qrKey.isEmpty()) {
             qrUrlValue.text = text
         }
@@ -432,7 +456,7 @@ class KugouAuthConfigBinder(
         setStatusText(activity.getString(R.string.kugou_status_failed))
         setQrText(activity.getString(R.string.kugou_qr_expired))
         setFeedbackText(activity.getString(R.string.feedback_kugou_login_failed))
-        qrImage.setImageDrawable(null)
+        clearQrImage()
         appendRuntimeLog(
             "kugou qr refresh failed stage=${result.failureStage} code=${result.errorCode}"
         )
@@ -443,6 +467,96 @@ class KugouAuthConfigBinder(
             priority = PostHogTracker.Priority.HIGH
         )
         showToast(R.string.toast_kugou_failed)
+    }
+
+    private fun ensureLoginDialogVisible(reason: String, captureDialogEvent: Boolean) {
+        val existing = loginDialog
+        if (existing != null && existing.isShowing) {
+            return
+        }
+        val dialog = Dialog(activity)
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(18), dpToPx(16), dpToPx(18), dpToPx(16))
+        }
+        val title = TextView(activity).apply {
+            text = activity.getString(R.string.kugou_login_title)
+            textSize = 20f
+        }
+        val status = TextView(activity).apply {
+            text = activity.getString(R.string.kugou_qr_waiting)
+            textSize = 16f
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+        }
+        val image = ImageView(activity).apply {
+            contentDescription = activity.getString(R.string.kugou_qr_image_desc)
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(dpToPx(240), dpToPx(240))
+        }
+        val refresh = Button(activity).apply {
+            text = activity.getString(R.string.action_kugou_refresh_qr)
+        }
+        root.addView(title, matchWrapParams())
+        root.addView(status, matchWrapParams())
+        root.addView(image)
+        root.addView(refresh, matchWrapParams())
+        dialog.setContentView(root)
+        dialog.setOnDismissListener {
+            if (loginDialog === dialog) {
+                dialogQrStatusValue = null
+                dialogQrImage = null
+                dialogRefreshQrButton = null
+                loginDialog = null
+            }
+        }
+        dialogQrStatusValue = status
+        dialogQrImage = image
+        dialogRefreshQrButton = refresh
+        loginDialog = dialog
+        refresh.setOnClickListener { requestQrLogin() }
+        dialog.show()
+        appendRuntimeLog("kugou auth dialog shown reason=$reason")
+        if (captureDialogEvent) {
+            captureAuthEvent(
+                eventName = "kugou_auth_dialog_shown",
+                stage = reason
+            )
+        }
+    }
+
+    private fun dismissLoginDialog() {
+        loginDialog?.takeIf { it.isShowing }?.dismiss()
+        loginDialog = null
+        dialogQrStatusValue = null
+        dialogQrImage = null
+        dialogRefreshQrButton = null
+    }
+
+    private fun setRefreshButtonsEnabled(enabled: Boolean) {
+        refreshQrButton.isEnabled = enabled
+        dialogRefreshQrButton?.isEnabled = enabled
+    }
+
+    private fun clearQrImage() {
+        qrImage.setImageDrawable(null)
+        dialogQrImage?.setImageDrawable(null)
+    }
+
+    private fun setQrImageBitmap(bitmap: Bitmap) {
+        qrImage.setImageBitmap(bitmap)
+        dialogQrImage?.setImageBitmap(bitmap)
+    }
+
+    private fun matchWrapParams(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * activity.resources.displayMetrics.density).toInt()
     }
 
     private fun isCurrentQrRequest(generation: Int): Boolean {

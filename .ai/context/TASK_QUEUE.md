@@ -1,14 +1,15 @@
 # TASK_QUEUE
 
-Last Updated: 2026-06-05
+Last Updated: 2026-06-07
 
 ## Ready
 - 设备验证：手机/API17 环境验证 `T-S5-KG-122` 登录、首页推荐、推荐歌曲播放。
+- 设备验证：手机/API17 环境验证 `M-S5-KG-037` 弹窗登录、登录后首页自动加载、Radio/Discover 懒加载失败重试、运行中缺登录态不清内容。
+- 设备验证：手机/API17 环境验证 `T-S5-KG-123` Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 路径。
 
 ## Pending / Planned
 
-- `T-S5-KG-123`: Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 化，移除剩余旧 `KugouWebApiClient` baseUrl gate。
-- API17 A~N 实机回归：`T-S5-KG-119` 已本地完成，等待手机/API17 设备执行并回传 QR refresh 与 PostHog 证据。
+- API17 A~N 实机回归：`T-S5-KG-122` 已推送，等待手机/API17 设备执行并回传 QR 登录、首页推荐、推荐歌曲播放、QR refresh 与 PostHog/logcat 脱敏证据。
 
 ## Blocked
 
@@ -39,7 +40,12 @@ Last Updated: 2026-06-05
 - None
 
 ## Done
-- `T-S5-KG-122`: Android QR auth 与 `.NET` 登录态一致化 + 默认推荐/播放 direct 最小闭环；扫码 token 成功即 `VALID`，首页推荐走 direct `/everyday_song_recommend`，推荐歌曲播放 URL 走 direct `/v5/url`，不再依赖旧 WebApi baseUrl。
+- `T-S5-KG-123`: Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 化；移除当前路径剩余旧 `KugouWebApiClient` baseUrl gate，按 `.NET` RawFmApi/RawDiscoveryApi/RawPlaylistApi/FavoritePlaylistService 迁移，本地 `compileDebugKotlin` 通过，等待设备验证。
+- `T-S5-KG-124`: 登录弹窗与 post-login 默认页自动加载协调；首页 QR 改弹窗、登录成功/缓存 session 自动拉首页推荐。
+- `T-S5-KG-125`: 内容页懒加载与失败可重试策略；Radio/Discover 进入时加载，失败显示点击重试且不清旧内容。
+- `T-S5-KG-126`: token/session 失效弹窗恢复，不清内容；本地 session 缺失/不可用时弹窗登录，显式登出仍清内容。
+- `T-S5-OBS-127`: 登录后加载/懒加载/token 恢复观测与回归清单；新增脱敏事件并更新 PostHog/观测/API17 文档。
+- `T-S5-KG-122`: Android QR auth 与 `.NET` 登录态一致化 + 默认推荐/播放 direct 最小闭环；扫码 `userid/token` 成功即 `VALID`，首页推荐走 direct `/everyday_song_recommend`，推荐歌曲播放 URL 走 direct `/v5/url`，不再依赖旧 WebApi baseUrl；已提交并推送 `master@18c4723`。
 - `T-S5-KG-121`: QR 扫码登录失败 + 默认酷狗启动 source gate 热修；扫码 token 成功即登录，设备/token refresh 失败只记录 deferred；默认酷狗冷启动跳过 Emby resume/autoplay/auto-refresh。
 - `T-S5-OBS-120`: S5 新功能 PostHog 覆盖补齐与敏感字段审计；补齐 QR/content/queue/radio 低频事件，新增 `docs/S5_OBSERVABILITY_COVERAGE.md`，DSP 继续用 runtime/logcat 热路径证据。
 - `T-S5-KG-119`: QR refresh crash hotfix + fail-soft observability；修复二维码图片 URL/request 构造未捕获异常，增加 QR refresh generation guard、失败可重试状态和脱敏 PostHog/runtime 事件。
@@ -87,6 +93,8 @@ Last Updated: 2026-06-05
 - `T-S4-AUDIO-087`: Kotlin DSP API17 实机听感验证。原因：AC83xx 已反馈 Kotlin 热路径卡顿，已由 native 优化链取代；后续实机验证改走 `T-S4-AUDIO-095`。
 
 ## Recommended Execution Mode
-- 当前可执行代码任务已完成；下一步恢复 API17 实机按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 A~N 分组并回传证据。
+- 当前最高优先级是手机/API17 设备验证。
+- 设备验证仍保留：手机/模拟器确认 `T-S5-KG-122` 的扫码、首页推荐、推荐歌曲播放 direct 最小闭环。
+- Radio/发现/点赞当前路径已 direct 化；若实机发现协议字段不一致，必须回到 `KugouMusic.NET/` 继续核对，不得猜测。
 - `T-S5-MAIN-114` 已完成；后续 API/config 改动必须走 `KugouAuthConfigBinder` 与 `kugou/*`，不要把逻辑加回 `MainActivity`。
 - 后续新增功能必须有足够 PostHog/runtime/logcat 证据，并进行敏感字段审计。

@@ -1,6 +1,17 @@
 # CHANGELOG
 
+## 2026-06-07
+- Completed local `T-S5-KG-123`: Radio recommend/songs, discover tags/playlists/songs, and like now use Android direct Kugou paths traceable to `KugouMusic.NET` RawFmApi/RawDiscoveryApi/RawPlaylistApi/FavoritePlaylistService instead of old `KugouWebApiClient` baseUrl gates.
+- Added redacted direct-like events `kugou_like_request`, `kugou_like_success`, and `kugou_like_failed`; no token/session/userid/hash/title/full query/body is sent to PostHog.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Completed local `M-S5-KG-037`: Kugou login now uses a dialog QR flow, successful login/cached session auto-loads home recommended songs, Radio/Discover lazy-load on entry, failures keep content and expose retry, and missing local login state opens the dialog without clearing visible content.
+- Added `KugouLoginRecoveryCoordinator` and redacted events `kugou_auth_dialog_shown`, `kugou_auth_recovery_resume`, and `kugou_post_login_auto_load`; updated PostHog/observability/API17 docs.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Planned `M-S5-KG-037` for Kugou post-login loading and login recovery, with Ready task `T-S5-KG-124` and follow-ups `T-S5-KG-125`, `T-S5-KG-126`, and `T-S5-OBS-127`.
+- Confirmed scope for Kugou post-login content loading: login success should auto-load the default page first, other pages lazy-load on entry, failures should show retryable feedback, token/session invalidation should show a login dialog without clearing existing content, and successful re-login should hide the dialog and continue the current page.
+
 ## 2026-06-05
+- Reviewed and pushed `T-S5-KG-122` as `master@18c4723`; validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`, with only existing `MainActivity.kt` code-health red findings remaining.
 - Completed `T-S5-KG-122`: QR token success now immediately opens the Kugou session gate, while device/token refresh remains background validation.
 - Added `KugouDirectContentClient` for the default direct Kugou loop: recommended songs via `/everyday_song_recommend` and recommended-song play URLs via `/v5/url`, both traceable to `KugouMusic.NET` raw APIs and without requiring a user-provided WebApi base URL.
 - Added redacted PostHog events for direct content/play URL gates: `kugou_direct_content_request`, `kugou_direct_play_url_request`, `kugou_direct_play_url_success`, `kugou_direct_play_url_failed`.

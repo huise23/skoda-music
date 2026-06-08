@@ -42,13 +42,16 @@ class KugouContentBinder(
     private var radioLoading: Boolean = false
     private var radioLoadFailed: Boolean = false
     private var selectedRadioId: String = ""
-    private var discoverTags: List<Pair<Int, String>> = emptyList()
+    private var discoverCategories: List<DiscoverCategory> = emptyList()
     private var discoverPlaylists: List<SourcePlaylist> = emptyList()
     private var discoverSongs: List<SourceTrack> = emptyList()
     private var discoverLoading: Boolean = false
     private var discoverLoadFailed: Boolean = false
+    private var selectedDiscoverCategoryName: String = ""
     private var selectedDiscoverTagId: Int = -1
     private var selectedPlaylistId: String = ""
+    private var discoverCategoryExpanded: Boolean = false
+    private var discoverTagExpanded: Boolean = false
 
     fun bindViews(
         radioStatusValue: TextView,
@@ -76,13 +79,16 @@ class KugouContentBinder(
         radioLoading = false
         radioLoadFailed = false
         selectedRadioId = ""
-        discoverTags = emptyList()
+        discoverCategories = emptyList()
         discoverPlaylists = emptyList()
         discoverSongs = emptyList()
         discoverLoading = false
         discoverLoadFailed = false
+        selectedDiscoverCategoryName = ""
         selectedDiscoverTagId = -1
         selectedPlaylistId = ""
+        discoverCategoryExpanded = false
+        discoverTagExpanded = false
     }
 
     fun requestRecommendedSongs(
@@ -224,7 +230,7 @@ class KugouContentBinder(
             requestLogin("discover_missing_session", KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE)
             return
         }
-        if (discoverLoading || discoverTags.isNotEmpty()) {
+        if (discoverLoading || discoverCategories.isNotEmpty()) {
             renderDiscoverPage()
             return
         }
@@ -237,9 +243,15 @@ class KugouContentBinder(
         captureContentEvent("kugou_direct_content_request", "discover_tags")
         backgroundExecutor.execute {
             val result = directContentClient().getPlaylistTags()
-            val tags = result.orEmpty()
-                .take(DISCOVER_TAG_PREVIEW_LIMIT)
-                .map { it.tagId to "${it.categoryName} · ${it.tagName}" }
+            val categories = result.orEmpty()
+                .groupBy { it.categoryName.ifBlank { activity.getString(R.string.kugou_discover_title) } }
+                .map { (categoryName, tags) ->
+                    DiscoverCategory(
+                        name = categoryName,
+                        tags = tags.sortedBy { it.sort }.map { DiscoverTag(it.tagId, it.tagName) }
+                    )
+                }
+                .filter { it.tags.isNotEmpty() }
             activity.runOnUiThread {
                 discoverLoading = false
                 if (result == null) {
@@ -250,12 +262,16 @@ class KugouContentBinder(
                     renderDiscoverPage()
                     return@runOnUiThread
                 }
-                discoverTags = tags
+                discoverCategories = categories
                 discoverLoadFailed = false
-                captureContentEvent("kugou_content_load_success", "discover_tags", itemCount = tags.size)
+                var tagCount = 0
+                categories.forEach { category -> tagCount += category.tags.size }
+                captureContentEvent("kugou_content_load_success", "discover_tags", itemCount = tagCount)
                 renderDiscoverPage()
-                if (tags.isNotEmpty()) {
-                    requestPlaylistsByTag(tags[0].first)
+                val firstCategory = categories.firstOrNull()
+                val firstTag = firstCategory?.tags?.firstOrNull()
+                if (firstCategory != null && firstTag != null) {
+                    requestPlaylistsByTag(firstTag.tagId, firstCategory.name)
                 } else {
                     setFeedbackText(activity.getString(R.string.feedback_kugou_discover_empty))
                 }
@@ -315,14 +331,37 @@ class KugouContentBinder(
             playlistList = discoverPlaylistList,
             hasSession = hasSession(),
             loading = discoverLoading,
-            tags = discoverTags,
+            categories = discoverCategories,
             loadFailed = discoverLoadFailed,
+            selectedCategoryName = selectedDiscoverCategoryName,
             selectedTagId = selectedDiscoverTagId,
+            categoryExpanded = discoverCategoryExpanded,
+            tagExpanded = discoverTagExpanded,
             playlists = discoverPlaylists,
             selectedPlaylistId = selectedPlaylistId,
             songs = discoverSongs,
             onRetry = { requestDiscoverTags() },
-            onTagClick = { tagId -> requestPlaylistsByTag(tagId) },
+            onToggleCategoryExpanded = {
+                discoverCategoryExpanded = !discoverCategoryExpanded
+                renderDiscoverPage()
+            },
+            onToggleTagExpanded = {
+                discoverTagExpanded = !discoverTagExpanded
+                renderDiscoverPage()
+            },
+            onCategoryClick = { categoryName ->
+                val category = discoverCategories.firstOrNull { it.name == categoryName }
+                val tag = category?.tags?.firstOrNull()
+                if (tag != null) {
+                    discoverCategoryExpanded = false
+                    discoverTagExpanded = false
+                    requestPlaylistsByTag(tag.tagId, category.name)
+                }
+            },
+            onTagClick = { tagId ->
+                discoverTagExpanded = false
+                requestPlaylistsByTag(tagId, selectedDiscoverCategoryName)
+            },
             onPlaylistClick = { playlist -> requestPlaylistSongs(playlist) },
             onTrackClick = { index, track ->
                 appendRuntimeLog("kugou playlist song click index=$index hash=${shortId(track.playbackRef.hash)}")
@@ -396,7 +435,7 @@ class KugouContentBinder(
         return recommendedRadios.firstOrNull { it.sourceRadioId == selectedRadioId }
     }
 
-    private fun requestPlaylistsByTag(tagId: Int) {
+    private fun requestPlaylistsByTag(tagId: Int, categoryName: String) {
         val session = getSessionKey().trim()
         if (session.isEmpty() || !hasSession()) {
             renderDiscoverPage()
@@ -407,7 +446,11 @@ class KugouContentBinder(
         if (!ensureWifiConnectedForNetworkRequest("kugou_top_playlist", true)) {
             return
         }
+        val resolvedCategory = categoryName.ifBlank {
+            discoverCategories.firstOrNull { category -> category.tags.any { it.tagId == tagId } }?.name.orEmpty()
+        }
         selectedDiscoverTagId = tagId
+        selectedDiscoverCategoryName = resolvedCategory
         selectedPlaylistId = ""
         discoverPlaylists = emptyList()
         discoverSongs = emptyList()
@@ -541,7 +584,6 @@ class KugouContentBinder(
     }
 
     companion object {
-        private const val DISCOVER_TAG_PREVIEW_LIMIT = 12
         private val KUGOU_TRACK_CAPABILITIES = setOf(
             SourceCapability.PLAY,
             SourceCapability.LIKE,
@@ -559,3 +601,13 @@ class KugouContentBinder(
         )
     }
 }
+
+data class DiscoverCategory(
+    val name: String,
+    val tags: List<DiscoverTag>
+)
+
+data class DiscoverTag(
+    val tagId: Int,
+    val name: String
+)

@@ -2,6 +2,7 @@ package com.skodamusic.app.playback
 
 import com.skodamusic.app.model.EmbyTrack
 import com.skodamusic.app.model.MusicSource
+import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourceTrack
 
 data class SourcePlaybackSnapshot(
@@ -9,7 +10,8 @@ data class SourcePlaybackSnapshot(
     val trackId: String,
     val title: String,
     val artist: String,
-    val durationMs: Long
+    val durationMs: Long,
+    val playbackRef: SourcePlaybackRef? = null
 ) {
     val hasTrack: Boolean
         get() = trackId.isNotBlank() && title.isNotBlank()
@@ -60,7 +62,8 @@ class SourcePlaybackSession {
                 trackId = kugou.sourceTrackId,
                 title = kugou.title,
                 artist = kugou.artist,
-                durationMs = duration
+                durationMs = duration,
+                playbackRef = kugou.playbackRef
             )
         }
         if (embyTrack == null) {

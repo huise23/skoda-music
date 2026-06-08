@@ -13,12 +13,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.provider.Settings
-import android.text.SpannableStringBuilder
-import android.text.Spanned
 import android.text.format.Formatter
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -46,6 +41,7 @@ import com.skodamusic.app.data.EmbySessionCache
 import com.skodamusic.app.emby.EmbyApi
 import com.skodamusic.app.kugou.KugouDirectContentClient
 import com.skodamusic.app.kugou.KugouDirectUserClient
+import com.skodamusic.app.kugou.KugouLyricClient
 import com.skodamusic.app.kugou.KugouPlayUrlFailureKind
 import com.skodamusic.app.kugou.KugouPlayUrlResult
 import com.skodamusic.app.kugou.KugouSceneContentClient
@@ -62,7 +58,6 @@ import com.skodamusic.app.model.HttpResult
 import com.skodamusic.app.model.ListSource
 import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
-import com.skodamusic.app.model.LyricLine
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
 import com.skodamusic.app.model.SourceRadio
@@ -88,6 +83,7 @@ import com.skodamusic.app.ui.KugouContentBinder
 import com.skodamusic.app.ui.KugouContentRenderer
 import com.skodamusic.app.ui.DailyRecommendCoordinator
 import com.skodamusic.app.ui.EqualizerPageBinder
+import com.skodamusic.app.ui.HomeLyricsBinder
 import com.skodamusic.app.ui.HomeQueuePanelBinder
 import com.skodamusic.app.ui.KugouDailyVipCoordinator
 import com.skodamusic.app.ui.KugouLoginRecoveryCoordinator
@@ -152,7 +148,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var prevButton: ImageButton
     private lateinit var playPauseButton: ImageButton
     private lateinit var nextButton: ImageButton
-    private var lastPlayButtonDspStatus: HiFiDspController.RuntimeStatus? = null
+    private var lastPlayButtonDspStateKey: String = ""
+    private lateinit var likeCurrentTrackButton: ImageButton
     private lateinit var deleteCurrentTrackButton: ImageButton
     private lateinit var homeTabRecommendButton: Button
     private lateinit var homeTabLyricsButton: Button
@@ -205,11 +202,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var queueTailRefillInFlight: Boolean = false
     private var explicitEmbyUserActivation: Boolean = false
     private var showingHomeRecommendTab: Boolean = true
+    private var showingDailyRecommendListOnHome: Boolean = false
+    private var lastRenderedHomeQueueKey: String = ""
     private var previewArtistOverride: String? = null
-    private var homeLyricsLines: List<LyricLine> = emptyList()
-    private var homeLyricsTrackKey: String = ""
-    private var homeLyricsRequestTrackKey: String? = null
-    private val homeLyricsCache = LinkedHashMap<String, List<LyricLine>>()
     private var isUserSeeking: Boolean = false
     private var pendingSeekPositionMs: Long = -1L
     private val playbackErrorHandleLock = Any()
@@ -293,6 +288,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var kugouContentBinder: KugouContentBinder
     private lateinit var kugouContentRenderer: KugouContentRenderer
     private lateinit var homeQueuePanelBinder: HomeQueuePanelBinder
+    private lateinit var homeLyricsBinder: HomeLyricsBinder
     private lateinit var sourceRowRenderer: SourceRowRenderer
     private lateinit var thumbnailLoader: RemoteThumbnailLoader
     private lateinit var kugouSceneBinder: KugouSceneBinder
@@ -314,6 +310,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var kugouDirectContentClient: KugouDirectContentClient
     private lateinit var kugouDirectUserClient: KugouDirectUserClient
     private lateinit var kugouSceneContentClient: KugouSceneContentClient
+    private lateinit var kugouLyricClient: KugouLyricClient
     private var kugouSessionKey: String
         get() = kugouAuthConfigBinder.sessionKey
         set(value) {
@@ -382,10 +379,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouSceneContentClient = KugouSceneContentClient(applicationContext) { message ->
             appendRuntimeLog(message)
         }
+        kugouLyricClient = KugouLyricClient { message -> appendRuntimeLog(message) }
         sourceRowRenderer = SourceRowRenderer(this)
         thumbnailLoader = RemoteThumbnailLoader(backgroundExecutor) { message -> appendRuntimeLog(message) }
         kugouContentRenderer = KugouContentRenderer(this, sourceRowRenderer, thumbnailLoader)
         homeQueuePanelBinder = HomeQueuePanelBinder(this, sourceRowRenderer)
+        homeLyricsBinder = HomeLyricsBinder(
+            lyricClient = kugouLyricClient,
+            backgroundExecutor = backgroundExecutor,
+            appendRuntimeLog = { message -> appendRuntimeLog(message) },
+            switchToLyricsTab = { switchHomeTab(showRecommend = false) }
+        )
         embySessionCache = EmbySessionCache(
             context = applicationContext,
             prefsName = PREFS_EMBY,
@@ -466,6 +470,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         prevButton = findViewById(R.id.btn_prev)
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
+        likeCurrentTrackButton = findViewById(R.id.btn_like_current_track)
         deleteCurrentTrackButton = findViewById(R.id.btn_delete_current_track)
         homeTabRecommendButton = findViewById(R.id.btn_home_tab_recommend)
         homeTabLyricsButton = findViewById(R.id.btn_home_tab_lyrics)
@@ -474,6 +479,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         homeRecommendList = findViewById(R.id.home_recommend_list)
         homeLyricsScroll = findViewById(R.id.home_lyrics_scroll)
         homeLyricsText = findViewById(R.id.home_lyrics_text)
+        homeLyricsBinder.bind(homeLyricsScroll, homeLyricsText)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         eqPage = findViewById(R.id.page_eq)
@@ -626,6 +632,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (this::runtimeLogBinder.isInitialized) {
             runtimeLogBinder.destroy()
         }
+        if (this::homeLyricsBinder.isInitialized) {
+            homeLyricsBinder.destroy()
+        }
         PlaybackControlBus.detach(this)
         maybePersistPlaybackResumeState(force = true)
         super.onDestroy()
@@ -750,10 +759,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
 
         homeTabRecommendButton.setOnClickListener {
+            showingDailyRecommendListOnHome = false
             switchHomeTab(showRecommend = true)
+            renderHomeRecommendationPreview()
         }
         homeTabLyricsButton.setOnClickListener {
             switchHomeTab(showRecommend = false)
+        }
+        homeQueueScroll.setOnTouchListener { _, _ ->
+            homeLyricsBinder.markQueueInteraction()
+            false
         }
         playbackSeekBar.max = SEEK_BAR_MAX
         playbackSeekBar.progress = 0
@@ -797,6 +812,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         nextButton.setOnClickListener {
             performNextAction(source = PlaybackActions.CMD_SOURCE_UI, allowToast = true)
+        }
+        likeCurrentTrackButton.setOnClickListener {
+            val current = sourcePlaybackSession.currentKugouTrack()
+            if (current == null) {
+                updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
+                return@setOnClickListener
+            }
+            requestLikeTrack(current)
         }
         deleteCurrentTrackButton.setOnClickListener {
             val current = loadedTracks.getOrNull(currentTrackIndex)
@@ -1042,6 +1065,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 val nextTrack = kugouRadioSessionManager.next()
                 if (nextTrack != null) {
                     updateKugouPlaybackUi(nextTrack, getString(R.string.feedback_next_pressed))
+                    refreshCurrentPlaybackViews("kugou_radio_next")
                     playKugouTrack(nextTrack)
                     return true
                 }
@@ -1059,6 +1083,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             val nextTrack = kugouQueueManager.getNext(sourcePlaybackSession.currentKugouTrack())
             if (nextTrack != null) {
                 updateKugouPlaybackUi(nextTrack, getString(R.string.feedback_next_pressed))
+                refreshCurrentPlaybackViews("kugou_queue_next")
                 playKugouTrack(nextTrack)
                 return true
             }
@@ -1106,6 +1131,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             showToast(R.string.toast_next)
         }
         rebuildTrackLists()
+        refreshCurrentPlaybackViews("emby_next")
         appendRuntimeLog("$source next -> play immediately index=$currentTrackIndex")
         playTrackAtCurrentIndex(source)
         return true
@@ -1117,7 +1143,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         navKugouDailyButton.setOnClickListener {
             switchPage(PAGE_HOME)
-            requestDailyRecommendPlayback(reason = "nav_daily", force = true)
+            showDailyRecommendList(reason = "nav_daily")
         }
         navKugouRadioButton.setOnClickListener {
             switchPage(PAGE_KUGOU_RADIO)
@@ -1144,6 +1170,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun switchPage(targetPage: Int) {
+        if (targetPage != PAGE_HOME) {
+            showingDailyRecommendListOnHome = false
+        }
         selectedPage = targetPage
         pageHome.visibility = if (selectedPage == PAGE_HOME) View.VISIBLE else View.GONE
         pageKugouRadio.visibility = if (selectedPage == PAGE_KUGOU_RADIO) View.VISIBLE else View.GONE
@@ -1279,6 +1308,26 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
     }
 
+    private fun showDailyRecommendList(reason: String) {
+        showingDailyRecommendListOnHome = true
+        switchHomeTab(showRecommend = true)
+        if (!hasKugouSession()) {
+            updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
+            requestKugouLogin(
+                reason = "daily_recommend_list_missing_session",
+                action = KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND
+            )
+            renderHomeRecommendationPreview()
+            return
+        }
+        appendRuntimeLog("daily recommend list show reason=$reason")
+        if (kugouContentBinder.recommendedTracksSnapshot().isEmpty()) {
+            requestKugouRecommendedSongs()
+        } else {
+            renderHomeRecommendationPreview()
+        }
+    }
+
     private fun requestDailyRecommendPlayback(reason: String, force: Boolean) {
         dailyRecommendCoordinator.requestPlay(
             reason = reason,
@@ -1381,6 +1430,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun rebuildTrackLists() {
         val canDeleteCurrentEmbyTrack = loadedTracks.isNotEmpty() && !sourcePlaybackSession.isKugouActive()
+        val canLikeCurrentKugouTrack = sourcePlaybackSession.currentKugouTrack() != null
+        likeCurrentTrackButton.isEnabled = canLikeCurrentKugouTrack
+        likeCurrentTrackButton.alpha = if (canLikeCurrentKugouTrack) 1f else 0.45f
         deleteCurrentTrackButton.isEnabled = canDeleteCurrentEmbyTrack
         deleteCurrentTrackButton.alpha = if (canDeleteCurrentEmbyTrack) 1f else 0.45f
         if (kugouRadioSessionManager.isActive() || sourcePlaybackSession.isKugouActive() || kugouQueueManager.snapshot().isNotEmpty()) {
@@ -1431,8 +1483,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
         if (!showRecommend) {
             val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-            renderHomeLyricsByPosition(positionMs)
+            homeLyricsBinder.renderPosition(positionMs)
         }
+        homeLyricsBinder.setQueueTabVisible(showRecommend)
     }
 
     private fun bindLibraryPaging() {
@@ -1554,6 +1607,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun renderHomeRecommendationPreview() {
+        if (showingDailyRecommendListOnHome) {
+            homeRecommendList.removeAllViews()
+            kugouContentBinder.renderRecommendedSongs(homeRecommendList, DEFAULT_HOME_QUEUE_SIZE)
+            return
+        }
         val queueState = buildHomeQueueState()
         homeQueuePanelBinder.render(
             scrollView = homeQueueScroll,
@@ -1564,6 +1622,39 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             onRadioTrackClick = { track -> playKugouRadioQueueTrack(track) },
             onLike = { track -> requestLikeTrack(track) }
         )
+    }
+
+    private fun refreshCurrentPlaybackViews(reason: String) {
+        if (showingDailyRecommendListOnHome && reason != "daily_recommend_list") {
+            showingDailyRecommendListOnHome = false
+        }
+        val queueKey = buildHomeQueueRenderKey()
+        if (queueKey != lastRenderedHomeQueueKey || reason != "progress_tick") {
+            lastRenderedHomeQueueKey = queueKey
+            renderHomeRecommendationPreview()
+            if (selectedPage == PAGE_QUEUE) {
+                rebuildTrackLists()
+            }
+            appendRuntimeLog("home queue sync reason=$reason key=${shortId(queueKey)}")
+        }
+    }
+
+    private fun buildHomeQueueRenderKey(): String {
+        return when {
+            kugouRadioSessionManager.isActive() -> {
+                val current = kugouRadioSessionManager.current()?.sourceTrackId.orEmpty()
+                "radio:$current:${kugouRadioSessionManager.historySnapshot().size}:${kugouRadioSessionManager.upcomingSnapshot().size}"
+            }
+            sourcePlaybackSession.isKugouActive() || kugouQueueManager.snapshot().isNotEmpty() -> {
+                val current = sourcePlaybackSession.currentKugouTrack()?.sourceTrackId.orEmpty()
+                "kugou:$current:${kugouQueueManager.snapshot().size}"
+            }
+            loadedTracks.isNotEmpty() || explicitEmbyUserActivation -> {
+                "emby:$currentTrackIndex:${loadedTracks.size}"
+            }
+            hasKugouSession() -> "kugou-empty"
+            else -> "login-required"
+        }
     }
 
     private fun buildHomeQueueState(): HomeQueuePanelBinder.QueueState {
@@ -1595,90 +1686,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return HomeQueuePanelBinder.QueueState.LoginRequired
     }
 
-    private fun renderHomeLyricsPreview(currentTrack: String) {
-        val displayTrack = if (currentTrack.isBlank()) getString(R.string.track_not_loaded) else currentTrack
-        val displayArtist = currentSourcePlaybackSnapshot()?.artist?.takeIf { it.isNotBlank() }
-            ?: previewArtistOverride
-            ?: ""
-        val trackKey = displayTrack.trim() + "\u0001" + displayArtist.trim()
-        if (trackKey != homeLyricsTrackKey) {
-            homeLyricsTrackKey = trackKey
-            val cached = homeLyricsCache[trackKey]
-            if (cached != null && cached.isNotEmpty()) {
-                homeLyricsLines = cached
-            } else {
-                homeLyricsLines = buildHomeLyricsLines(displayTrack)
-                requestLyricsFromLrcApi(trackName = displayTrack, artistName = displayArtist, trackKey = trackKey)
-            }
-        } else if (homeLyricsLines.isEmpty()) {
-            homeLyricsLines = homeLyricsCache[trackKey] ?: buildHomeLyricsLines(displayTrack)
-        }
-        val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-        renderHomeLyricsByPosition(positionMs)
-    }
-
-    private fun buildHomeLyricsLines(trackName: String): List<LyricLine> {
-        val fallbackText = getString(R.string.home_lyrics_placeholder)
-        return listOf(LyricLine(0L, fallbackText))
-    }
-
-    private fun requestLyricsFromLrcApi(trackName: String, artistName: String, trackKey: String) {
-        val cleanTrack = trackName.trim()
-        if (cleanTrack.isEmpty() || cleanTrack == getString(R.string.track_not_loaded)) {
-            return
-        }
-        if (!ensureWifiConnectedForNetworkRequest(requestTag = "lyrics_fetch", promptUser = false)) {
-            return
-        }
-        val baseUrl = resolveLrcApiBaseUrl()
-        if (baseUrl.isEmpty() || !isHttpUrl(baseUrl)) {
-            appendRuntimeLog("lyrics fetch skip reason=invalid-lrcapi-base track=$cleanTrack")
-            return
-        }
-        if (homeLyricsRequestTrackKey == trackKey) {
-            return
-        }
-        homeLyricsRequestTrackKey = trackKey
-        backgroundExecutor.execute {
-            val fetchedLines = fetchLyricsLinesFromLrcApi(baseUrl, cleanTrack, artistName.trim())
-            runOnUiThread {
-                if (homeLyricsRequestTrackKey == trackKey) {
-                    homeLyricsRequestTrackKey = null
-                }
-                if (homeLyricsTrackKey != trackKey) {
-                    return@runOnUiThread
-                }
-                if (fetchedLines.isEmpty()) {
-                    appendRuntimeLog("lyrics fetch empty track=$cleanTrack artist=$artistName")
-                    return@runOnUiThread
-                }
-                homeLyricsCache[trackKey] = fetchedLines
-                if (homeLyricsCache.size > LYRICS_CACHE_MAX_TRACKS) {
-                    val iterator = homeLyricsCache.entries.iterator()
-                    if (iterator.hasNext()) {
-                        iterator.next()
-                        iterator.remove()
-                    }
-                }
-                homeLyricsLines = fetchedLines
-                val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-                renderHomeLyricsByPosition(positionMs)
-                appendRuntimeLog("lyrics fetch success track=$cleanTrack lines=${fetchedLines.size}")
-            }
-        }
-    }
-
-    private fun resolveLrcApiBaseUrl(): String {
-        val input = lrcApiBaseUrlInput.text?.toString()?.trim().orEmpty()
-        if (input.isNotEmpty()) {
-            return input
-        }
-        return getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
-            .getString(KEY_LRCAPI_BASE_URL, "")
-            .orEmpty()
-            .trim()
-    }
-
     private fun resolveCfReferenceDomain(): String {
         val input = cfRefDomainInput.text?.toString()?.trim().orEmpty()
         if (input.isNotEmpty()) {
@@ -1688,235 +1695,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .getString(KEY_CF_REF_DOMAIN, "")
             .orEmpty()
             .trim()
-    }
-
-    private fun fetchLyricsLinesFromLrcApi(baseUrl: String, trackName: String, artistName: String): List<LyricLine> {
-        val endpoint = buildLrcApiLyricsUrl(baseUrl, trackName, artistName)
-        val lrcApiClient = embyApi.buildHttpClient(baseUrl, resolveCfReferenceDomain())
-        return try {
-            appendRuntimeLog("lyrics fetch GET $endpoint")
-            val request = Request.Builder()
-                .url(endpoint)
-                .get()
-                .header("Accept", "text/plain, application/json")
-                .build()
-            lrcApiClient.newCall(request).execute().use { response ->
-                val code = response.code()
-                val payload = response.body()?.string().orEmpty()
-                appendRuntimeLog("lyrics fetch response code=$code body=${embyApi.previewPayload(payload)}")
-                if (code !in 200..299 || payload.isBlank()) {
-                    emptyList()
-                } else {
-                    val lyricPayload = extractLyricPayload(payload)
-                    parseLyricLines(lyricPayload)
-                }
-            }
-        } catch (e: Exception) {
-            appendRuntimeLog("lyrics fetch exception type=${e.javaClass.simpleName} msg=${e.message}")
-            emptyList()
-        }
-    }
-
-    private fun buildLrcApiLyricsUrl(baseUrl: String, trackName: String, artistName: String): String {
-        val normalized = baseUrl.trim().trimEnd('/')
-        val endpoint = if (normalized.endsWith("/lyrics", ignoreCase = true)) {
-            normalized
-        } else {
-            "$normalized/lyrics"
-        }
-        return "$endpoint?title=${urlEncode(trackName)}&artist=${urlEncode(artistName)}"
-    }
-
-    private fun extractLyricPayload(payload: String): String {
-        val trimmed = payload.trim()
-        if (trimmed.isEmpty()) {
-            return ""
-        }
-        if (!trimmed.startsWith("{")) {
-            return trimmed
-        }
-        return try {
-            val root = JSONObject(trimmed)
-            val directKeys = arrayOf("lyrics", "lyric", "lrc", "content")
-            for (key in directKeys) {
-                val text = root.optString(key).trim()
-                if (text.isNotEmpty()) {
-                    return text
-                }
-            }
-            val dataText = root.opt("data")
-            if (dataText is String && dataText.trim().isNotEmpty()) {
-                return dataText.trim()
-            }
-            val dataObj = root.optJSONObject("data")
-            if (dataObj != null) {
-                for (key in directKeys) {
-                    val text = dataObj.optString(key).trim()
-                    if (text.isNotEmpty()) {
-                        return text
-                    }
-                }
-            }
-            trimmed
-        } catch (_: Exception) {
-            trimmed
-        }
-    }
-
-    private fun parseLyricLines(rawLyrics: String): List<LyricLine> {
-        val normalized = rawLyrics
-            .replace("\r\n", "\n")
-            .replace('\r', '\n')
-            .trim()
-        if (normalized.isEmpty()) {
-            return emptyList()
-        }
-
-        // Some providers return all LRC tags in one line. Inject newlines before each time tag.
-        val expanded = normalized.replace(
-            Regex("(?<!\\n)\\[(\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?)]"),
-            "\n[$1]"
-        )
-        val timedPattern = Regex("\\[(\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?)]\\s*([^\\[]*)")
-        val parsed = mutableListOf<LyricLine>()
-        timedPattern.findAll(expanded).forEach { match ->
-            val timeTag = match.groupValues[1]
-            val text = match.groupValues[2].replace('\n', ' ').trim()
-            val timeMs = parseLrcTimeTagToMs(timeTag)
-            if (timeMs >= 0L && text.isNotEmpty()) {
-                parsed.add(LyricLine(timeMs = timeMs, text = text))
-            }
-        }
-        if (parsed.isNotEmpty()) {
-            return parsed.sortedBy { it.timeMs }
-        }
-        return emptyList()
-    }
-
-    private fun parseLrcTimeTagToMs(timeTag: String): Long {
-        val parts = timeTag.split(":")
-        if (parts.size != 2) {
-            return -1L
-        }
-        val minute = parts[0].toLongOrNull() ?: return -1L
-        val secPart = parts[1]
-        return if (secPart.contains(".")) {
-            val secSplit = secPart.split(".", limit = 2)
-            if (secSplit.size != 2) {
-                return -1L
-            }
-            val second = secSplit[0].toLongOrNull() ?: return -1L
-            val ms = secSplit[1].padEnd(3, '0').take(3).toLongOrNull() ?: return -1L
-            minute * 60_000L + second * 1_000L + ms
-        } else {
-            val second = secPart.toLongOrNull() ?: return -1L
-            minute * 60_000L + second * 1_000L
-        }
-    }
-
-    private fun renderHomeLyricsByPosition(positionMs: Long) {
-        if (homeLyricsLines.isEmpty()) {
-            homeLyricsText.text = getString(R.string.home_lyrics_placeholder)
-            return
-        }
-        val activeIndex = findActiveLyricIndex(positionMs)
-        val builder = SpannableStringBuilder()
-        var activeStartOffset = -1
-        var activeEndOffset = -1
-        homeLyricsLines.forEachIndexed { index, line ->
-            val start = builder.length
-            builder.append(line.text)
-            val end = builder.length
-            val isActive = index == activeIndex
-            if (isActive) {
-                activeStartOffset = start
-                activeEndOffset = end
-            }
-            builder.setSpan(
-                ForegroundColorSpan(resources.getColor(if (isActive) R.color.white else R.color.text_secondary)),
-                start,
-                end,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            builder.setSpan(
-                AbsoluteSizeSpan(if (isActive) 20 else 19, true),
-                start,
-                end,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            if (isActive) {
-                builder.setSpan(
-                    StyleSpan(android.graphics.Typeface.BOLD),
-                    start,
-                    end,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            if (index < homeLyricsLines.lastIndex) {
-                builder.append('\n')
-            }
-        }
-        homeLyricsText.text = builder
-        centerHomeLyricsLine(
-            activeStartOffset = activeStartOffset,
-            activeEndOffset = activeEndOffset
-        )
-    }
-
-    private fun centerHomeLyricsLine(
-        activeStartOffset: Int,
-        activeEndOffset: Int
-    ) {
-        homeLyricsText.post {
-            val layout = homeLyricsText.layout ?: return@post
-            val viewportHeight = homeLyricsScroll.height
-            if (viewportHeight <= 0) {
-                return@post
-            }
-            if (activeStartOffset < 0 || activeEndOffset <= activeStartOffset) {
-                return@post
-            }
-            val safeStart = activeStartOffset.coerceIn(0, layout.text.length)
-            val safeEndExclusive = activeEndOffset.coerceIn(safeStart + 1, layout.text.length)
-            val startLine = layout.getLineForOffset(safeStart)
-            val endLine = layout.getLineForOffset((safeEndExclusive - 1).coerceAtLeast(0))
-            val lyricTop = layout.getLineTop(startLine)
-            val lyricBottom = layout.getLineBottom(endLine)
-            val lineHeight = (lyricBottom - lyricTop)
-                .coerceAtLeast(dpToPx(20))
-            val dynamicVerticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
-            if (homeLyricsText.paddingTop != dynamicVerticalPadding || homeLyricsText.paddingBottom != dynamicVerticalPadding) {
-                homeLyricsText.setPadding(
-                    homeLyricsText.paddingLeft,
-                    dynamicVerticalPadding,
-                    homeLyricsText.paddingRight,
-                    dynamicVerticalPadding
-                )
-                homeLyricsText.post {
-                    centerHomeLyricsLine(
-                        activeStartOffset = activeStartOffset,
-                        activeEndOffset = activeEndOffset
-                    )
-                }
-                return@post
-            }
-
-            val lineCenter = homeLyricsText.paddingTop + (lyricTop + lyricBottom) / 2
-            val viewportCenter = viewportHeight / 2
-            val maxScroll = (homeLyricsText.height - homeLyricsScroll.height).coerceAtLeast(0)
-            val targetScroll = (lineCenter - viewportCenter).coerceIn(0, maxScroll)
-            homeLyricsScroll.scrollTo(0, targetScroll)
-        }
-    }
-
-    private fun findActiveLyricIndex(positionMs: Long): Int {
-        var active = 0
-        homeLyricsLines.forEachIndexed { index, line ->
-            if (positionMs >= line.timeMs) {
-                active = index
-            }
-        }
-        return active
     }
 
     private fun renderTrackContainer(
@@ -2079,14 +1857,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun playKugouTrackFromQueue(track: SourceTrack, contextTracks: List<SourceTrack>, source: String) {
+        if (source != "daily_recommend" && source != "home_recommend") {
+            dailyRecommendCoordinator.markManualQueueSelected(source)
+        }
         kugouRadioSessionManager.clear()
         kugouQueueManager.setupQueue(track, contextTracks)
         appendRuntimeLog("kugou queue setup source=$source size=${kugouQueueManager.snapshot().size} track=${track.title}")
         rebuildTrackLists()
+        refreshCurrentPlaybackViews("kugou_queue_setup")
         playKugouTrack(track)
     }
 
     private fun playKugouRadioTrack(radio: SourceRadio?, radioTracks: List<SourceTrack>, track: SourceTrack) {
+        dailyRecommendCoordinator.markManualQueueSelected("radio")
         val started = kugouRadioSessionManager.start(radio, radioTracks, track)
         if (started == null) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_kugou_radio_empty)) }
@@ -2097,14 +1880,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             "kugou radio session start radio=${radio?.sourceRadioId.orEmpty()} title=${radio?.title.orEmpty()} size=${kugouRadioSessionManager.queueSnapshot().size} track=${started.title}"
         )
         rebuildTrackLists()
+        refreshCurrentPlaybackViews("radio_session_start")
         playKugouTrack(started)
     }
 
     private fun playKugouRadioQueueTrack(track: SourceTrack) {
+        dailyRecommendCoordinator.markManualQueueSelected("radio_queue")
         val selected = kugouRadioSessionManager.select(track)
         if (selected != null) {
             appendRuntimeLog("kugou radio queue select track=${selected.title}")
             rebuildTrackLists()
+            refreshCurrentPlaybackViews("radio_queue_select")
             playKugouTrack(selected)
         }
     }
@@ -2149,6 +1935,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return
         }
         sourcePlaybackSession.markKugouActive(track)
+        refreshCurrentPlaybackViews("kugou_current_changed")
         val requestId = ++playbackRequestId
         pauseRequestedRequestId = -1
         stopDownloadController()
@@ -2197,6 +1984,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 )
                 sourcePlaybackSession.markKugouActive(track)
+                refreshCurrentPlaybackViews("kugou_play_url_resolved")
                 prepareAndPlayKugouUrl(track, resolved.playUrl.url, requestId)
             }
         }
@@ -2245,8 +2033,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             result.failureKind == KugouPlayUrlFailureKind.PAID_REQUIRED
         ) {
             triggerKugouDailyVip(reason = "play_url_permission_failure")
+            skipBlockedKugouTrack("play_url_permission")
         }
         showToast(toastRes)
+    }
+
+    private fun skipBlockedKugouTrack(reason: String): Boolean {
+        val current = sourcePlaybackSession.currentKugouTrack()
+        val nextTrack = if (kugouRadioSessionManager.isActive()) {
+            kugouRadioSessionManager.next()
+        } else {
+            kugouQueueManager.getNext(current)
+        }
+        if (nextTrack == null || nextTrack.sourceTrackId == current?.sourceTrackId) {
+            refreshCurrentPlaybackViews("${reason}_no_next")
+            return false
+        }
+        appendRuntimeLog("kugou skip blocked reason=$reason next=${nextTrack.title}")
+        updateKugouPlaybackUi(nextTrack, getString(R.string.feedback_next_pressed))
+        refreshCurrentPlaybackViews("${reason}_next")
+        playKugouTrack(nextTrack)
+        return true
     }
 
     private fun prepareAndPlayKugouUrl(track: SourceTrack, playUrl: String, requestId: Int) {
@@ -2261,6 +2068,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             return
                         }
                         sourcePlaybackSession.markKugouActive(track)
+                        refreshCurrentPlaybackViews("kugou_prepared")
                         observePlaybackAudioSession(source = "kugou_on_prepared")
                         PostHogTracker.capture(
                             context = applicationContext,
@@ -2299,12 +2107,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             }
                             if (radioNextTrack != null) {
                                 updateKugouPlaybackUi(radioNextTrack, getString(R.string.feedback_next_pressed))
+                                refreshCurrentPlaybackViews("kugou_radio_completion_next")
                                 playKugouTrack(radioNextTrack)
                                 return@runOnUiThread
                             }
                             val nextTrack = kugouQueueManager.getNext(track)
                             if (nextTrack != null) {
                                 updateKugouPlaybackUi(nextTrack, getString(R.string.feedback_next_pressed))
+                                refreshCurrentPlaybackViews("kugou_queue_completion_next")
                                 playKugouTrack(nextTrack)
                                 return@runOnUiThread
                             }
@@ -2431,6 +2241,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun playFromList(index: Int, source: ListSource) {
+        dailyRecommendCoordinator.markManualQueueSelected(source.name.lowercase(Locale.US))
         val targetTracks = if (source == ListSource.LIBRARY) libraryTracks else loadedTracks
         if (targetTracks.isEmpty()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
@@ -2831,11 +2642,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::playPauseButton.isInitialized || !this::hiFiDspController.isInitialized) {
             return
         }
-        val status = hiFiDspController.runtimeSnapshot().status
-        if (status == lastPlayButtonDspStatus) {
+        val state = hiFiDspController.runtimeSnapshot()
+        val status = state.status
+        val stateKey = "${state.status}:${state.mode.code}:${state.tier}:${state.flags}:${state.reason}"
+        if (stateKey == lastPlayButtonDspStateKey) {
             return
         }
-        lastPlayButtonDspStatus = status
+        lastPlayButtonDspStateKey = stateKey
+        appendRuntimeLog(
+            "hifi-dsp indicator status=${state.status.name} mode=${state.mode.code} tier=${state.tier} flags=${state.flags} reason=${state.reason}"
+        )
         playPauseButton.background = buildPlayPauseButtonBackground(resolveDspIndicatorStrokeColor(status))
     }
 
@@ -2902,7 +2718,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             if (!isUserSeeking) {
                 playbackSeekBar.progress = 0
             }
-            renderHomeLyricsByPosition(0L)
+            homeLyricsBinder.renderPosition(0L)
             maybeSyncServiceCommandTrace()
             return
         }
@@ -2937,7 +2753,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
             playbackSeekBar.progress = seekProgress
         }
-        renderHomeLyricsByPosition(positionMs)
+        homeLyricsBinder.renderPosition(positionMs)
 
         if (snapshot.source == MusicSource.KUGOU) {
             downloadProgressValue.text = getString(R.string.download_progress_placeholder)
@@ -3181,6 +2997,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 }
                 rebuildTrackLists()
+                refreshCurrentPlaybackViews("emby_error_skip")
                 playTrackAtCurrentIndex()
             } else {
                 updateState {
@@ -3193,6 +3010,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     )
                 }
                 rebuildTrackLists()
+                refreshCurrentPlaybackViews("emby_error_no_next")
             }
         }
     }
@@ -3602,6 +3420,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouQueueManager.clear()
         kugouRadioSessionManager.clear()
         sourcePlaybackSession.markEmbyActive()
+        refreshCurrentPlaybackViews("emby_current_changed")
         val track = loadedTracks[currentTrackIndex]
         val nextTrack = loadedTracks.getOrNull(currentTrackIndex + 1)
         val downloadUrl = embyApi.buildDownloadUrl(base, track.id, token)
@@ -3716,6 +3535,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                                     )
                                 }
                                 rebuildTrackLists()
+                                refreshCurrentPlaybackViews("emby_completion_next")
                                 playTrackAtCurrentIndex("auto_next")
                             } else {
                                 updateState { s ->
@@ -4390,6 +4210,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                                     )
                                 }
                                 rebuildTrackLists()
+                                refreshCurrentPlaybackViews("emby_cache_completion_next")
                                 playTrackAtCurrentIndex("auto_next")
                             } else {
                                 updateState { s ->
@@ -5401,7 +5222,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             ?: getString(R.string.track_artist_placeholder)
         trackArtistValue.text = currentArtist
         playbackValue.setText(state.playbackStatusRes)
-        renderHomeLyricsPreview(currentTrack)
+        homeLyricsBinder.updateTrack(sourceSnapshot, state.isPlaying, playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L)
         prevButton.setImageResource(android.R.drawable.ic_media_previous)
         nextButton.setImageResource(android.R.drawable.ic_media_next)
         playPauseButton.setImageResource(
@@ -5412,6 +5233,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         prevButton.setColorFilter(resources.getColor(R.color.white))
         nextButton.setColorFilter(resources.getColor(R.color.white))
         playPauseButton.setColorFilter(resources.getColor(R.color.white))
+        val canLikeCurrentKugouTrack = sourcePlaybackSession.currentKugouTrack() != null
+        likeCurrentTrackButton.isEnabled = canLikeCurrentKugouTrack
+        likeCurrentTrackButton.alpha = if (canLikeCurrentKugouTrack) 1f else 0.45f
         prevButton.isEnabled = sourceSnapshot?.hasTrack == true || loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled

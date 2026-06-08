@@ -1,14 +1,16 @@
 # TASK_QUEUE
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Ready
-- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`, Execution: Module）: S5 集成设备验证执行包与证据回填。设备窗口可用时优先执行；不改代码，只采集证据并回写。
+- None. 本轮首页/发现页/DSP 诊断纠偏已本地完成；下一步进入设备验证或基于实机日志的 targeted fix。
 
 ## Pending / Planned
 
+- `T-S5-DSP-149`（P0, Module `M-S5-DSP-045`）: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 和实机/手机 `hifi-dsp` 日志。
 - `T-S5-TRIAGE-140`（P0, Module `M-S5-VAL-041`）: 真实设备失败分流与 targeted fix 计划，依赖 `T-S5-VAL-137`。
-- API17 A~N/P 实机回归：等待手机/API17 设备执行并回传 QR 登录、direct content、每日推荐、Scene、队列自动滚动、VIP 与 PostHog/logcat 脱敏证据。
+- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`）: S5 集成设备验证执行包与证据回填。原因：当前用户已提供新纠偏需求，验证清单需先由 `T-S5-OBS-147` 更新后再执行。
+- API17 A~N/P 实机回归：等待本轮首页/发现页/DSP 诊断纠偏完成后，执行并回传 QR 登录、direct content、每日推荐、发现页、队列自动滚动、VIP、歌词、DSP 与 PostHog/logcat 脱敏证据。
 
 ## Blocked
 
@@ -39,6 +41,14 @@ Last Updated: 2026-06-07
 - None
 
 ## Done
+- `T-S5-DSP-148`: DSP 红圈原因显示与 runtime/logcat 采证补齐；播放按钮 DSP 指示按完整 runtime state 低频刷新并记录 `hifi-dsp indicator status=... reason=...`。
+- `T-S5-OBS-147`: 首页/发现页纠偏观测与 API17 回归清单更新；同步 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 与 `docs/S5_OBSERVABILITY_COVERAGE.md`。
+- `T-S5-DISC-146`: 发现页紧凑 tab + 歌单网格 UI 重构；隐藏独立 Scene 左侧入口，去掉发现页标题/状态占位，一级/二级 tab 多行展示并自动加载歌单。
+- `T-S5-DISC-145`: 发现页一级/二级分类模型与 `.NET` 行为对齐；保留 `categoryName/tagName` 分组，不再把标签压平成“分类 · 标签”。
+- `T-S5-HOME-144`: 首页播放块增加点赞按钮；酷狗当前曲可直接复用现有 `requestLikeTrack`。
+- `T-S5-HOME-143`: 首页歌词酷狗 direct 化与 10s 空闲切回歌词；新增 `KugouLyricClient` 与 `HomeLyricsBinder`，按 `.NET` lyrics search/download + KRC/LRC decode/parse。
+- `T-S5-HOME-142`: 首页右侧当前队列跟随下一曲与自动滚动修复；当前播放变化、自然下一曲、权限跳过和 Emby/Kugou 切换路径刷新 Home queue。
+- `T-S5-HOME-141`: 每日推荐启动自动播放与左侧入口列表展示分离；启动自动播保留，左侧入口只展示当日推荐列表，手动切其它列表后不抢播。
 - `T-S5-MAIN-139`: `EqualizerPageBinder` 提取；新增 focused binder 承接音效页开关、入口、返回、模式按钮和 fullscreen page 渲染，`MainActivity` 只保留 DSP 状态 apply/persist 委托。
 - `T-S5-MAIN-138`: `RuntimeLogBinder` 提取；新增 focused binder 承接 runtime log buffer、preview、fullscreen dialog、copy/clear 与 destroy dismiss，保留后台线程 append 后主线程渲染防护。
 - `T-S5-VIP-133`: VIP direct user client 与记录/领取/升级解析；新增 `KugouDirectUserClient`，按 `.NET` `RawUserApi` 接入 record/receive/upgrade。

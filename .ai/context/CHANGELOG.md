@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-06-08
+- Completed local Home UX + Discover + DSP diagnostics correction: daily recommend startup autoplay is separated from the left-nav list entry, Home current queue sync/scroll is refreshed on playback changes, Home lyrics use direct Kugou lyric search/download through `KugouLyricClient` and `HomeLyricsBinder`, and the playback block has a Kugou like button.
+- Reworked Discover to preserve `.NET` category/tag grouping and render compact multi-row first/second-level tabs with playlist thumbnail grid cards; standalone Scene left nav is hidden.
+- Added low-frequency DSP indicator diagnostics: runtime log now records `hifi-dsp indicator status=... mode=... tier=... flags=... reason=...` when the play button border state changes.
+- Updated API17 regression and S5 observability docs for Home queue sync, direct lyrics, Discover compact tabs, and DSP reason evidence.
+- Review validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and previous `assembleDebug`; `check_code_health.py` still fails on existing `MainActivity.kt` size red-line findings (`5579` lines and one `314` line method).
+
 ## 2026-06-07
 - Completed local Home/Scene/VIP/MainActivity S5 batch: added daily recommend playback entry, current queue panel, Scene direct/grid UI, daily one-day VIP flow, permission-aware play URL failure handling, `RuntimeLogBinder`, and `EqualizerPageBinder`.
 - Added focused files `KugouDirectUserClient`, `KugouSceneContentClient`, `DailyRecommendCoordinator`, `HomeQueuePanelBinder`, `KugouDailyVipCoordinator`, `KugouSceneBinder`, `RemoteThumbnailLoader`, `RuntimeLogBinder`, and `EqualizerPageBinder`; `MainActivity.kt` is reduced to about 5755 lines but remains a tracked refactoring target.

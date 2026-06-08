@@ -1,17 +1,19 @@
 # NEXT_STEPS
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## One-Line Summary
-- 已完成首页/Scene/队列/VIP 本地实现，并完成 `RuntimeLogBinder` 与 `EqualizerPageBinder` 提取；下一步是手机/API17 设备回归验证，或重新规划下一批 `MainActivity` 拆分点。
+- 首页/发现页/DSP 诊断纠偏已本地完成并通过 compile/assemble；下一步优先做手机/API17 实机验证，DSP targeted fix 等红圈 reason 日志。
 
 ## Current Highest Priority
-- `T-S5-VAL-137`: 手机/API17 设备集成验证。设备窗口不可用时，`M-S5-MAIN-042` 的 RuntimeLog/EQ 提取已完成，继续开发前需规划下一批低耦合拆分任务。
+- `T-S5-VAL-137`: 执行 S5 集成设备验证并回填证据；若 DSP 仍红圈，收集 `hifi-dsp indicator ... reason=...` 与 `hifi-dsp native status=...` 日志后进入 `T-S5-DSP-149`。
 
 ## Guardrail-Adjusted Queue
 - 当前 Ready:
-  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
+  - None. 本轮 Ready 已本地完成。
 - 当前 Planned:
+  - `T-S5-DSP-149`: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 和实机日志。
+  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填，需等本轮纠偏和清单更新。
   - `T-S5-TRIAGE-140`: 真实设备失败分流与 targeted fix 计划。
   - 后续 MainActivity 拆分任务：需重新规划。
   - API17 A~N/P 实机回归，需真实设备/手机环境回传证据。
@@ -19,7 +21,7 @@ Last Updated: 2026-06-07
   - None
 - 原因:
   - `T-S5-PLAY-110/111` 已完成 source boundary 和普通队列。
-  - `KugouContentRenderer`、`KugouContentBinder`、`RuntimeLogBinder` 与 `EqualizerPageBinder` 已迁出内容页、日志和音效页职责，`MainActivity.kt` 最新约 5755 行，但仍超过 entry red-line。
+  - `KugouContentRenderer`、`KugouContentBinder`、`RuntimeLogBinder`、`EqualizerPageBinder`、`HomeLyricsBinder` 与 `KugouLyricClient` 已迁出内容页、日志、音效页和歌词职责，`MainActivity.kt` 最新约 5579 行，但仍超过 entry red-line。
   - `T-S5-PLAY-112` 已完成：radio active 时 next/previous/completion 由 `KugouRadioSessionManager` 接管，不走普通 queue 或 Emby queue。
   - `T-S4-AUDIO-097` 已完成：non-direct buffer 会走 direct scratch bridge，不再直接把按钮置红。
   - `T-S5-MAIN-116` 已完成：页面壳路线结论为先 Binder 化低耦合页面，再做 Fragment 试点。
@@ -31,13 +33,10 @@ Last Updated: 2026-06-07
 
 ## Immediate Next Step
 
-- 设备窗口可用时推荐执行:
-  - 安装当前 debug APK 到手机/API17 设备，按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 的 K/M/G/N 相关条目回归。
-  - 重点回传 Scene list/song 真实响应是否匹配 Android 解析、Radio/Scene 缩略图弱网表现、首页/队列页自动滚动截图或视频、VIP record/receive/upgrade 与无权限播放提示证据。
-
-- 设备窗口不可用时推荐执行:
-  - 暂停继续堆新功能，回到 planning 为下一批 `MainActivity` 拆分建立任务。
-  - 候选方向：播放/service bridge、下载控制、设置页其余低耦合区块；必须先做边界评估。
+- 推荐执行:
+  - 安装本轮 debug APK 并执行 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 的 K/M/I 重点项。
+  - 若验证通过，可进入 review/提交/推送；若失败，先回传对应 logcat/截图，按 `T-S5-TRIAGE-140` 分流。
+  - `T-S5-DSP-149` 必须等待实机红圈 reason/log 或用户提供 `hifi-dsp` 日志后再 Ready。
 
 - 手机/API17 验证：
   - 未登录首页点击刷新应弹窗显示二维码。
@@ -48,7 +47,13 @@ Last Updated: 2026-06-07
   - 点击喜欢应记录为 pending -> success/failed，PostHog 只记录脱敏 `kugou_like_*` 事件。
   - 运行中本地登录态不可用时弹窗登录，不清当前列表/队列。
   - 冷启动或扫码登录成功后应后台触发 `kugou_daily_vip_start`，不阻塞每日推荐加载/播放。
+  - 首次进入首页应加载并播放每日推荐第一首；左侧每日推荐入口再次点击只展示列表，不直接播放。
+  - 手动切到发现歌单、Radio 或其它播放列表后，返回首页不应被每日推荐抢播。
+  - 首页右侧队列在手动下一曲、自然下一曲、失败跳过和 Radio advance 后必须高亮并滚动到当前歌曲。
+  - 首页切在队列 tab 且播放中时，10s 无操作自动切回歌词 tab；空播放不切。
+  - 发现页不显示“发现歌单”标题行、“二级分类：xxx”行和刷新按钮；一级/二级 tab 不横向滚动，切换自动加载歌单网格。
   - 无权限/VIP 歌曲应显示“无权限播放，可能需要 VIP”，并记录 `kugou_direct_play_url_failed` 的 `failure_kind/error_code`。
+  - DSP 红圈时应能看到或记录具体 reason，例如 native-not-ready/native-process-error/unsupported-format/bypass。
 
 推荐 logcat:
 
@@ -57,9 +62,11 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 ```
 
 ## Planned After Ready
+- `T-S5-DSP-149`: 根据红圈 reason 和 `hifi-dsp` 日志做 targeted fix。
+- `T-S5-VAL-137`: 本轮纠偏后执行设备验证闭环。
 - `T-S5-TRIAGE-140`: 设备验证失败项分流后再进入 targeted fix。
 - 下一批 MainActivity 红线治理：需先 planning，避免误拆播放/service 主链。
-- 若实机发现 Scene 字段不一致，回到 `KugouMusic.NET` 和真实响应核对，修 `KugouSceneContentClient` 字段映射，不猜测协议。
+- 若实机发现发现页/Scene 字段不一致，回到 `KugouMusic.NET` 和真实响应核对，修对应 direct client 字段映射，不猜测协议。
 
 ## Blocked / Deferred
 - `B-KG-EMBY-INGEST-001`: 点赞后将播放缓存上传到 Emby 并纳入媒体库。
@@ -69,8 +76,8 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
   - 原因: 外部设备窗口。
 
 ## Important Notes
-- 当前主干为 `master@18c4723`；本地有 `M-S5-KG-037` 与 `T-S5-KG-123` 实现改动，尚未推送。
-- 2026-06-07 最新需求已规划：左侧每日推荐、酷狗隐藏 Emby 队列按钮、首页右侧当前队列、Scene `.NET` 来源、Radio/Scene 网格缩略图、Scene tab 展开收缩、所有队列自动滚动到当前歌曲。
+- 当前主干为 `master`；本轮首页/发现页/DSP 诊断实现经 review 后提交推送，具体 commit 以 `git log -1` 为准。
+- 2026-06-08 最新需求已规划：每日推荐启动自动播放但入口列表化、首页右侧队列跟随、首页歌词酷狗 direct、播放块点赞、发现页紧凑两级 tab + 歌单网格、DSP 红圈原因采证。
 - `M-S5-KG-037` 已新增：Kugou Post-login Loading & Login Recovery。
 - `T-S5-MAIN-108` 已完成：`MainActivity.kt` 由 6443 行降到 6213 行，新增 `SourceRowRenderer`。
 - `T-S5-MAIN-115` 已完成：`KugouContentRenderer`/`KugouContentBinder` 承接内容页渲染、请求和状态，`MainActivity.kt` 当前约 5632 行。
@@ -87,4 +94,4 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 - 新增功能必须有足够 PostHog/runtime/logcat 证据；敏感信息必须过滤，PostHog 不作为高频原始日志池。
 - QR refresh 失败态应可重试；若手机仍崩溃，优先回传 `FATAL EXCEPTION` / `Caused by` 堆栈。
 - DSP 红框只能代表真实 fail-open/bypass/error，正常 native active 应为绿色。
-- `python scripts/check_code_health.py` 当前会因既有 `MainActivity.kt` red-line 失败；最新本地结果为 5755 行/粗略大方法 4026 行，后续拆分不得新增 red finding。
+- `python scripts/check_code_health.py` 当前会因既有 `MainActivity.kt` red-line 失败；最新本地结果为 5579 行/一个 314 行方法，后续拆分不得新增 red finding。

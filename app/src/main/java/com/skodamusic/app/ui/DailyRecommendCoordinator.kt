@@ -8,11 +8,22 @@ class DailyRecommendCoordinator(
     private var pendingAutoPlay = false
     private var pendingForce = false
     private var firstEntryPlayed = false
+    private var manualQueueSelected = false
 
     fun reset() {
         pendingAutoPlay = false
         pendingForce = false
         firstEntryPlayed = false
+        manualQueueSelected = false
+    }
+
+    fun markManualQueueSelected(source: String) {
+        if (!manualQueueSelected) {
+            appendRuntimeLog("daily recommend auto-play lockout source=$source")
+        }
+        manualQueueSelected = true
+        pendingAutoPlay = false
+        pendingForce = false
     }
 
     fun requestPlay(
@@ -24,6 +35,10 @@ class DailyRecommendCoordinator(
         requestLoad: () -> Unit,
         playFirst: (SourceTrack, List<SourceTrack>, String) -> Unit
     ) {
+        if (!force && manualQueueSelected) {
+            appendRuntimeLog("daily recommend auto-play skip reason=$reason state=manual-queue")
+            return
+        }
         if (!force && firstEntryPlayed) {
             return
         }
@@ -59,6 +74,12 @@ class DailyRecommendCoordinator(
         tracks: List<SourceTrack>,
         playFirst: (SourceTrack, List<SourceTrack>, String) -> Unit
     ) {
+        if (!force && manualQueueSelected) {
+            pendingAutoPlay = false
+            pendingForce = false
+            appendRuntimeLog("daily recommend play-first skip reason=$reason state=manual-queue")
+            return
+        }
         if (!force && firstEntryPlayed) {
             pendingAutoPlay = false
             pendingForce = false

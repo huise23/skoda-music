@@ -1,6 +1,6 @@
 # SCOPE
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Project
 - 名称: `skoda-music`
@@ -21,6 +21,10 @@ Last Updated: 2026-06-07
   - 2026-06-07 新增用户确认：车机扫码登录酷狗成功后，内容列表应按“默认页优先、其他页懒加载”策略自动加载；运行中 token 失效不得清空现有内容，应弹窗登录，登录成功后隐藏弹窗并继续当前页面。
   - 2026-06-07 新增用户确认：左侧导航新增“每日推荐”入口；首次进入首页自动加载每日推荐并播放第一首；酷狗模式隐藏旧 Emby 队列按钮；首页右侧常驻展示当前播放列表/队列而非推荐列表；Radio/Scene 使用带缩略图网格，Scene 来源按 `KugouMusic.NET` `SceneClient` / `RawMediaCatalogApi`；所有队列视图自动滚动到当前歌曲。
   - 2026-06-07 新增用户确认：每日首次启动/登录成功后必须按 `KugouMusic.NET` 自动领取一日 VIP；能查服务端领取记录就查，查不到时用本地记录防重复；失败需自动重试；酷狗播放 URL 因无 VIP/无权限失败时必须明确提示“无权限/需要 VIP”，并用 PostHog/runtime 脱敏记录。
+  - 2026-06-08 新增用户确认：首次进入首页必须加载并播放每日推荐列表，但只要用户手动切到其它播放列表，后续每日推荐不得抢回播放；左侧每日推荐入口只展示当日推荐列表，列表点击才播放。
+  - 2026-06-08 新增用户确认：`.NET` UI 没有独立 Scene 页面，发现页按一级 tab + 二级 tab + 歌单网格呈现；Android 发现页需移除“发现歌单”“二级分类：xxx”和刷新按钮等占位，切换一/二级分类时自动获取歌单。
+  - 2026-06-08 新增用户确认：首页歌词需要恢复，歌词直接从酷狗查；当首页当前切在播放列表且正在播放时，10s 未操作自动切回歌词页，空播放不处理。
+  - 2026-06-08 新增用户确认：首页播放块删除按钮前增加点赞按钮，行为与其它页面点赞一致；首页右侧队列当前仍未跟随下一曲，需要作为硬性修复。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -49,12 +53,23 @@ Last Updated: 2026-06-07
 - 酷狗首页导航、Scene 与当前队列展示:
   - 左侧一级导航新增“每日推荐”按钮；该入口不替代首页中间播放块。
   - 首次进入首页时自动加载每日推荐列表，并直接播放第一首；每日推荐当天只使用一批，不提供刷新按钮。
+  - 左侧“每日推荐”入口点击后只展示当日推荐列表；不直接播放，列表项点击才建立每日推荐队列并播放。
+  - 用户手动切到任意其它播放列表后，每日推荐自动播放 guard 失效，后续不得自动抢回当前播放。
   - 酷狗默认模式下隐藏旧 Emby 队列按钮，避免用户进入 Emby 队列语义；Emby 显式入口仍保留。
   - 首页右侧面板展示当前播放列表/队列，适配每日推荐、普通歌单、Radio session、Scene 来源和 Emby 显式模式。
-  - 当前播放列表/队列必须自动滚动到当前歌曲；Radio 队列展示 current/upcoming/history，并同样自动滚动到 current。
+  - 当前播放列表/队列必须以“当前播放项变化”为同步源自动刷新选中态并滚动到当前歌曲；手动下一曲、自然下一曲、失败跳过、VIP/无权限跳过均必须覆盖。
+  - Radio 队列展示 current/upcoming/history，并同样自动滚动到 current。
   - 推荐电台和 Scene 入口使用网格卡片展示，卡片包含缩略图、标题和必要辅助信息。
-  - Scene 来源必须按 `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs` 与 `RawMediaCatalogApi` 的 scene list/module/audio/music 接口核对后移植；不得猜测未确认协议。
-  - Scene 分类 tab 不使用横向滚动；默认显示两到三排，多余分类使用展开/收缩；点击 tab 后自动收缩。
+  - 发现页 UI 对齐 `.NET` / 手机版酷狗的信息结构：一级 tab（场景/主题/语种/风格/心情/年代）全量显示，二级 tab 按当前一级显示并多行换行，下面是歌单网格。
+  - 发现页不显示“发现歌单”标题行、“二级分类：xxx”标题行或刷新按钮；切换一级/二级分类自动请求歌单。
+  - 发现页 tab 不使用横向滚动；有图分类默认两行，多余展开/收缩；无图标签默认三行，多余展开/收缩；点击 tab 后自动收缩。
+  - 现有独立 Scene 左侧入口/页面不作为用户可见入口继续扩展；Scene direct client/renderer 能力可复用到发现页。
+  - Scene/场景来源仍必须按 `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs` 与 `RawMediaCatalogApi` 的 scene list/module/audio/music 接口核对后移植；不得猜测未确认协议。
+- 首页歌词与播放块操作:
+  - 首页歌词 tab 必须恢复可用，并直接按 `KugouMusic.NET` `LyricClient` / `RawLyricApi` 流程查询酷狗歌词。
+  - 酷狗歌词流程为先查 `lyrics.kugou.com/v1/search` 获取 `id/accesskey/fmt`，再查 `lyrics.kugou.com/download`，按 KRC/LRC 解码并解析行时间。
+  - 首页当前在播放列表 tab 且正在播放时，若 10s 无用户操作则自动切回歌词 tab；空播放状态不触发。
+  - 播放块删除按钮前新增点赞按钮，复用现有酷狗点赞逻辑、状态记录、失败提示和脱敏观测；Emby/非酷狗来源按现有点赞能力边界处理。
 - 酷狗一日 VIP 与无权限播放处理:
   - 每日首次启动且存在有效酷狗登录态时，按 `KugouMusic.NET` `MainWindowViewModel.TryGetVip()` / `UserClient` / `RawUserApi` 流程自动尝试领取当天 VIP。
   - 登录成功后也执行同一 VIP 流程。
@@ -96,6 +111,7 @@ Last Updated: 2026-06-07
 
 ## Out of Scope
 - 上传播放缓存到 Emby 并纳入媒体库。
+- 独立 Scene 左侧入口作为长期产品入口继续扩展（已被发现页内一级/二级 tab 方案取代；若用户后续反向确认再恢复）。
 - Emby 入库失败的真实网络空闲重试队列。
 - 未经 `KugouMusic.NET` 支撑的酷狗接口、字段、流程或协议扩展。
 - 非酷狗来源点赞真实实现。
@@ -125,13 +141,18 @@ Last Updated: 2026-06-07
   - next/previous 按 `.NET` `PlaybackQueueManager` 语义循环。
   - 队列页能显示当前酷狗队列状态。
 - 酷狗首页/Scene/队列 UI 验收:
-  - 左侧可见“每日推荐”入口；点击直接播放当日推荐第一首。
-  - 冷启动/首次进入首页可自动加载每日推荐并播放第一首；无刷新按钮。
+  - 左侧可见“每日推荐”入口；点击只展示当日推荐列表，点击列表歌曲才播放。
+  - 冷启动/首次进入首页可自动加载每日推荐并播放第一首；用户手动切到其它播放列表后不再被每日推荐抢回；无刷新按钮。
   - 酷狗模式下旧 Emby 队列按钮不可见；显式 Emby 模式不被删除。
   - 首页右侧显示当前播放队列，不显示推荐列表。
-  - 每日推荐、歌单、Scene、Radio、Emby 显式队列均能自动滚动到当前歌曲。
+  - 每日推荐、歌单、发现场景、Radio、Emby 显式队列均能在当前曲目变化时更新选中态并自动滚动到当前歌曲。
   - Radio 队列展示 current/upcoming/history。
-  - Radio/Scene 网格含缩略图，1024x600 横屏无重叠、无横向 tab 滚动。
+  - 发现页只保留紧凑一级 tab、二级 tab 和歌单网格；无“发现歌单”标题行、无“二级分类：xxx”标题行、无刷新按钮。
+  - 发现页一级/二级切换会自动获取歌单；Radio/发现网格含缩略图，1024x600 横屏无重叠、无横向 tab 滚动。
+- 首页歌词/播放块验收:
+  - 首页歌词 tab 显示当前酷狗歌曲歌词；切歌后重新按酷狗歌词接口加载并滚动当前行。
+  - 当前首页停留播放列表 tab 且有正在播放歌曲时，10s 无操作自动切回歌词 tab；空播放不切。
+  - 播放块删除按钮前有点赞按钮，点击后走现有酷狗点赞逻辑并更新点赞状态/失败提示。
 - 酷狗一日 VIP / 无权限验收:
   - 冷启动存在有效酷狗 session 时，每日最多触发一次 VIP 领取流程；登录成功后也能触发，但同账号同日不重复刷接口。
   - 能查询服务端记录时，以服务端记录为准；查询不可用时，以本地账号+日期记录兜底。
@@ -170,6 +191,11 @@ Last Updated: 2026-06-07
   - `KugouSceneBinder` / `KugouContentRenderer` 扩展：Scene tab 展开收缩、网格卡片与缩略图渲染。
   - `DailyRecommendCoordinator` 或 `KugouContentBinder` 小范围扩展：每日推荐首次加载与直接播放第一首。
   - `MainActivity` 只做左侧按钮接线和当前 source/page 委托。
+- 2026-06-08 发现页与首页修正方向:
+  - `KugouDiscoverBinder` / `KugouContentBinder` 承接发现页一级/二级 tab 状态、切换自动加载、展开/收起和网格刷新；独立 Scene 页面只作为代码复用来源，不作为产品入口继续扩展。
+  - `KugouDiscoverRenderer` / `KugouContentRenderer` 承接紧凑 tab 和歌单网格渲染；不得把“发现歌单”标题/刷新按钮作为必需 UI。
+  - `HomeLyricsBinder` + `KugouLyricClient` 承接酷狗歌词 search/download/decode/parse/cache/10s idle 切换；`MainActivity` 只提供当前播放变化、播放位置 tick 和 tab 切换委托。
+  - `HomePlaybackActionsBinder` 或现有播放块接线小范围扩展承接播放块点赞按钮；复用 `requestLikeTrack` 的 source-aware 点赞能力。
 - 一日 VIP 领取应落在 focused `kugou/` client + `ui/`/coordinator 中：
   - `KugouDirectUserClient` 或等价类：VIP record / receive / upgrade direct 请求与字段解析。
   - `KugouDailyVipCoordinator` 或等价类：每日触发、服务端记录优先、本地兜底记录、重试/退避、登录后恢复。

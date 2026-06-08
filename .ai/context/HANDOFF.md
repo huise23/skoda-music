@@ -1,12 +1,28 @@
 # HANDOFF
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Project Snapshot
 - 项目: `skoda-music`（Android 车机播放器）
-- 当前主干: `master@18c4723`（本地已完成 `M-S5-KG-037` + `T-S5-KG-123`，尚未推送）
+- 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: 已完成“酷狗登录后自动加载与弹窗登录恢复”、Radio/Discover/Like direct 化、Home Daily Recommend、Scene/Grid、Current Queue Panel、一日 VIP 与无权限播放提示本地实现；下一步 Ready 为 `T-S5-VAL-137` 设备验证闭环；设备窗口不可用时需重新 planning 下一批 MainActivity 拆分，`T-S5-MAIN-138/139` 已本地完成。
+- 当前执行入口: 首页/发现页/DSP 诊断纠偏已本地完成。下一步优先执行 `T-S5-VAL-137` 设备验证；若 DSP 仍红圈，收集 `hifi-dsp indicator ... reason=...` 后进入 `T-S5-DSP-149`。
+
+## Latest Delta (Home UX + Discover + DSP Diagnostics, 2026-06-08)
+- 本地 Done:
+  - `T-S5-HOME-141/142/143/144`: 每日推荐入口列表化、首页队列跟随、酷狗 direct 歌词 + 10s idle 切回、播放块点赞按钮。
+  - `T-S5-DISC-145/146`: 发现页恢复 `.NET` category/tag 分组，一级/二级 tab 多行展示，歌单网格卡片，隐藏独立 Scene 入口。
+  - `T-S5-OBS-147`: 更新 API17 回归清单与 S5 观测覆盖。
+  - `T-S5-DSP-148`: 播放按钮 DSP 指示记录完整 runtime state 和 reason。
+- 新增文件:
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouLyricClient.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file 5579 行和一个 314 行方法。
 
 ## User-Confirmed Requirements (Must Keep)
 - API17 / Android 4.2.2 / AC83xx / 1024x600 横屏为硬约束。
@@ -25,13 +41,47 @@ Last Updated: 2026-06-07
 - 点赞后播放缓存上传到 Emby 入库继续阻塞；本地缓存设计目标最大不超过 `100MB`。
 - 首页中间播放块不改成推荐；左侧新增“每日推荐”按钮。
 - 首次进入首页自动加载每日推荐并播放第一首；每日推荐当天一批，不提供刷新按钮。
+- 左侧“每日推荐”入口只展示当日推荐列表，不直接播放；点击列表歌曲才播放。
+- 用户手动切到任意其它播放列表后，每日推荐不得再自动抢播。
 - 酷狗模式隐藏旧 Emby 队列按钮；Emby 显式入口仍保留。
-- 首页右侧展示当前播放列表/队列，不再作为推荐列表；每日推荐、普通歌单、Radio、Scene、Emby 显式队列均需自动滚动到当前歌曲。
+- 首页右侧展示当前播放列表/队列，不再作为推荐列表；每日推荐、普通歌单、Radio、发现页场景/歌单、Emby 显式队列均需在当前曲目变化时更新选中态并自动滚动到当前歌曲。
 - Radio 队列展示 current/upcoming/history。
 - Radio/Scene 入口使用带缩略图网格。
-- Scene 来源必须追溯到 `.NET` `SceneClient` / `RawMediaCatalogApi`；Scene tab 不横向滚动，默认两到三排，多余展开/收缩，点击后收缩。
+- `.NET` UI 没有独立 Scene 页面；Android 不继续扩展独立 Scene 左侧入口，场景能力并入发现页。
+- 发现页按一级 tab + 二级 tab + 歌单网格展示，去掉“发现歌单”标题行、“二级分类：xxx”说明行和刷新按钮；切换一/二级分类自动获取歌单。
+- Scene 来源仍必须追溯到 `.NET` `SceneClient` / `RawMediaCatalogApi`；发现页 tab 不横向滚动，有图默认两行、无图默认三行，多余展开/收缩，点击后收缩。
+- 首页歌词需要恢复，直接查酷狗歌词；参考 `.NET` `LyricClient` / `RawLyricApi`，`lyrics.kugou.com/v1/search` -> `/download` -> KRC/LRC decode/parse。
+- 首页当前在播放列表 tab 且正在播放时，10s 无操作自动切回歌词 tab；空播放不处理。
+- 播放块删除按钮前增加点赞按钮，行为同其它页面酷狗点赞。
 - 每日首次启动/登录成功后必须按 `.NET` 自动领取一日 VIP；服务端记录优先，本地账号+日期记录兜底；失败自动重试但不阻塞启动/推荐/播放。
 - 酷狗播放 URL 因无权限/VIP/付费不可用时必须明确提示“无权限/需要 VIP”，并记录脱敏 PostHog/runtime error_code。
+
+## Latest Planning (Home UX + Discover + DSP, 2026-06-08)
+- 已更新:
+  - `SCOPE.md`
+  - `DECISIONS.md`
+  - `PLAN.md`
+  - `MODULES.md`
+  - `TASK_BREAKDOWN.md`
+  - `TASK_QUEUE.md`
+  - `NEXT_STEPS.md`
+  - `CURRENT_STATUS.md`
+- Ready:
+  - `T-S5-HOME-141`: 每日推荐启动自动播放与左侧入口列表展示分离。
+  - `T-S5-HOME-142`: 首页右侧当前队列跟随下一曲与自动滚动修复。
+  - `T-S5-HOME-143`: 首页歌词酷狗 direct 化与 10s 空闲切回歌词。
+  - `T-S5-HOME-144`: 首页播放块增加点赞按钮。
+  - `T-S5-DISC-145`: 发现页一级/二级分类模型与 `.NET` 行为对齐。
+  - `T-S5-DISC-146`: 发现页紧凑 tab + 歌单网格 UI 重构。
+  - `T-S5-OBS-147`: 首页/发现页纠偏观测与 API17 回归清单更新。
+  - `T-S5-DSP-148`: DSP 红圈原因显示与 runtime/logcat 采证补齐。
+- Planned/Pending:
+  - `T-S5-DSP-149`: 等 `T-S5-DSP-148` 和实机/手机 `hifi-dsp` 日志后做 targeted fix。
+  - `T-S5-VAL-137`: 等本轮纠偏和回归清单更新后再执行设备验证闭环。
+- 工程注意:
+  - `MainActivity.kt` 当前仍约 5579 行，仍是 red-line 文件。后续不得把歌词解析、发现页状态机、队列滚动策略、DSP reason 解释堆回入口文件。
+  - `activity_main.xml` 约 1452 行，已是 layout warning；发现页 UI 优先复用容器 + 程序化 renderer，避免 XML 急剧膨胀。
+  - `KugouMusic.NET/` 只读参考，不修改。
 
 ## Latest Delta (MainActivity RuntimeLog/EQ Binder Extraction, 2026-06-07)
 - 本地 Done:
@@ -47,10 +97,10 @@ Last Updated: 2026-06-07
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - `gradle :app:assembleDebug --no-daemon` 通过。
-  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：5755 行、粗略大方法 4026 行。
-- Next recommended execution:
-  - 设备窗口可用时优先执行 `T-S5-VAL-137`。
-  - 设备窗口不可用但要继续开发时，先 planning 下一批拆分，不直接拆播放/service 主链。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：5579 行、一个 314 行方法。
+- Historical next recommendation:
+  - 当时建议设备验证优先；该入口已被 2026-06-08 用户反馈覆盖。
+  - 当前下一步以 `Latest Planning (Home UX + Discover + DSP, 2026-06-08)` 的 Ready 队列为准。
 
 ## Latest Requirement (Daily One-Day VIP + Permission-Aware Playback, 2026-06-07)
 - 用户确认:
@@ -119,7 +169,7 @@ Last Updated: 2026-06-07
   - 首页登录入口改为弹窗登录，不再以内嵌登录面板作为主要交互。
 - 状态:
   - `SCOPE.md`、`DECISIONS.md`、`PLAN.md`、`MODULES.md`、`TASK_BREAKDOWN.md`、`TASK_QUEUE.md` 已更新。
-  - 本地实现已完成并通过构建验证；尚未推送，尚未手机/API17 实机验证。
+  - 本地实现已完成并通过构建验证；已纳入后续提交批次，尚未手机/API17 实机验证。
 - 下一手:
   - 手机/API17 验证：弹窗登录、登录后首页自动加载、Radio/Discover 懒加载失败重试、缺登录态不清内容。
   - 手机/API17 验证：Radio 推荐/电台歌曲、发现歌单/歌单歌曲、点赞 direct 路径。

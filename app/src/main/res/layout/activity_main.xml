@@ -75,7 +75,8 @@
             android:contentDescription="@string/nav_kugou_scene"
             android:padding="16dp"
             android:scaleType="centerInside"
-            android:src="@android:drawable/ic_menu_gallery" />
+            android:src="@android:drawable/ic_menu_gallery"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/nav_kugou_discover"
@@ -171,6 +172,17 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:gravity="end|center_vertical">
+
+                            <ImageButton
+                                android:id="@+id/btn_like_current_track"
+                                android:layout_width="42dp"
+                                android:layout_height="42dp"
+                                android:layout_marginRight="8dp"
+                                android:background="@drawable/button_nav_icon_inactive"
+                                android:contentDescription="@string/action_kugou_like"
+                                android:padding="10dp"
+                                android:scaleType="centerInside"
+                                android:src="@android:drawable/btn_star_big_off" />
 
                             <ImageButton
                                 android:id="@+id/btn_delete_current_track"
@@ -331,8 +343,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:background="@drawable/panel_tab_bar"
-                            android:orientation="horizontal"
-                            android:visibility="gone">
+                            android:orientation="horizontal">
 
                             <Button
                                 android:id="@+id/btn_home_tab_lyrics"
@@ -666,7 +677,8 @@
                         android:fontFamily="sans-serif-medium"
                         android:text="@string/kugou_discover_title"
                         android:textColor="@color/text_primary"
-                        android:textSize="24sp" />
+                        android:textSize="24sp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:layout_width="match_parent"
@@ -675,7 +687,8 @@
                         android:id="@+id/kugou_discover_status_value"
                         android:text="@string/kugou_discover_category_state"
                         android:textColor="@color/text_secondary"
-                        android:textSize="18sp" />
+                        android:textSize="18sp"
+                        android:visibility="gone" />
 
                     <LinearLayout
                         android:id="@+id/kugou_discover_tag_list"

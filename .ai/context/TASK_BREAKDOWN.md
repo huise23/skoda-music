@@ -1,6 +1,6 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Active Stage: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
@@ -37,6 +37,458 @@ Last Updated: 2026-06-07
   - 本地功能链已完成到 VIP/权限提示，下一阶段转为“设备验证闭环 + MainActivity 红线拆分续作”。
   - 新增 `M-S5-VAL-041` 与 `M-S5-MAIN-042`。
   - 设备窗口可用时优先执行 `T-S5-VAL-137`；设备窗口不可用时已完成 `T-S5-MAIN-138/139`，继续开发前需重新规划下一批拆分。
+- 2026-06-08 追加规划:
+  - 首页首次进入加载并播放每日推荐，但用户手动切到其它播放列表后不得再被每日推荐抢播。
+  - 左侧每日推荐入口只展示当日推荐列表，列表点击才播放。
+  - 首页右侧当前队列未跟随下一曲，需以“当前播放项变化”为统一同步源修复。
+  - 首页歌词需要恢复，直接从酷狗查歌词；播放列表 tab 10s 未操作自动切歌词，空播放不处理。
+  - 播放块删除按钮前增加点赞按钮，复用其它页面点赞逻辑。
+  - `.NET` UI 没有独立 Scene 页面，发现页改为一级 tab + 二级 tab + 歌单网格；去掉标题、二级说明和刷新按钮，一二级切换自动获取歌单。
+  - 新增 `M-S5-HOMEUX-043`、`M-S5-DISCOVER-044`、`M-S5-DSP-045`。
+
+## T-S5-HOME-141
+- Task ID: `T-S5-HOME-141`
+- Module ID: `M-S5-HOMEUX-043`
+- Status: Ready
+- Title: 每日推荐启动自动播放与左侧入口列表展示分离
+- Goal: 保留首次进入首页加载并播放每日推荐第一首，同时把左侧“每日推荐”入口改为只展示列表，列表点击才播放，并在用户手动切换其它播放列表后停止每日推荐自动抢播。
+- Why: 用户明确区分了“启动自动播放”和“左侧入口行为”；当前入口点击即播放会误触发，且自动播放不能覆盖用户之后选择的列表。
+- Responsibility Boundary:
+  - `DailyRecommendCoordinator`: auto-play guard、manual source switch lockout、pending login resume。
+  - `KugouContentBinder`: 加载/展示每日推荐列表、列表点击回调。
+  - `MainActivity`: 左侧按钮仅切换/委托展示，不直接调用 play-first。
+- Dependencies:
+  - `T-S5-HOME-128` 已完成但需纠偏。
+  - `M-S5-KG-037` 登录恢复已存在。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Expected Outputs:
+  - 冷启动/缓存 session/登录成功首次首页自动加载并播放每日推荐第一首。
+  - 左侧每日推荐入口显示每日推荐列表，不直接播放。
+  - 用户从发现歌单、场景/发现分类、Radio、Emby 显式队列或其它列表手动播放后，每日推荐不再自动抢播。
+  - 脱敏 runtime/PostHog 标记 auto-play skipped reason/manual-switch。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 自动播放和手动入口必须是两个明确方法，避免再次把入口点击误接到 play-first。
+  - manual switch lockout 应由播放上下文变化触发，而不是仅靠页面切换。
+- Comment Requirements:
+  - 对“启动自动播放只执行一次，手动切源后失效”的 guard 写短注释。
+- Done Criteria:
+  - 首次进入首页自动播放每日推荐第一首。
+  - 点击左侧每日推荐只显示列表，不播放。
+  - 切到其它列表播放后，返回首页/登录恢复不会自动抢播每日推荐。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 设备/手测：启动自动播、入口不自动播、手动切源后不抢播。
+- Risks:
+  - 登录成功、VIP 流程、每日推荐加载可能并发触发；需利用 existing loading/pending guard。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-HOME-142
+- Task ID: `T-S5-HOME-142`
+- Module ID: `M-S5-HOMEUX-043`
+- Status: Ready
+- Title: 首页右侧当前队列跟随下一曲与自动滚动修复
+- Goal: 以当前播放项变化作为统一同步源，确保首页右侧队列高亮和滚动跟随手动下一曲、自然下一曲、失败跳过、权限/VIP 跳过和 Radio advance。
+- Why: 用户实机反馈右侧列表没有同步滚动，甚至没有跟随跳到下一曲；这是首页当前队列定义的核心验收。
+- Responsibility Boundary:
+  - `HomeQueuePanelBinder`: 渲染后定位当前行并滚动。
+  - `MainActivity` / playback callbacks: 只在当前播放项变化时调用统一 `refreshHomeQueuePanel`/等价委托。
+  - `KugouPlaybackQueueManager` / `KugouRadioSessionManager`: 只提供当前队列快照，不做 UI。
+- Dependencies:
+  - `T-S5-HOME-130` 已完成但需纠偏。
+  - `T-S5-PLAY-111/112` queue/radio managers 已存在。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/ui/HomeQueuePanelBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/KugouPlaybackQueueManager.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/KugouRadioSessionManager.kt`
+- Expected Outputs:
+  - 单一 current item changed sync path。
+  - 首页右侧列表在当前歌曲变化后更新选中态。
+  - 自动滚动到当前歌曲，目标尽量居中或至少完整可见。
+  - 如果当前播放项不在 UI 队列快照中，重建为当前播放会话快照而不是保留旧列表。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/HomeQueuePanelBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 自动滚动只能在当前项变化或列表重绘后触发，避免高频 progress tick 触发滚动。
+  - Radio 展示 history/current/upcoming 时 current 行必须成为滚动目标。
+- Comment Requirements:
+  - 对 `post {}` 布局后滚动保留 API17 timing 注释。
+- Done Criteria:
+  - 点击下一曲后右侧高亮移动并滚动。
+  - 自然播放结束自动下一曲后同样更新。
+  - 播放 URL 无权限/VIP、解码失败等自动跳过后同步到实际播放曲。
+  - Radio next/current/upcoming 同步。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 设备/手测：每日推荐、歌单、Radio、Emby 显式队列各一次下一曲。
+- Risks:
+  - 当前播放变化路径分散在 Emby URL/cache、Kugou URL、Radio completion、失败恢复中，遗漏路径会导致只修一部分。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-HOME-143
+- Task ID: `T-S5-HOME-143`
+- Module ID: `M-S5-HOMEUX-043`
+- Status: Ready
+- Title: 首页歌词酷狗 direct 化与 10s 空闲切回歌词
+- Goal: 恢复首页歌词 tab，按 `.NET` `LyricClient` / `RawLyricApi` 直接查询酷狗歌词，并在播放列表 tab 10s 无操作后自动切回歌词。
+- Why: 用户反馈首页歌词被删了且需要；旧实现仍在 `MainActivity` 并走旧 LRC API，不符合“直接从酷狗查”的口径，也继续扩大入口文件。
+- Responsibility Boundary:
+  - `KugouLyricClient`: `lyrics.kugou.com/v1/search`、`/download`、KRC/LRC 解码和字段解析。
+  - `HomeLyricsBinder`: 歌词缓存、当前行渲染、滚动、10s idle timer、播放列表用户操作重置计时。
+  - `MainActivity`: 当前播放变化、position tick、tab 点击和 user interaction 事件委托。
+- Dependencies:
+  - `.NET` `RawLyricApi` / `LyricClient` / `KrcParser` 已核对。
+  - 首页歌词 XML 仍存在。
+- Inputs:
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawLyricApi.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/LyricClient.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Adapters/Lyrics/KrcParser.cs`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt` 当前 lyrics methods
+- Expected Outputs:
+  - 新增 `KugouLyricClient` 或等价 focused client。
+  - 新增 `HomeLyricsBinder`，从 `MainActivity` 迁出歌词缓存/解析/渲染/滚动/idle 切换。
+  - 切歌后加载当前酷狗歌词，失败显示“暂无歌词”并记录脱敏失败 stage。
+  - 当前首页在队列 tab 且正在播放时，10s 无操作自动切回歌词；空播放不处理。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouLyricClient.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（删除旧歌词逻辑/接线）
+  - `app/src/main/res/values/strings.xml`（必要时）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectContentClient.kt`（歌词独立 client，避免继续膨胀）
+- Architecture Notes:
+  - KRC 解码可按 `.NET` `KgCrypto.DecodeLyrics` 移植必要逻辑；如果真实响应为 LRC/base64，则走 LRC 解码分支。
+  - 歌词请求失败不得阻塞播放。
+- Comment Requirements:
+  - 对 KRC decode key/format 分支和 10s idle timer lifecycle 加短注释。
+- Done Criteria:
+  - 首页歌词 tab 可见且能显示酷狗歌词。
+  - 切歌会刷新歌词和当前行滚动。
+  - 队列 tab 10s 无操作自动切歌词，空播放不切。
+  - `MainActivity` 中旧 LRC API 请求/解析主体被移出。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - 真实账号/设备验证歌词 search/download 成功与失败提示。
+- Risks:
+  - KRC 解码/压缩处理和 Java/Kotlin 字节处理容易出错；优先按 `.NET` 实现最小移植并保留失败诊断。
+- Size: L
+- Execution Mode: Module
+- Minimal Loop: No
+
+## T-S5-HOME-144
+- Task ID: `T-S5-HOME-144`
+- Module ID: `M-S5-HOMEUX-043`
+- Status: Ready
+- Title: 首页播放块增加点赞按钮
+- Goal: 在首页播放块删除按钮前增加点赞按钮，点击当前酷狗歌曲时复用现有点赞逻辑。
+- Why: 用户要求播放块操作和其它页面一致；当前只有删除按钮，缺少对当前播放歌曲的快速点赞入口。
+- Responsibility Boundary:
+  - XML/layout: 在删除按钮前增加 ImageButton。
+  - UI接线: 根据当前 source/track 启用/禁用点赞按钮。
+  - 点赞执行: 复用 `requestLikeTrack` / `LikeStatusStore` / `KugouDirectContentClient.addSongToLikeList`。
+  - `MainActivity`: 只允许少量当前播放 SourceTrack 获取和按钮接线；若逻辑扩大则拆 `HomePlaybackActionsBinder`。
+- Dependencies:
+  - 现有酷狗点赞逻辑已存在。
+  - `T-S5-HOME-143` 可并行，但共享首页 layout 需注意冲突。
+- Inputs:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/SourceRowRenderer.kt`
+- Expected Outputs:
+  - 播放块删除按钮前出现点赞按钮。
+  - 当前酷狗曲目可点，缺 session 时走现有登录恢复，失败/成功更新点赞状态页。
+  - 非酷狗/空播放状态禁用或按既有能力提示。
+- Expected Files:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（接线-only）或新 `HomePlaybackActionsBinder.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 不新增第二套点赞状态；所有状态仍进 `LikeStatusStore`。
+- Comment Requirements:
+  - 无特别要求。
+- Done Criteria:
+  - 按钮位于删除按钮前。
+  - 当前酷狗歌曲点击点赞与列表行点赞表现一致。
+  - 空播放/不可点赞来源不会崩溃。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - 当前播放源快照为空或 Emby track 时误调用酷狗点赞；需 source-aware guard。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DISC-145
+- Task ID: `T-S5-DISC-145`
+- Module ID: `M-S5-DISCOVER-044`
+- Status: Ready
+- Title: 发现页一级/二级分类模型与 `.NET` 行为对齐
+- Goal: 梳理 Android 发现页所需的一级 tab、二级 tab、Scene/playlist 数据来源和切换加载契约，确保 UI 重构前数据边界清楚。
+- Why: `.NET` UI 没有独立 Scene 页面，但底层存在 SceneClient；Android 需要在发现页 UI 合并两类能力，不能把接口来源混成不可维护的状态。
+- Responsibility Boundary:
+  - `kugou/*`: direct tags/playlists/scene 请求和解析。
+  - `ui/*`: 分类模型和加载契约，不猜协议。
+  - `KugouMusic.NET/`: 只读核对。
+- Dependencies:
+  - `T-S5-KG-123` Done。
+  - `T-S5-SCENE-129` Done。
+- Inputs:
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/Views/DiscoverView.axaml`
+  - `KugouMusic.NET/src/Apps/KugouAvaloniaPlayer/ViewModels/DiscoverViewModel.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/SceneClient.cs`
+  - Android `KugouContentBinder/KugouSceneBinder/KugouSceneContentClient`
+- Expected Outputs:
+  - 发现页一级分类枚举：场景、主题、语种、风格、心情、年代。
+  - 二级分类数据结构，能标记有图/无图、所属一级、展开策略、请求参数。
+  - 切换一级/二级自动加载歌单的状态契约。
+  - 独立 Scene 入口迁移/隐藏策略。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouDiscoverBinder.kt` 或现有 binder 扩展
+  - `app/src/main/java/com/skodamusic/app/model/MainModels.kt` 或新 discover model
+  - `.ai/context/CURRENT_STATUS.md`（执行后回写真实发现）
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `KugouMusic.NET/`
+- Architecture Notes:
+  - 如果一级/二级数据能完全来自现有 playlist tags，则 Scene direct 只作为“场景”一级的数据来源；如果字段不足，标记 Pending，不猜。
+- Comment Requirements:
+  - 对 `.NET` 来源对应关系加短注释/常量名。
+- Done Criteria:
+  - 数据模型支撑紧凑 UI，无需横向滚动。
+  - 切换加载路径清晰。
+  - 编译通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - `.NET` Avalonia Discover 和 Scene raw API 信息结构不同；合并 UI 时需保持来源标识，避免后续播放队列 source 混乱。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DISC-146
+- Task ID: `T-S5-DISC-146`
+- Module ID: `M-S5-DISCOVER-044`
+- Status: Ready
+- Title: 发现页紧凑 tab + 歌单网格 UI 重构
+- Goal: 将发现页改为小屏横屏友好的一级 tab、二级 tab 和歌单网格，去掉无用标题/说明/刷新按钮，并隐藏独立 Scene 用户入口。
+- Why: 用户给出的 `.NET`/手机版酷狗参考是发现页两级 tab + 歌单列表；车机屏幕更小，应减少无用占用并避免横向滚动。
+- Responsibility Boundary:
+  - Renderer: 一级/二级 tab 多行布局、展开收缩、歌单网格卡片、缩略图占位。
+  - Binder: 选中状态、切换自动加载、失败提示/点击重试、点击后二级收缩。
+  - `MainActivity`: 左侧发现入口和 Scene 入口隐藏/移除接线。
+- Dependencies:
+  - `T-S5-DISC-145`
+  - `RemoteThumbnailLoader` exists。
+- Inputs:
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouSceneBinder.kt`
+- Expected Outputs:
+  - 无“发现歌单”标题行、无“二级分类：xxx”行、无刷新按钮。
+  - 一级 tab 全量显示。
+  - 二级 tab 不横向滚动，有图两行/无图三行默认，多余展开/收缩，点击后收缩。
+  - 切换一/二级自动获取歌单，下方网格展示缩略图歌单。
+  - 独立 Scene 左侧入口不再用户可见。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouDiscoverRenderer.kt`（推荐拆分）
+  - `app/src/main/java/com/skodamusic/app/ui/KugouDiscoverBinder.kt`（如需要）
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/res/values/strings.xml`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`（已有 warning，尽量复用容器+程序化渲染）
+- Architecture Notes:
+  - 网格列数应适配 1024x600，文本必须截断/换行，不可重叠。
+  - 不引入第三方图片库。
+- Comment Requirements:
+  - 对 row-limit 策略常量命名即可，必要时短注释。
+- Done Criteria:
+  - 1024x600 横屏发现页首屏紧凑，能看到分类和至少部分歌单网格。
+  - 分类无横向滚动，展开收缩可用。
+  - 切换分类自动加载歌单。
+  - 独立 Scene 入口不可见。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - 截图/设备 smoke：发现页无重叠、无多余标题/刷新。
+- Risks:
+  - 修改 `activity_main.xml` 可能触发布局回归；优先小步替换发现页容器内部。
+- Size: L
+- Execution Mode: Module
+- Minimal Loop: No
+
+## T-S5-OBS-147
+- Task ID: `T-S5-OBS-147`
+- Module ID: `M-S5-DISCOVER-044`
+- Status: Ready
+- Title: 首页/发现页纠偏观测与 API17 回归清单更新
+- Goal: 为本轮首页每日推荐、队列跟随、歌词、点赞和发现页重构补齐脱敏观测与回归清单。
+- Why: 用户已要求新增功能必须有可查日志；本轮多处行为要通过实机验证闭环。
+- Responsibility Boundary:
+  - 代码侧只记录低频 start/success/failure/state-change。
+  - 文档侧更新事件字典、观测覆盖和 API17 交互清单。
+- Dependencies:
+  - `T-S5-HOME-141`
+  - `T-S5-HOME-142`
+  - `T-S5-HOME-143`
+  - `T-S5-HOME-144`
+  - `T-S5-DISC-146`
+- Inputs:
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - `docs/POSTHOG_EVENT_DICTIONARY.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Expected Outputs:
+  - 覆盖 daily startup autoplay/list-only、queue current changed/scroll requested、lyrics search/download failed、lyrics idle switch、discover tab select/load、home like click。
+  - 敏感字段审计：不记录 token、session、完整 hash、完整 URL/query、歌词原文、手机号。
+  - API17/1024x600 回归条目。
+- Expected Files:
+  - docs files and necessary event call sites.
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 歌词原文不得进入 PostHog；只记录 stage/error/count/short ids。
+- Comment Requirements:
+  - 无特别要求。
+- Done Criteria:
+  - 文档与代码事件一致。
+  - 本轮新增失败路径有 runtime/PostHog 证据。
+  - `git diff --check` 通过。
+- Validation:
+  - `git diff --check`
+  - 敏感字段 grep/review
+  - `gradle :app:compileDebugKotlin --no-daemon`（若改代码）
+- Risks:
+  - 观测过多；避免 UI redraw、progress tick 和逐帧 DSP 状态上报。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DSP-148
+- Task ID: `T-S5-DSP-148`
+- Module ID: `M-S5-DSP-045`
+- Status: Ready
+- Title: DSP 红圈原因显示与 runtime/logcat 采证补齐
+- Goal: 在 UI/runtime log 中显示播放外圈红色对应的具体 DSP 原因，并补齐可用于定位“音效无效”的低频诊断。
+- Why: 用户仍看到外圈持续红色且听感无音效；当前颜色只说明 FAIL_OPEN，缺少可见原因。
+- Responsibility Boundary:
+  - `HiFiDspController`/`HiFiAudioProcessor`: 输出稳定 reason/flags/last status。
+  - `EqualizerPageBinder`/播放按钮状态显示: 展示简短状态和原因。
+  - `MainActivity`: 只低频刷新，不解释 native flags。
+- Dependencies:
+  - `T-S4-AUDIO-097`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiAudioProcessor.kt`
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/HiFiDspController.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/EqualizerPageBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Expected Outputs:
+  - 红/黄/灰状态有 short reason，例如 native-not-ready、native-process-error、unsupported-format、bypass、disabled、unknown。
+  - runtime log 节流记录 status/reason/mode/tier/flags，不记录高频 frame。
+  - API17 回归清单加入 `hifi-dsp` log 采样要求。
+- Expected Files:
+  - DSP controller/processor files
+  - UI binder/main接线小改
+  - docs/checklist
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 原因码归属 DSP controller，UI 只显示字符串/枚举映射。
+  - 不按 audio frame 推 UI。
+- Comment Requirements:
+  - 对状态节流和 fail-open reason 保留短注释。
+- Done Criteria:
+  - 红圈时能看到或记录明确原因。
+  - 关闭/原声/未知不误显示红色。
+  - 构建通过。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - 无实机音频路径时只能验证诊断显示，不能证明音效已生效。
+- Size: M
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DSP-149
+- Task ID: `T-S5-DSP-149`
+- Module ID: `M-S5-DSP-045`
+- Status: Pending Confirmation / Evidence
+- Title: DSP 音效无效 targeted fix
+- Goal: 根据 `T-S5-DSP-148` 和实机 `hifi-dsp` 日志定位具体原因并修复音效无效/持续红圈。
+- Why: 没有 reason/log 前无法判断是 native 未加载、format 不支持、direct buffer、process error、状态未复位还是真实 bypass。
+- Responsibility Boundary:
+  - 只修有证据的具体 DSP failure path。
+  - 不做无证据的算法重写或高 API 音频栈替换。
+- Dependencies:
+  - `T-S5-DSP-148`
+  - 实机或手机 logcat/runtime 样本。
+- Inputs:
+  - `hifi-dsp config/format/native active/native status/bypass/error` 日志。
+  - UI 红圈 reason。
+- Expected Outputs:
+  - focused DSP fix。
+  - 对应回归证据。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/audio/dsp/*`
+  - `app/src/main/cpp/*`（如 native 证据指向 C++）
+  - docs/checklist/status
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 热路径修改必须保持 fail-open 和 API17。
+- Comment Requirements:
+  - 对 native/fail-open 修复点保留必要注释。
+- Done Criteria:
+  - 红圈原因消失或变为正确状态颜色。
+  - 正常 active 绿色，降级黄色，关闭/未知灰色，真实错误红色。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:assembleDebug --no-daemon`
+  - 设备长播/听感/logcat 验证。
+- Risks:
+  - 若缺设备日志，本任务必须保持 Pending，不放 Ready。
+- Size: M/L
+- Execution Mode: Single
+- Minimal Loop: No
 
 ## T-S5-VAL-137
 - Task ID: `T-S5-VAL-137`

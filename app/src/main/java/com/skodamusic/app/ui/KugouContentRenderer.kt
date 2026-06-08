@@ -281,13 +281,19 @@ class KugouContentRenderer(
         playlistList: LinearLayout,
         hasSession: Boolean,
         loading: Boolean,
-        tags: List<Pair<Int, String>>,
+        categories: List<DiscoverCategory>,
         loadFailed: Boolean,
+        selectedCategoryName: String,
         selectedTagId: Int,
+        categoryExpanded: Boolean,
+        tagExpanded: Boolean,
         playlists: List<SourcePlaylist>,
         selectedPlaylistId: String,
         songs: List<SourceTrack>,
         onRetry: () -> Unit,
+        onToggleCategoryExpanded: () -> Unit,
+        onToggleTagExpanded: () -> Unit,
+        onCategoryClick: (String) -> Unit,
         onTagClick: (Int) -> Unit,
         onPlaylistClick: (SourcePlaylist) -> Unit,
         onTrackClick: (index: Int, track: SourceTrack) -> Unit,
@@ -313,27 +319,41 @@ class KugouContentRenderer(
                 tagList.addView(row, wrapContentParams())
                 return
             }
-            tags.isEmpty() -> statusView.text = context.getString(R.string.kugou_discover_category_state)
-            else -> statusView.text = context.getString(R.string.feedback_kugou_discover_success, tags.size)
+            categories.isEmpty() -> statusView.text = context.getString(R.string.kugou_discover_category_state)
+            else -> statusView.text = context.getString(R.string.feedback_kugou_discover_success, categories.size)
         }
-        tags.forEachIndexed { index, tag ->
-            val row = rowRenderer.buildSourceRow(
-                titleText = tag.second,
-                subtitleText = context.getString(R.string.kugou_discover_title),
-                active = tag.first == selectedTagId
-            )
-            row.setOnClickListener { onTagClick(tag.first) }
-            rowRenderer.addRow(tagList, row, index)
-        }
-        playlists.forEachIndexed { index, playlist ->
-            val row = rowRenderer.buildSourceRow(
-                titleText = playlist.title,
-                subtitleText = playlist.subtitle.ifBlank { context.getString(R.string.kugou_discover_title) },
-                active = playlist.sourcePlaylistId == selectedPlaylistId
-            )
-            row.setOnClickListener { onPlaylistClick(playlist) }
-            rowRenderer.addRow(playlistList, row, index)
-        }
+        renderTextChips(
+            container = tagList,
+            items = categories,
+            collapsedRows = DISCOVER_CATEGORY_COLLAPSED_ROWS,
+            expanded = categoryExpanded,
+            selected = { it.name == selectedCategoryName },
+            titleOf = { it.name },
+            onToggleExpanded = onToggleCategoryExpanded,
+            onClick = { category -> onCategoryClick(category.name) }
+        )
+        val selectedCategory = categories.firstOrNull { it.name == selectedCategoryName } ?: categories.firstOrNull()
+        val tags = selectedCategory?.tags.orEmpty()
+        renderTextChips(
+            container = tagList,
+            items = tags,
+            collapsedRows = DISCOVER_TAG_COLLAPSED_ROWS,
+            expanded = tagExpanded,
+            selected = { it.tagId == selectedTagId },
+            titleOf = { it.name },
+            onToggleExpanded = onToggleTagExpanded,
+            onClick = { tag -> onTagClick(tag.tagId) }
+        )
+        renderGrid(
+            container = playlistList,
+            items = playlists,
+            selectedId = selectedPlaylistId,
+            idOf = { it.sourcePlaylistId },
+            titleOf = { it.title },
+            subtitleOf = { it.subtitle.ifBlank { context.getString(R.string.kugou_discover_title) } },
+            coverOf = { it.coverUrl },
+            onClick = onPlaylistClick
+        )
         if (songs.isNotEmpty()) {
             playlistList.addView(rowRenderer.buildSectionTitle(context.getString(R.string.kugou_playlist_songs_title)))
             songs.forEachIndexed { index, track ->
@@ -345,6 +365,72 @@ class KugouContentRenderer(
                 )
                 rowRenderer.addRow(playlistList, row, index)
             }
+        }
+    }
+
+    private fun <T> renderTextChips(
+        container: LinearLayout,
+        items: List<T>,
+        collapsedRows: Int,
+        expanded: Boolean,
+        selected: (T) -> Boolean,
+        titleOf: (T) -> CharSequence,
+        onToggleExpanded: () -> Unit,
+        onClick: (T) -> Unit
+    ) {
+        if (items.isEmpty()) {
+            return
+        }
+        val visibleCount = (collapsedRows * CHIP_COLUMNS).coerceAtLeast(CHIP_COLUMNS)
+        val visible = if (expanded) items else items.take(visibleCount)
+        var row: LinearLayout? = null
+        visible.forEachIndexed { index, item ->
+            if (index % CHIP_COLUMNS == 0) {
+                row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                container.addView(row, wrapContentParams().apply {
+                    if (container.childCount > 0) {
+                        topMargin = dpToPx(8)
+                    }
+                })
+            }
+            val chip = TextView(context).apply {
+                text = titleOf(item)
+                gravity = Gravity.CENTER
+                maxLines = 1
+                textSize = 15f
+                setTextColor(context.resources.getColor(if (selected(item)) R.color.white else R.color.text_secondary))
+                setBackgroundResource(if (selected(item)) R.drawable.row_recommend_active else R.drawable.row_recommend_idle)
+                setPadding(dpToPx(8), dpToPx(9), dpToPx(8), dpToPx(9))
+                setOnClickListener { onClick(item) }
+            }
+            row?.addView(chip, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                if (index % CHIP_COLUMNS > 0) {
+                    leftMargin = dpToPx(8)
+                }
+            })
+        }
+        val remainder = visible.size % CHIP_COLUMNS
+        if (remainder > 0) {
+            for (index in remainder until CHIP_COLUMNS) {
+                row?.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
+                    leftMargin = dpToPx(8)
+                })
+            }
+        }
+        if (items.size > visibleCount) {
+            val action = rowRenderer.buildEmptyRow(
+                text = context.getString(if (expanded) R.string.action_scene_collapse else R.string.action_scene_expand),
+                centered = true,
+                horizontalPaddingDp = 12,
+                verticalPaddingDp = 10
+            )
+            action.setOnClickListener { onToggleExpanded() }
+            container.addView(action, wrapContentParams().apply {
+                topMargin = dpToPx(8)
+            })
         }
     }
 
@@ -405,5 +491,8 @@ class KugouContentRenderer(
     companion object {
         private const val GRID_COLUMNS = 2
         private const val SCENE_COLLAPSED_COUNT = 6
+        private const val CHIP_COLUMNS = 3
+        private const val DISCOVER_CATEGORY_COLLAPSED_ROWS = 2
+        private const val DISCOVER_TAG_COLLAPSED_ROWS = 3
     }
 }

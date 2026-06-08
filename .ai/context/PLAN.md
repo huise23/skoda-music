@@ -1,10 +1,58 @@
 # PLAN
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Current Stage
 - Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- Scope Source: `.ai/context/SCOPE.md`（2026-06-07）
+- Scope Source: `.ai/context/SCOPE.md`（2026-06-08）
+
+## Execution Snapshot (2026-06-08)
+- `T-S5-HOME-141/142/143/144`、`T-S5-DISC-145/146`、`T-S5-OBS-147`、`T-S5-DSP-148` 已本地完成。
+- 本地验证: `git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、`gradle :app:assembleDebug --no-daemon` 通过。
+- `python scripts/check_code_health.py` 仍因既有 `MainActivity.kt` 红线失败：5579 行和一个 314 行方法。
+- 下一步: `T-S5-VAL-137` 设备验证；DSP 音效 targeted fix 等实机 `hifi-dsp indicator/native status` 日志。
+
+## Planning Refresh (Home UX Correction + Compact Discover Rework, 2026-06-08)
+- Trigger:
+  - 用户确认：首次进入首页需要加载并播放每日推荐列表，除非手动切到其它播放列表。
+  - 用户纠正：左侧每日推荐入口不应点击即播放，应展示推荐列表，点击列表歌曲才播放。
+  - 用户反馈：首页右侧队列未同步滚动，甚至未跟随下一曲。
+  - 用户确认：首页歌词需要恢复，直接查酷狗歌词；播放列表 tab 10s 未操作自动切歌词，空播放不处理。
+  - 用户确认：播放块删除按钮前增加点赞按钮，行为同其它页面点赞。
+  - 用户确认：`.NET` UI 没有独立 Scene 页面，发现页采用一级 tab + 二级 tab + 歌单网格；Android 发现页需紧凑化，去掉标题/说明/刷新占位，一二级切换自动获取歌单。
+- Scope Fit:
+  - 属于 S5 首页、播放队列、发现页、酷狗歌词和点赞体验纠偏范围。
+  - 覆盖了 2026-06-07 已实现但实机反馈不符合预期的部分；旧 `M-S5-HOME-038/M-S5-SCENE-039` 结果作为被修正的基线，不再直接进入设备验收。
+- Architecture Decision:
+  - 新增 `M-S5-HOMEUX-043`: Home Startup Playback, Queue Sync, Lyrics & Like Actions，负责每日推荐启动/入口行为、首页右侧队列同步、首页歌词与播放块点赞。
+  - 新增 `M-S5-DISCOVER-044`: Compact Kugou Discover Category/Grid Rework，负责发现页一级/二级 tab 与歌单网格，吸收现有 Scene 能力，移除独立 Scene 产品入口。
+  - 新增 `M-S5-DSP-045`: DSP Runtime Evidence & Red Ring Correction，负责红圈/音效无效的诊断可见性和有证据的 targeted fix。
+  - `MainActivity` 只能做 view 绑定、导航委托和当前播放变化通知；歌词 search/download/decode、发现页 tab 状态、队列滚动策略、点赞状态机都必须在 focused client/binder/coordinator 内。
+  - 酷狗歌词直接参考 `.NET` `LyricClient` / `RawLyricApi`：`/v1/search` -> `/download` -> KRC/LRC decode/parse。
+- Current Code Reality:
+  - `MainActivity.kt` 最新约 5579 行，首页歌词缓存、旧 LRC API 请求和歌词解析已迁出到 `HomeLyricsBinder` / `KugouLyricClient`；后续仍不能在入口文件扩写。
+  - `HomeQueuePanelBinder` 已存在，但当前反馈表明“当前播放项变化”没有成为统一同步源；需要从播放切换、自动下一曲、radio advance、失败跳过、权限失败跳过等路径统一触发。
+  - `DailyRecommendCoordinator` 当前支持启动/手动播放 guard，但需拆分“启动自动播放”和“左侧入口只展示列表”两种行为，并记录用户手动切换其它列表后的 auto-play lockout。
+  - 现有 `KugouSceneBinder`/`KugouSceneContentClient` 可复用到发现页，但 `activity_main.xml` 仍有独立 `nav_kugou_scene/page_kugou_scene`，需隐藏或移除用户入口。
+  - 发现页已有 direct tags/playlists/songs 逻辑，需改成一级/二级 tab 紧凑布局和切换即加载歌单，而不是独立刷新按钮。
+  - 播放块已有删除按钮和其它页面点赞能力，需在删除按钮前增加 source-aware 点赞按钮并复用现有 `requestLikeTrack` 逻辑。
+- New Workstreams:
+  - `W14 Home UX Corrections`: 每日推荐启动/入口行为、首页右侧队列跟随、歌词恢复、播放块点赞。
+  - `W15 Discover Rework`: 发现页一级/二级 tab、紧凑布局、歌单网格、Scene 能力合并、移除刷新/标题占位。
+  - `W16 DSP Evidence/Triage`: 暴露红圈原因、采集 `hifi-dsp` runtime 证据，并根据真实原因修复。
+- Recommended Order:
+  1. `T-S5-HOME-141`: 每日推荐启动自动播放与左侧入口展示列表分离。
+  2. `T-S5-HOME-142`: 首页右侧队列以当前播放变化为同步源，修复下一曲/跳过不跟随。
+  3. `T-S5-HOME-143`: 首页歌词酷狗 direct 化并抽出 Binder，补 10s 空闲切回歌词。
+  4. `T-S5-HOME-144`: 播放块删除按钮前增加点赞按钮。
+  5. `T-S5-DISC-145`: 发现页一级/二级分类模型和 `.NET` 对齐。
+  6. `T-S5-DISC-146`: 发现页紧凑 UI 与自动加载歌单，移除独立 Scene 用户入口。
+  7. `T-S5-OBS-147`: 首页/发现页观测与 API17 回归清单更新。
+  8. `T-S5-DSP-148`: DSP 红圈原因显示与日志采证；`T-S5-DSP-149` 根据证据 targeted fix。
+- Validation Strategy:
+  - 本地最小闭环：`git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、触及 layout 后 `gradle :app:assembleDebug --no-daemon`。
+  - `python scripts/check_code_health.py` 预期仍因既有 `MainActivity` red-line 失败，但新任务必须让入口文件行数不增加或下降，且不得新增 red finding。
+  - 设备/截图验收：1024x600 横屏发现页无横向 tab 滚动、无标题/刷新占位、队列跟随下一曲、歌词 10s 自动切回、DSP 红圈原因可见。
 
 ## Planning Refresh (Integrated Device Validation + MainActivity Red-Line Phase 3, 2026-06-07)
 - Trigger:

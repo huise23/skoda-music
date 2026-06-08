@@ -1,10 +1,61 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-08
 
 ## Stage
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
-- 当前主干: `master@18c4723`（本地已完成 `M-S5-KG-037` + `T-S5-KG-123`，尚未推送）
+- 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
+
+## Execution Progress (Home UX + Discover + DSP Diagnostics, 2026-06-08)
+- 状态: `T-S5-HOME-141/142/143/144`、`T-S5-DISC-145/146`、`T-S5-OBS-147`、`T-S5-DSP-148` 本地完成；等待手机/API17 实机验证。
+- 已完成:
+  - 每日推荐启动自动播放与左侧入口列表展示分离；入口点击只展示当日推荐列表，列表项点击才播放，手动切其它队列后不再抢播。
+  - 首页右侧当前队列以当前播放变化为同步源刷新；覆盖 Kugou 普通队列、Radio next/completion、权限/VIP 跳过、Emby 切换，并保持自动滚动当前项。
+  - 新增 `KugouLyricClient` + `HomeLyricsBinder`，按 `.NET` `RawLyricApi` / `LyricClient` 直连 `lyrics.kugou.com/v1/search` 与 `/download`，支持 KRC/LRC decode/parse/cache。
+  - 首页歌词 tab 恢复显示；队列 tab 播放中 10s 无操作自动切回歌词，空播放不触发；右侧队列触摸会重置 10s 计时。
+  - 首页播放块删除按钮前新增点赞按钮，酷狗当前曲复用现有 `requestLikeTrack`。
+  - 发现页保留 `.NET` discover 分类分组，一级分类 + 二级标签多行展示，切换自动加载歌单；歌单改为带缩略图网格卡片。
+  - 独立 Scene 左侧入口隐藏，发现页去掉“发现歌单”标题、状态说明/刷新占位。
+  - DSP 播放按钮边框状态现在按完整 runtime state 低频刷新，并记录 `hifi-dsp indicator status=... mode=... tier=... flags=... reason=...`，用于定位红圈真实原因。
+  - 更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 与 `docs/S5_OBSERVABILITY_COVERAGE.md`。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file 5579 行、`playTrackAtCurrentIndex` 附近 314 行；未阻止本轮构建，但后续仍需拆分。
+- 未验证:
+  - 真实酷狗歌词 search/download 返回字段与 KRC inflate 在目标账号/歌曲上的兼容性。
+  - 1024x600 实机发现页 chip/grid 是否无重叠、缩略图是否按预期加载。
+  - DSP 红圈 reason 的真实实机样本；`T-S5-DSP-149` 仍需依赖 `hifi-dsp` 日志做 targeted fix。
+
+## Planning Refresh (Home UX Correction + Compact Discover Rework, 2026-06-08)
+- 触发:
+  - 用户确认首次进入首页需要加载并播放每日推荐列表，除非用户手动切到其它播放列表。
+  - 用户确认空播放不做 10s 自动切歌词。
+  - 用户确认 `.NET` UI 没有独立 Scene 页面；发现页是一级 tab + 二级 tab + 歌单网格。
+  - 用户要求发现页去掉“发现歌单”“二级分类：xxx”等占位行，刷新按钮也不需要；切换一/二级自动获取歌单。
+  - 用户反馈首页右侧队列不跟随下一曲，首页歌词缺失，播放块缺点赞，DSP 仍无音效且外圈红色。
+- 已完成规划更新:
+  - 更新 `SCOPE.md`、`DECISIONS.md`、`PLAN.md`、`MODULES.md`、`TASK_BREAKDOWN.md`、`TASK_QUEUE.md`、`NEXT_STEPS.md`。
+  - 新增模块 `M-S5-HOMEUX-043`、`M-S5-DISCOVER-044`、`M-S5-DSP-045`。
+  - Ready 调整为本轮纠偏执行，`T-S5-VAL-137` 暂降到 Planned，等待本轮实现和回归清单更新后再验证。
+- Ready:
+  - `T-S5-HOME-141`: 每日推荐启动自动播放与左侧入口列表展示分离。
+  - `T-S5-HOME-142`: 首页右侧当前队列跟随下一曲与自动滚动修复。
+  - `T-S5-HOME-143`: 首页歌词酷狗 direct 化与 10s 空闲切回歌词。
+  - `T-S5-HOME-144`: 首页播放块增加点赞按钮。
+  - `T-S5-DISC-145`: 发现页一级/二级分类模型与 `.NET` 行为对齐。
+  - `T-S5-DISC-146`: 发现页紧凑 tab + 歌单网格 UI 重构。
+  - `T-S5-OBS-147`: 首页/发现页纠偏观测与 API17 回归清单更新。
+  - `T-S5-DSP-148`: DSP 红圈原因显示与 runtime/logcat 采证补齐。
+- Planned/Pending:
+  - `T-S5-DSP-149`: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 产出 reason/log 和实机 `hifi-dsp` 证据。
+  - `T-S5-VAL-137`: S5 集成设备验证，需等本轮纠偏后执行。
+- 架构结论:
+  - `MainActivity.kt` 仍约 5579 行且超过 red-line；后续不得继续向入口文件增加歌词解析、发现页状态机、队列滚动策略或 DSP 诊断解释。
+  - 酷狗歌词直接参考 `.NET` `LyricClient` / `RawLyricApi`：`lyrics.kugou.com/v1/search` -> `/download` -> KRC/LRC decode/parse。
+  - 独立 Scene 左侧入口/页面不继续作为产品入口扩展；Scene direct 能力并入发现页。
 
 ## Planning Refresh (Integrated Validation + MainActivity Phase 3, 2026-06-07)
 - 新增模块:
@@ -36,7 +87,7 @@ Last Updated: 2026-06-07
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - `gradle :app:assembleDebug --no-daemon` 通过。
-  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file 5755 行和粗略大方法 4026 行；未新增 blocking。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file 5579 行和一个 314 行方法；未新增本轮构建阻断。
 - 注意:
   - 曾并行运行 compile/assemble 时触发 Kotlin incremental cache 并发异常；串行重跑 `compileDebugKotlin` 后通过。
   - 设备验证窗口仍不可用，`T-S5-VAL-137` 保持 Ready。
@@ -187,7 +238,7 @@ Last Updated: 2026-06-07
   - `T-S5-KG-123` 已在后续本地执行中完成 direct 化；自动加载/恢复机制与 direct 内容路径仍需设备验证。
 
 ## Execution Progress (M-S5-KG-037, 2026-06-07)
-- 状态: `T-S5-KG-124/125/126/127` 本地完成；尚未推送，尚未实机验证。
+- 状态: `T-S5-KG-124/125/126/127` 已纳入后续提交批次；尚未实机验证。
 - 已完成:
   - 新增 `KugouLoginRecoveryCoordinator`，只保存脱敏 pending action 枚举，不保存 token/session/QR key/URL/手机号/验证码。
   - 首页登录入口改为弹窗登录；首页旧二维码图和 URL 文本隐藏，二维码只在弹窗中展示。

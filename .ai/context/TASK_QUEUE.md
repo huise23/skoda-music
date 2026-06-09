@@ -1,12 +1,13 @@
 # TASK_QUEUE
 
-Last Updated: 2026-06-08
+Last Updated: 2026-06-09
 
 ## Ready
-- None. 本轮首页/发现页/DSP 诊断纠偏已本地完成；下一步进入设备验证或基于实机日志的 targeted fix。
+- None. `M-S5-UPD-046` 代码侧本地完成，下一步需要 API17 车机实机验证。
 
 ## Pending / Planned
 
+- `T-S5-UPD-153`（P0, Module `M-S5-UPD-046`）: API17 应用内更新实机验证与证据回填，依赖 `T-S5-UPD-152` 和设备/可下载新版本 APK。
 - `T-S5-DSP-149`（P0, Module `M-S5-DSP-045`）: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 和实机/手机 `hifi-dsp` 日志。
 - `T-S5-TRIAGE-140`（P0, Module `M-S5-VAL-041`）: 真实设备失败分流与 targeted fix 计划，依赖 `T-S5-VAL-137`。
 - `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`）: S5 集成设备验证执行包与证据回填。原因：当前用户已提供新纠偏需求，验证清单需先由 `T-S5-OBS-147` 更新后再执行。
@@ -41,6 +42,9 @@ Last Updated: 2026-06-08
 - None
 
 ## Done
+- `T-S5-UPD-152`: 更新链路观测与 API17 回归清单升级；PostHog/runtime 增加安装阶段、路径/URI、pre-parse 和 installer resolve 低敏字段，并更新 F 组回归项。
+- `T-S5-UPD-151`: API17-safe APK 文件位置与安装 intent handoff 修复；API17 安装前复制 APK 到公开 Downloads/`SkodaMusicUpdates`，设置可读并用 `file://` + APK MIME 拉起安装器。
+- `T-S5-UPD-150`: 更新安装链路职责拆分与诊断模型；新增 `AppUpdateApkVerifier`、`AppUpdateInstaller`、`AppUpdatePackageInspector`，降低 `AppUpdateManager` 职责和行数。
 - `T-S5-DSP-148`: DSP 红圈原因显示与 runtime/logcat 采证补齐；播放按钮 DSP 指示按完整 runtime state 低频刷新并记录 `hifi-dsp indicator status=... reason=...`。
 - `T-S5-OBS-147`: 首页/发现页纠偏观测与 API17 回归清单更新；同步 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 与 `docs/S5_OBSERVABILITY_COVERAGE.md`。
 - `T-S5-DISC-146`: 发现页紧凑 tab + 歌单网格 UI 重构；隐藏独立 Scene 左侧入口，去掉发现页标题/状态占位，一级/二级 tab 多行展示并自动加载歌单。

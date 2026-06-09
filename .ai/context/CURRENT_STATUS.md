@@ -1,10 +1,53 @@
 # CURRENT_STATUS
 
-Last Updated: 2026-06-08
+Last Updated: 2026-06-09
 
 ## Stage
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
+
+## Requirement Confirmation (API17 App Update Parse Failure, 2026-06-09)
+- 用户反馈:
+  - Android 4.2.2/API17 上现有应用内更新仍提示“包解析失败”。
+  - 通过“甲壳虫 ADB 助手”连接车机后安装同版本 APK 可成功；具体底层命令未知，可能是 `adb install` 或等价安装流程。
+- 已确认范围:
+  - 本次按方案 B 处理：修复应用内更新安装链路的 API17 兼容性。
+  - 重点检查下载后 APK 文件完整性、文件可读位置、安装 intent URI/MIME、系统安装器 handoff 与本地 package pre-parse。
+  - 不重做整套更新系统、不做静默安装、不改变 GitHub Releases 更新真源。
+- 下一步建议:
+  - 已完成 planning：新增 `M-S5-UPD-046` 与 `T-S5-UPD-150~153`。
+  - 本地执行已完成 `T-S5-UPD-150/151/152`；下一步执行 `T-S5-UPD-153` API17 实机更新安装验证。
+
+## Execution Progress (API17 App Update Install Compatibility, 2026-06-09)
+- 状态: `M-S5-UPD-046` 本地完成；等待 Android 4.2.2/API17 车机实机验证。
+- 已完成:
+  - 新增 `AppUpdateApkVerifier` 与 `AppUpdatePackageInspector`，从 `AppUpdateManager` 拆出 APK 文件完整性、size/hash、package pre-parse、包名/版本/签名检查。
+  - 新增 `AppUpdateInstaller`，从 `AppUpdateManager` 拆出安装器 handoff；API17/API23 及以下不再直接把私有 cache APK 交给安装器，而是复制到公开 Downloads/`SkodaMusicUpdates`，设置可读后用 `file://` + `application/vnd.android.package-archive` 拉起系统安装器。
+  - API24+ 继续保留 FileProvider/content URI 路径；API26+ 未授权安装未知来源时仍打开系统设置。
+  - `UpdateInstallResult` 与 PostHog/runtime 诊断新增 `failed_stage/path_kind/uri_kind/mime_type/installer_resolved/apk_readable/parent_readable/parent_executable/expected_bytes/preparse_result/preparse_package/preparse_version_code` 等低敏字段。
+  - 更新 URL 诊断统一脱敏为 host/path 摘要，不再记录完整 URL query。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` F 组补 API17 包解析失败专项验证；`docs/S5_OBSERVABILITY_COVERAGE.md` 补 update install 观测字段。
+  - `AndroidManifest.xml` 新增 `WRITE_EXTERNAL_STORAGE`，用于 API17 写入公开 Downloads 更新目录。
+- 文件规模:
+  - `AppUpdateManager.kt`: `1030 -> 878` 行，职责下降但仍为 warning 文件。
+  - 新增 `AppUpdateInstaller.kt` 193 行、`AppUpdateApkVerifier.kt` 179 行、`AppUpdatePackageInspector.kt` 110 行。
+  - `MainActivity.kt` 未新增更新职责，仍 5579 行。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` 两个 blocking；新增 update 文件无 blocking/refactor，`AppUpdateApkVerifier.kt` 为 174 行 warning，`AppUpdateManager.kt` 为 878 行 warning。
+- 未验证:
+  - API17 车机应用内更新实际是否还提示“包解析失败”。
+  - 公开 Downloads 目录在目标车机 ROM 上是否可写/可被系统安装器读取。
+- 本轮执行复核:
+  - `TASK_QUEUE.md` 当前无 Ready；剩余 `T-S5-UPD-153` 需要 API17 车机和可下载安装的新版本 APK。
+  - 当前 workspace 未安装 `adb`（`adb devices` 返回 command not found），无法本地代跑设备验证。
+- Review closure:
+  - `$ai-review` 已复核 scope/architecture/red-lines：本轮仍在 API17 应用内更新安装热修范围内，未修改 `KugouMusic.NET/`，未提高 `minSdk`，未向 `MainActivity.kt` 增加更新职责。
+  - 验证通过：`git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、`gradle :app:assembleDebug --no-daemon`。
+  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line（5579 行、line 3385 附近 314 行）；新增 update 文件无 blocking/refactor。
 
 ## Execution Progress (Home UX + Discover + DSP Diagnostics, 2026-06-08)
 - 状态: `T-S5-HOME-141/142/143/144`、`T-S5-DISC-145/146`、`T-S5-OBS-147`、`T-S5-DSP-148` 本地完成；等待手机/API17 实机验证。

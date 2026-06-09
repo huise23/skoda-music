@@ -1,19 +1,14 @@
 package com.skodamusic.app.update
 
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
-import androidx.core.content.FileProvider
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
@@ -101,6 +96,18 @@ class AppUpdateManager(
         val usedUrl: String = "",
         val apkPath: String = "",
         val apkBytes: Long = -1L,
+        val expectedBytes: Long = -1L,
+        val failedStage: String = "",
+        val pathKind: String = "",
+        val uriKind: String = "",
+        val mimeType: String = "",
+        val installerResolved: Boolean = false,
+        val apkReadable: Boolean = false,
+        val parentReadable: Boolean = false,
+        val parentExecutable: Boolean = false,
+        val preparseResult: String = "",
+        val preparsePackage: String = "",
+        val preparseVersionCode: Long = -1L,
         val errorCode: String = "",
         val message: String = ""
     )
@@ -132,15 +139,11 @@ class AppUpdateManager(
         val message: String = ""
     )
 
-    private data class InstallDispatchResult(
-        val success: Boolean,
-        val errorCode: String = "",
-        val message: String = ""
-    )
-
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val worker = Executors.newSingleThreadExecutor()
+    private val apkVerifier = AppUpdateApkVerifier(appContext)
+    private val installer = AppUpdateInstaller(appContext, log)
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(CLIENT_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .readTimeout(CLIENT_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -227,7 +230,10 @@ class AppUpdateManager(
                 return@execute
             }
 
-            val verifyResult = verifyDownloadedApkCompatibility(downloadResult.file)
+            val verifyResult = apkVerifier.verifyInstallCompatibility(
+                apkFile = downloadResult.file,
+                localVersionCode = resolveLocalVersion().versionCode
+            )
             if (!verifyResult.success) {
                 callback(
                     UpdateInstallResult(
@@ -240,6 +246,11 @@ class AppUpdateManager(
                         usedUrl = downloadResult.usedUrl,
                         apkPath = downloadResult.file.absolutePath,
                         apkBytes = downloadResult.file.length(),
+                        expectedBytes = releaseInfo.asset.sizeBytes,
+                        failedStage = verifyResult.failedStage,
+                        preparseResult = verifyResult.preparseResult,
+                        preparsePackage = verifyResult.preparsePackage,
+                        preparseVersionCode = verifyResult.preparseVersionCode,
                         errorCode = verifyResult.errorCode,
                         message = verifyResult.message
                     )
@@ -247,7 +258,7 @@ class AppUpdateManager(
                 return@execute
             }
 
-            val dispatchResult = dispatchInstallIntent(downloadResult.file)
+            val dispatchResult = installer.dispatchInstallIntent(downloadResult.file)
             if (!dispatchResult.success) {
                 callback(
                     UpdateInstallResult(
@@ -258,8 +269,20 @@ class AppUpdateManager(
                         remoteVersionName = releaseInfo.versionName,
                         attemptedUrls = downloadResult.attemptedUrls,
                         usedUrl = downloadResult.usedUrl,
-                        apkPath = downloadResult.file.absolutePath,
-                        apkBytes = downloadResult.file.length(),
+                        apkPath = dispatchResult.installFile?.absolutePath ?: downloadResult.file.absolutePath,
+                        apkBytes = dispatchResult.installFile?.length() ?: downloadResult.file.length(),
+                        expectedBytes = releaseInfo.asset.sizeBytes,
+                        failedStage = dispatchResult.failedStage,
+                        pathKind = dispatchResult.pathKind,
+                        uriKind = dispatchResult.uriKind,
+                        mimeType = dispatchResult.mimeType,
+                        installerResolved = dispatchResult.installerResolved,
+                        apkReadable = dispatchResult.apkReadable,
+                        parentReadable = dispatchResult.parentReadable,
+                        parentExecutable = dispatchResult.parentExecutable,
+                        preparseResult = verifyResult.preparseResult,
+                        preparsePackage = verifyResult.preparsePackage,
+                        preparseVersionCode = verifyResult.preparseVersionCode,
                         errorCode = dispatchResult.errorCode,
                         message = dispatchResult.message
                     )
@@ -276,8 +299,20 @@ class AppUpdateManager(
                     remoteVersionName = releaseInfo.versionName,
                     attemptedUrls = downloadResult.attemptedUrls,
                     usedUrl = downloadResult.usedUrl,
-                    apkPath = downloadResult.file.absolutePath,
-                    apkBytes = downloadResult.file.length()
+                    apkPath = dispatchResult.installFile?.absolutePath ?: downloadResult.file.absolutePath,
+                    apkBytes = dispatchResult.installFile?.length() ?: downloadResult.file.length(),
+                    expectedBytes = releaseInfo.asset.sizeBytes,
+                    failedStage = dispatchResult.failedStage,
+                    pathKind = dispatchResult.pathKind,
+                    uriKind = dispatchResult.uriKind,
+                    mimeType = dispatchResult.mimeType,
+                    installerResolved = dispatchResult.installerResolved,
+                    apkReadable = dispatchResult.apkReadable,
+                    parentReadable = dispatchResult.parentReadable,
+                    parentExecutable = dispatchResult.parentExecutable,
+                    preparseResult = verifyResult.preparseResult,
+                    preparsePackage = verifyResult.preparsePackage,
+                    preparseVersionCode = verifyResult.preparseVersionCode
                 )
             )
         }
@@ -651,12 +686,16 @@ class AppUpdateManager(
                     tmpFile.delete()
                 }
 
-                val validation = validateDownloadedApkFile(finalFile, releaseInfo)
-                if (validation != null) {
+                val validation = apkVerifier.validateDownloadFile(
+                    apkFile = finalFile,
+                    expectedBytes = releaseInfo.asset.sizeBytes,
+                    expectedSha256Digest = releaseInfo.asset.sha256Digest
+                )
+                if (!validation.success) {
                     finalFile.delete()
                     throw IllegalStateException("${validation.errorCode}:${validation.message}")
                 }
-                log("update download success url=$candidate bytes=${finalFile.length()}")
+                log("update download success url=${shortenUrlForLog(candidate)} bytes=${finalFile.length()}")
                 return DownloadResult(
                     success = true,
                     file = finalFile,
@@ -670,7 +709,7 @@ class AppUpdateManager(
                     lastFailureCode = split.getOrNull(0).orEmpty().ifBlank { "UPDATE_DOWNLOAD_FAILED" }
                     lastFailureMessage = split.getOrNull(1).orEmpty().ifBlank { text }
                 }
-                log("update download fail url=$candidate reason=${e.javaClass.simpleName}:${e.message.orEmpty()}")
+                log("update download fail url=${shortenUrlForLog(candidate)} reason=${e.javaClass.simpleName}:${e.message.orEmpty()}")
             }
         }
 
@@ -688,78 +727,6 @@ class AppUpdateManager(
         }
         val pct = ((downloadedBytes * 100L) / totalBytes).toInt()
         return pct.coerceIn(0, 100)
-    }
-
-    private fun dispatchInstallIntent(apkFile: File): InstallDispatchResult {
-        if (!apkFile.exists() || apkFile.length() <= 0L) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_APK_MISSING",
-                message = "apk file missing"
-            )
-        }
-
-        if (Build.VERSION.SDK_INT >= 26) {
-            val allowInstall = runCatching {
-                appContext.packageManager.canRequestPackageInstalls()
-            }.getOrDefault(true)
-            if (!allowInstall) {
-                val settingsIntent = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${appContext.packageName}")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                return try {
-                    appContext.startActivity(settingsIntent)
-                    InstallDispatchResult(
-                        success = false,
-                        errorCode = "UNKNOWN_SOURCES_PERMISSION_REQUIRED",
-                        message = "open unknown sources settings"
-                    )
-                } catch (e: Exception) {
-                    InstallDispatchResult(
-                        success = false,
-                        errorCode = "UNKNOWN_SOURCES_SETTINGS_FAILED",
-                        message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
-                    )
-                }
-            }
-        }
-
-        val uri = if (Build.VERSION.SDK_INT >= 24) {
-            FileProvider.getUriForFile(
-                appContext,
-                "${appContext.packageName}.fileprovider",
-                apkFile
-            )
-        } else {
-            Uri.fromFile(apkFile)
-        }
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            setDataAndType(uri, APK_MIME_TYPE)
-        }
-
-        return try {
-            val canHandle = intent.resolveActivity(appContext.packageManager) != null
-            if (!canHandle) {
-                InstallDispatchResult(
-                    success = false,
-                    errorCode = "INSTALLER_NOT_FOUND",
-                    message = "no package installer found"
-                )
-            } else {
-                appContext.startActivity(intent)
-                InstallDispatchResult(success = true)
-            }
-        } catch (e: Exception) {
-            InstallDispatchResult(
-                success = false,
-                errorCode = "INSTALL_INTENT_EXCEPTION",
-                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
-            )
-        }
     }
 
     private fun buildMirrorCandidates(officialUrl: String): List<String> {
@@ -788,138 +755,27 @@ class AppUpdateManager(
 
     private fun shortenUrlForLog(rawUrl: String): String {
         val text = rawUrl.trim()
-        return if (text.length <= 96) text else text.take(96) + "..."
+        if (text.isBlank()) {
+            return ""
+        }
+        return runCatching {
+            val uri = URI(text)
+            val host = uri.host.orEmpty()
+            val path = uri.path.orEmpty()
+            if (host.isBlank()) {
+                text.substringBefore('?').take(96)
+            } else {
+                "$host$path".take(160)
+            }
+        }.getOrElse {
+            text.substringBefore('?').take(96)
+        }
     }
 
     private fun sanitizeApkFileName(raw: String): String {
         val source = raw.ifBlank { "skoda-music-update.apk" }
         val safe = source.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         return if (safe.lowercase(Locale.US).endsWith(".apk")) safe else "$safe.apk"
-    }
-
-    private fun verifyDownloadedApkCompatibility(apkFile: File): InstallDispatchResult {
-        val parsedInfo = resolveArchivePackageInfo(apkFile) ?: return InstallDispatchResult(
-            success = false,
-            errorCode = "UPDATE_APK_PARSE_FAILED",
-            message = "cannot parse archive package info"
-        )
-        if (!parsedInfo.packageName.equals(appContext.packageName, ignoreCase = false)) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_PACKAGE_NAME_MISMATCH",
-                message = "archive package=${parsedInfo.packageName} local=${appContext.packageName}"
-            )
-        }
-        val localVersion = resolveLocalVersion()
-        val apkVersion = resolveArchiveVersionCode(parsedInfo)
-        if (localVersion.versionCode > 0L && apkVersion > 0L && apkVersion <= localVersion.versionCode) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_APK_NOT_NEWER",
-                message = "apk versionCode=$apkVersion <= local versionCode=${localVersion.versionCode}"
-            )
-        }
-
-        val installedSigner = resolveInstalledSignerDigest()
-        val apkSigner = resolveArchiveSignerDigest(parsedInfo)
-        if (installedSigner.isNotBlank() && apkSigner.isNotBlank() &&
-            !installedSigner.equals(apkSigner, ignoreCase = true)
-        ) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_SIGNATURE_MISMATCH",
-                message = "installed/apk signer mismatch installed=$installedSigner apk=$apkSigner"
-            )
-        }
-        return InstallDispatchResult(success = true)
-    }
-
-    private fun validateDownloadedApkFile(apkFile: File, releaseInfo: ReleaseInfo): InstallDispatchResult? {
-        if (!apkFile.exists() || apkFile.length() <= 0L) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_APK_FILE_EMPTY",
-                message = "downloaded apk is empty"
-            )
-        }
-        // Strict file-length check if release metadata provides asset size.
-        val expectedSize = releaseInfo.asset.sizeBytes
-        if (expectedSize > 0L && apkFile.length() != expectedSize) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_APK_SIZE_MISMATCH",
-                message = "downloaded apk size=${apkFile.length()} expected=$expectedSize"
-            )
-        }
-        val parsedInfo = resolveArchivePackageInfo(apkFile) ?: return InstallDispatchResult(
-            success = false,
-            errorCode = "UPDATE_APK_PARSE_FAILED",
-            message = "cannot parse archive package info"
-        )
-        if (!parsedInfo.packageName.equals(appContext.packageName, ignoreCase = false)) {
-            return InstallDispatchResult(
-                success = false,
-                errorCode = "UPDATE_PACKAGE_NAME_MISMATCH",
-                message = "archive package=${parsedInfo.packageName} local=${appContext.packageName}"
-            )
-        }
-        val expectedDigest = releaseInfo.asset.sha256Digest
-        if (expectedDigest.isNotBlank()) {
-            val actualDigest = runCatching { sha256File(apkFile) }.getOrDefault("")
-            if (actualDigest.isBlank() || !actualDigest.equals(expectedDigest, ignoreCase = true)) {
-                return InstallDispatchResult(
-                    success = false,
-                    errorCode = "UPDATE_APK_DIGEST_MISMATCH",
-                    message = "downloaded apk digest mismatch"
-                )
-            }
-        }
-        return null
-    }
-
-    private fun resolveArchivePackageInfo(apkFile: File): PackageInfo? {
-        return try {
-            @Suppress("DEPRECATION")
-            appContext.packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun resolveArchiveVersionCode(pkg: PackageInfo): Long {
-        return try {
-            if (Build.VERSION.SDK_INT >= 28) {
-                val field = pkg.javaClass.getField("longVersionCode")
-                field.getLong(pkg)
-            } else {
-                @Suppress("DEPRECATION")
-                pkg.versionCode.toLong()
-            }
-        } catch (_: Exception) {
-            -1L
-        }
-    }
-
-    private fun resolveInstalledSignerDigest(): String {
-        return try {
-            @Suppress("DEPRECATION")
-            val pkg = appContext.packageManager.getPackageInfo(appContext.packageName, PackageManager.GET_SIGNATURES)
-            @Suppress("DEPRECATION")
-            val sig = pkg.signatures?.firstOrNull()?.toByteArray() ?: return ""
-            sha256Hex(sig)
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
-    private fun resolveArchiveSignerDigest(pkg: PackageInfo): String {
-        return try {
-            @Suppress("DEPRECATION")
-            val sig = pkg.signatures?.firstOrNull()?.toByteArray() ?: return ""
-            sha256Hex(sig)
-        } catch (_: Exception) {
-            ""
-        }
     }
 
     private fun resolveInstalledApkSha256(): String {
@@ -959,12 +815,6 @@ class AppUpdateManager(
                 digest.update(buffer, 0, read)
             }
         }
-        return digest.digest().toHex()
-    }
-
-    private fun sha256Hex(bytes: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update(bytes)
         return digest.digest().toHex()
     }
 
@@ -1022,8 +872,6 @@ class AppUpdateManager(
         const val UPDATE_CACHE_DIR_NAME = "updates"
         const val DOWNLOAD_BUFFER_BYTES = 8 * 1024
         const val DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS = 350L
-        const val APK_MIME_TYPE = "application/vnd.android.package-archive"
-
         val RUN_NUMBER_REGEX = Regex("(?:^|\\D)r(\\d{1,10})(?:\\D|$)", RegexOption.IGNORE_CASE)
         val SEMVER_REGEX = Regex("v?(\\d+)\\.(\\d+)\\.(\\d+)", RegexOption.IGNORE_CASE)
     }

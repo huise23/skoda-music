@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4/S5)
 
-Last Updated: 2026-06-04
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119` + `T-S5-HOME-128/130` + `T-S5-SCENE-129` + `T-S5-UI-131`
+Last Updated: 2026-06-09
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119` + `T-S5-HOME-128/130` + `T-S5-SCENE-129` + `T-S5-UI-131` + `T-S5-UPD-150/151/152`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -81,8 +81,11 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] F1 冷启动自动检测遵循节流（成功 24h，失败 30min），不阻断主流程。
 - [ ] F2 设置页“检查更新”可手动触发并展示状态（最新/有新版本/失败）。
 - [ ] F3 发现新版本后可下载 APK（镜像优先 + 官方回退）。
-- [ ] F4 下载完成可触发系统安装器。
-- [ ] F5 更新失败时可看到结构化失败信息（`failed_stage/failed_url/attempt_urls`）。
+- [ ] F4 下载完成后本地预解析通过：日志/事件包含 `preparse_result=ok`、`preparse_package`、`preparse_version_code`、`apk_bytes`，且 `apk_bytes` 与 release asset 大小一致。
+- [ ] F5 API17 安装 handoff 使用安装器可读路径：日志/事件包含 `path_kind=public_downloads`、`uri_kind=file`、`mime_type=application/vnd.android.package-archive`、`apk_readable=true`、`installer_resolved=true`。
+- [ ] F6 系统安装器能识别 APK 并展示安装确认页，不再提示“包解析失败/解析包错误”。
+- [ ] F7 更新失败时可看到结构化失败信息（`failed_stage/error_code/path_kind/uri_kind/preparse_result/installer_resolved`）。
+- [ ] F8 PostHog/runtime 日志不得记录完整 URL query、完整 APK 本地路径中的敏感目录细节或任何私有凭据。
 
 ### G. Observability Evidence
 - [ ] G1 `SkodaPostHog` 可见关键上报日志（含 `capture ok event=...`）。
@@ -261,7 +264,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 ### Key Logs / Evidence
 - command_result: <action/source/handled/detail>
 - playback_error: <error_code/stage/request_id>
-- update_failed: <failed_stage/failed_url/attempt_urls>
+- update_failed: <failed_stage/error_code/path_kind/uri_kind/preparse_result/installer_resolved/apk_bytes/expected_bytes>
 - posthog: <capture ok 或失败样本>
 
 ## P. Kugou Daily VIP & Permission Playback

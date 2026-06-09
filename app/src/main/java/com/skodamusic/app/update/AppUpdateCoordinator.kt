@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import com.skodamusic.app.R
 import com.skodamusic.app.observability.PostHogTracker
+import java.net.URI
 import java.util.Locale
 
 class AppUpdateCoordinator(
@@ -127,7 +128,7 @@ class AppUpdateCoordinator(
             }
             captureUpdateCheckResult(result)
             appendRuntimeLog(
-                "update check done trigger=$trigger status=${result.status.name} remoteTag=${result.remoteTag} code=${result.errorCode} stage=${result.failedStage} url=${result.failedUrl}"
+                "update check done trigger=$trigger status=${result.status.name} remoteTag=${result.remoteTag} code=${result.errorCode} stage=${result.failedStage} url=${redactUrlForDiagnostics(result.failedUrl)}"
             )
         }
     }
@@ -187,11 +188,13 @@ class AppUpdateCoordinator(
             "remote_tag" to result.remoteTag,
             "http_status" to result.httpStatus,
             "failed_stage" to result.failedStage,
-            "failed_url" to result.failedUrl,
+            "failed_url" to redactUrlForDiagnostics(result.failedUrl),
             "attempt_count" to result.attemptedUrls.size
         )
         if (result.attemptedUrls.isNotEmpty()) {
-            props["attempt_urls"] = result.attemptedUrls.joinToString(" -> ").take(220)
+            props["attempt_urls"] = result.attemptedUrls.joinToString(" -> ") {
+                redactUrlForDiagnostics(it)
+            }.take(220)
         }
         if (result.errorCode.isNotBlank()) {
             props["error_code"] = result.errorCode
@@ -288,7 +291,7 @@ class AppUpdateCoordinator(
             }
             captureUpdateInstallResult(result)
             appendRuntimeLog(
-                "update install result status=${result.status.name} tag=${result.releaseTag} used=${result.usedUrl} error=${result.errorCode}"
+                "update install result status=${result.status.name} tag=${result.releaseTag} stage=${result.failedStage} pathKind=${result.pathKind} uriKind=${result.uriKind} preparse=${result.preparseResult} installerResolved=${result.installerResolved} used=${redactUrlForDiagnostics(result.usedUrl)} error=${result.errorCode}"
             )
         }
     }
@@ -300,9 +303,26 @@ class AppUpdateCoordinator(
             "remote_version_code" to result.remoteVersionCode,
             "remote_version_name" to result.remoteVersionName,
             "apk_bytes" to result.apkBytes,
-            "used_url" to result.usedUrl,
-            "attempt_count" to result.attemptedUrls.size
+            "expected_bytes" to result.expectedBytes,
+            "used_url" to redactUrlForDiagnostics(result.usedUrl),
+            "attempt_count" to result.attemptedUrls.size,
+            "failed_stage" to result.failedStage,
+            "path_kind" to result.pathKind,
+            "uri_kind" to result.uriKind,
+            "mime_type" to result.mimeType,
+            "installer_resolved" to result.installerResolved,
+            "apk_readable" to result.apkReadable,
+            "parent_readable" to result.parentReadable,
+            "parent_executable" to result.parentExecutable,
+            "preparse_result" to result.preparseResult,
+            "preparse_package" to result.preparsePackage,
+            "preparse_version_code" to result.preparseVersionCode
         )
+        if (result.attemptedUrls.isNotEmpty()) {
+            props["attempt_urls"] = result.attemptedUrls.joinToString(" -> ") {
+                redactUrlForDiagnostics(it)
+            }.take(220)
+        }
         if (result.errorCode.isNotBlank()) {
             props["error_code"] = result.errorCode
         }
@@ -324,6 +344,25 @@ class AppUpdateCoordinator(
                 PostHogTracker.Priority.HIGH
             }
         )
+    }
+
+    private fun redactUrlForDiagnostics(rawUrl: String): String {
+        val text = rawUrl.trim()
+        if (text.isBlank()) {
+            return ""
+        }
+        return runCatching {
+            val uri = URI(text)
+            val host = uri.host.orEmpty()
+            val path = uri.path.orEmpty()
+            if (host.isBlank()) {
+                text.substringBefore('?').take(96)
+            } else {
+                "$host$path".take(160)
+            }
+        }.getOrElse {
+            text.substringBefore('?').take(96)
+        }
     }
 
     private fun showUpdateProgressDialog(versionLabel: String) {

@@ -1,8 +1,8 @@
 # TASK_BREAKDOWN
 
-Last Updated: 2026-06-08
+Last Updated: 2026-06-09
 
-## Active Stage: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
+## Active Stage: S5 热修插队 - API17 App Update Install Compatibility
 
 ## Planning Snapshot
 - 用户新增确认：
@@ -45,6 +45,199 @@ Last Updated: 2026-06-08
   - 播放块删除按钮前增加点赞按钮，复用其它页面点赞逻辑。
   - `.NET` UI 没有独立 Scene 页面，发现页改为一级 tab + 二级 tab + 歌单网格；去掉标题、二级说明和刷新按钮，一二级切换自动获取歌单。
   - 新增 `M-S5-HOMEUX-043`、`M-S5-DISCOVER-044`、`M-S5-DSP-045`。
+- 2026-06-09 追加规划:
+  - Android 4.2.2/API17 应用内更新安装提示“包解析失败”，但同版本 APK 可通过“甲壳虫 ADB 助手”安装成功。
+  - 用户确认按方案 B 修应用内更新安装链路，不重做整套更新系统。
+  - 新增 `M-S5-UPD-046`，作为当前最高优先级热修模块。
+  - 现有 `AppUpdateManager.kt` 约 1030 行，已混合 release check/download/verify/install；本轮必须拆 `AppUpdateInstaller` / `AppUpdateApkVerifier` 或等价 focused 类，避免继续扩大 manager。
+
+## T-S5-UPD-150
+- Task ID: `T-S5-UPD-150`
+- Module ID: `M-S5-UPD-046`
+- Status: Done locally
+- Title: 更新安装链路职责拆分与诊断模型
+- Goal: 将 APK 验证与安装 dispatch 从 `AppUpdateManager` 拆入 focused 类，并定义可用于 API17 现场排障的结构化诊断字段。
+- Why: `AppUpdateManager.kt` 已约 1030 行且职责混合；直接追加 API17 兼容逻辑会扩大 god object 风险，也不利于区分下载损坏、文件不可读和安装器 handoff 问题。
+- Responsibility Boundary:
+  - `AppUpdateApkVerifier`: 文件存在/大小/hash/pre-parse/包名/版本/签名检查。
+  - `AppUpdateInstaller`: installer handoff 的准备与 dispatch，不做网络下载。
+  - `AppUpdateManager`: 编排 download -> verify -> install，汇总 result。
+  - `AppUpdateCoordinator`: 只展示 result 和 capture event。
+- Dependencies:
+  - 用户已确认方案 B。
+  - 现有 `AppUpdateManager.verifyDownloadedApkCompatibility()`、`validateDownloadedApkFile()`、`dispatchInstallIntent()` 可迁移。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
+  - `.ai/context/RED_LINES.md`
+- Expected Outputs:
+  - 新增 verifier/installer focused 类或等价拆分。
+  - `UpdateInstallResult` 或内部诊断对象包含 `failed_stage`、`path_kind`、`uri_kind`、`apk_bytes`、`expected_bytes`、`preparse_package`、`preparse_version_code`、`installer_resolved` 等低敏字段。
+  - `AppUpdateManager` 行数/职责风险下降或至少不再增加。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateApkVerifier.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+- Architecture Notes:
+  - 新类保持 package-private 风格即可，不引入新依赖。
+  - 不记录完整下载 URL query；现有 `used_url/attempt_urls` 若进入 PostHog 需截断/脱敏。
+- Comment Requirements:
+  - 对 API17 安装器读取路径限制和诊断字段用途加短注释。
+- Done Criteria:
+  - 代码职责拆分完成，编译通过。
+  - result 能携带安装链路关键诊断字段。
+  - `MainActivity` 无新增更新逻辑。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `python scripts/check_code_health.py`（允许既有 MainActivity red-line，不能新增 update red finding）
+- Risks:
+  - 迁移时可能改变现有更新成功路径；先保持行为等价，再进入 API17 handoff 修复。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-UPD-151
+- Task ID: `T-S5-UPD-151`
+- Module ID: `M-S5-UPD-046`
+- Status: Done locally
+- Title: API17-safe APK 文件位置与安装 intent handoff 修复
+- Goal: 修复 API17 系统安装器无法读取应用私有 cache APK 导致“包解析失败”的路径，使用系统安装器可读取的 APK 位置和兼容 intent。
+- Why: 当前 API24 以下直接 `Uri.fromFile(File(appContext.cacheDir, "updates/...apk"))`，Android 4.2.2 安装器通常无法读取应用私有 cache 文件；ADB 安装成功说明 APK 本体更可能是可安装的。
+- Responsibility Boundary:
+  - `AppUpdateInstaller`: 选择/准备 installer-readable APK 文件，设置必要可读权限，构建 `ACTION_VIEW` intent。
+  - `AppUpdateManager`: 调用 installer 并接收 result。
+  - `AndroidManifest` / `file_paths.xml`: 仅补必要权限/路径，不改变其它组件。
+- Dependencies:
+  - `T-S5-UPD-150`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/AndroidManifest.xml`
+  - `app/src/main/res/xml/file_paths.xml`
+- Expected Outputs:
+  - API17 使用外部可读更新目录或公开下载目录中的 APK 文件，`Uri.fromFile()` + `application/vnd.android.package-archive`。
+  - 若需写公开/外部目录，补充 API17 兼容权限并记录原因。
+  - 高版本继续使用 `FileProvider` + `FLAG_GRANT_READ_URI_PERMISSION`。
+  - dispatch 前记录 `path_kind`、`can_read`、`parent_can_execute/read`、`uri_kind`、`mime`、`installer_resolved`。
+  - 外部存储不可用、复制失败、权限失败时 fail-soft 并返回稳定 error_code。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/AndroidManifest.xml`
+  - `app/src/main/res/xml/file_paths.xml`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 不使用 `content://` 作为 API17 主路径；API17 采用 `file://` 但文件必须位于安装器可读路径。
+  - 不做静默安装，不绕过系统安装确认。
+- Comment Requirements:
+  - 对 API17 使用外部可读 APK 的原因加短注释。
+- Done Criteria:
+  - API17 路径不再把私有 cache APK 直接交给系统安装器。
+  - 安装 intent 可 resolve，失败 result 可区分文件位置/权限/installer 缺失。
+  - 高版本 FileProvider 路径不回归。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+- Risks:
+  - API17 设备外部存储挂载策略不一；需要明确 fallback 与 error_code。
+- Size: M
+- Execution Mode: Module
+- Minimal Loop: Yes
+
+## T-S5-UPD-152
+- Task ID: `T-S5-UPD-152`
+- Module ID: `M-S5-UPD-046`
+- Status: Done locally
+- Title: 更新链路观测与 API17 回归清单升级
+- Goal: 将更新安装诊断字段接入 runtime/logcat/PostHog，并升级 API17 回归清单，确保现场能验证“包解析失败”是否消除及失败原因。
+- Why: 当前失败发生在系统安装器内，应用只能通过安装前诊断和 intent dispatch 证据定位；没有字段会导致实机反馈无法复盘。
+- Responsibility Boundary:
+  - `AppUpdateCoordinator`: capture result 字段、UI error code、runtime log。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`: F 组和 evidence template。
+  - `AppUpdateInstaller/Verifier`: 提供低敏字段，不直接发 PostHog。
+- Dependencies:
+  - `T-S5-UPD-150`
+  - `T-S5-UPD-151`
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`（如需）
+- Expected Outputs:
+  - `update_install_triggered/update_install_failed/update_download_failed` 包含 `failed_stage/error_code/apk_bytes/expected_bytes/path_kind/uri_kind/preparse_result/installer_resolved`。
+  - runtime log 包含短路径类别和文件大小，不记录完整敏感 URL query。
+  - 回归清单 F 组新增 API17 包解析失败专项步骤。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - 可选 `docs/S5_OBSERVABILITY_COVERAGE.md`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - PostHog 只记录低频结构化事件，不上传完整 APK path 中的用户目录细节或完整 URL query。
+- Comment Requirements:
+  - 无特别要求。
+- Done Criteria:
+  - 更新失败能按 download/verify/prepare/install_intent 分类。
+  - API17 checklist 可直接指导现场复测并回传证据。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+- Risks:
+  - 字段过多可能污染 PostHog；需控制为枚举、布尔、大小和短错误码。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-UPD-153
+- Task ID: `T-S5-UPD-153`
+- Module ID: `M-S5-UPD-046`
+- Status: Planned
+- Title: API17 应用内更新实机验证与证据回填
+- Goal: 在 Android 4.2.2/API17 车机上验证应用内更新下载后可正常拉起安装器识别 APK，并把结果回填 context。
+- Why: 本缺陷只在目标系统安装器路径上暴露，本地编译不能证明修复完成。
+- Responsibility Boundary:
+  - 设备执行与证据回填，不在验证任务中继续改代码。
+  - 若失败，按 `error_code/failed_stage` 生成 targeted fix。
+- Dependencies:
+  - `T-S5-UPD-152`
+  - 可用 API17 设备和可发布/可下载的新版本 APK。
+- Inputs:
+  - 修复后的 APK。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` F 组。
+- Expected Outputs:
+  - Device report：下载文件 size/hash/preparse、path_kind、uri_kind、installer result、是否仍包解析失败。
+  - `.ai/context/CURRENT_STATUS.md` / `HANDOFF.md` / `NEXT_STEPS.md` 回写验证结论。
+- Expected Files:
+  - `.ai/context/CURRENT_STATUS.md`
+  - `.ai/context/HANDOFF.md`
+  - `.ai/context/NEXT_STEPS.md`
+- Files Not To Expand:
+  - Android 源码文件。
+- Architecture Notes:
+  - 若失败原因是发布资产不一致或签名问题，回到 release/signing 任务；若是 installer handoff，回到 `AppUpdateInstaller`。
+- Comment Requirements:
+  - 无。
+- Done Criteria:
+  - 至少一台 API17 设备完成应用内更新链路验证。
+  - 结论为 PASS / FAIL，失败带复现步骤和日志。
+- Validation:
+  - 设备手测。
+  - 推荐 logcat: `adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I PackageParser:E PackageInstaller:E AndroidRuntime:E '*:S'`
+- Risks:
+  - 无可下载“新版本”时需要临时发布或调整版本号构建；这属于执行环境前置，不在代码修复内解决。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: No
 
 ## T-S5-HOME-141
 - Task ID: `T-S5-HOME-141`

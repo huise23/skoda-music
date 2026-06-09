@@ -1,6 +1,6 @@
 # SCOPE
 
-Last Updated: 2026-06-08
+Last Updated: 2026-06-09
 
 ## Project
 - 名称: `skoda-music`
@@ -25,6 +25,7 @@ Last Updated: 2026-06-08
   - 2026-06-08 新增用户确认：`.NET` UI 没有独立 Scene 页面，发现页按一级 tab + 二级 tab + 歌单网格呈现；Android 发现页需移除“发现歌单”“二级分类：xxx”和刷新按钮等占位，切换一/二级分类时自动获取歌单。
   - 2026-06-08 新增用户确认：首页歌词需要恢复，歌词直接从酷狗查；当首页当前切在播放列表且正在播放时，10s 未操作自动切回歌词页，空播放不处理。
   - 2026-06-08 新增用户确认：首页播放块删除按钮前增加点赞按钮，行为与其它页面点赞一致；首页右侧队列当前仍未跟随下一曲，需要作为硬性修复。
+  - 2026-06-09 新增用户确认：Android 4.2.2/API17 上应用内更新安装仍提示“包解析失败”，但通过“甲壳虫 ADB 助手”连接车机后安装同版本 APK 可成功；本次按推荐方案 B 收敛为“修应用内更新安装链路”，不重做整套更新系统。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -84,6 +85,13 @@ Last Updated: 2026-06-08
   - QR refresh、QR polling、session validation 的失败路径必须 fail-soft，不得因网络、解析、图片下载、旧回调或生命周期切换导致闪退。
   - 新增或确认脱敏 PostHog/runtime/logcat 证据，覆盖 QR refresh start/success/failure、polling failure、session validation failure。
   - 不记录 token、session key、cookie、手机号、验证码、完整 URL query、认证 header、私有 API key 或可复用设备凭据。
+- API17 应用内更新安装链路:
+  - 定位并修复 Android 4.2.2/API17 上应用内更新安装提示“包解析失败”的问题。
+  - 重点检查更新 APK 下载完成后的文件完整性、大小/校验值、保存位置、文件可读性、安装 intent URI 类型和 MIME type。
+  - API17 安装路径必须使用系统安装器可读取的 APK 文件位置，并采用 API17 兼容的 handoff；高版本路径可继续使用现有兼容方案。
+  - 安装前使用 `PackageManager.getPackageArchiveInfo()` 或等价 API 对下载后的 APK 做本地预解析，区分“文件损坏/不可读”和“系统安装器拉起问题”。
+  - 更新链路必须补充脱敏 runtime/logcat/PostHog 诊断，至少覆盖 download complete、file size、pre-parse result、install intent result、失败 error_code。
+  - 仍保持更新能力 fail-open：检测、下载或安装拉起失败不得影响播放主链路和应用启动。
 - 纯酷狗默认模式:
   - 默认进入酷狗推荐歌曲。
   - 酷狗播放期间 Now Playing、队列页、next/previous、service state、按钮状态应来自酷狗/source session，而不是 Emby `loadedTracks`。
@@ -111,6 +119,9 @@ Last Updated: 2026-06-08
 
 ## Out of Scope
 - 上传播放缓存到 Emby 并纳入媒体库。
+- 重做整套应用更新/OTA 系统。
+- 静默安装或绕过系统安装确认流程。
+- 改变 GitHub Releases 作为更新真源的口径。
 - 独立 Scene 左侧入口作为长期产品入口继续扩展（已被发现页内一级/二级 tab 方案取代；若用户后续反向确认再恢复）。
 - Emby 入库失败的真实网络空闲重试队列。
 - 未经 `KugouMusic.NET` 支撑的酷狗接口、字段、流程或协议扩展。
@@ -172,6 +183,11 @@ Last Updated: 2026-06-08
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`。
+- API17 更新安装验收:
+  - Android 4.2.2/API17 车机上，应用内更新下载完成后能正常拉起系统安装器并识别 APK，不再提示“包解析失败”。
+  - 同一版本 APK 通过应用内下载后的文件大小/校验值与发布资产一致。
+  - 失败时日志能明确区分下载损坏、文件不可读、安装 intent/URI/MIME 不兼容、签名/版本/SDK 不兼容。
+  - 通过“甲壳虫 ADB 助手”安装成功的 APK，与应用内更新链路使用的目标 APK 版本一致。
 - 观测与安全验收:
   - 新增功能必须能通过 PostHog/runtime/logcat 追踪关键动作、异步请求结果、状态机跳转和失败路径。
   - PostHog 只记录低频结构化事件，不记录高频进度 tick、逐帧 DSP 状态、UI redraw 或完整 HTTP payload。
@@ -201,6 +217,7 @@ Last Updated: 2026-06-08
   - `KugouDailyVipCoordinator` 或等价类：每日触发、服务端记录优先、本地兜底记录、重试/退避、登录后恢复。
   - `MainActivity` 只在 cached session/login success 时委托调用，不承载 VIP 状态机。
 - 页面壳拆分优先级：设置/日志/EQ 等低耦合页面优先；播放页、后台控制、方向盘按键、浮窗/service bridge 最后拆。
+- 应用内更新安装链路采用 API17-safe 兼容修复：先对下载后的 APK 做本地文件与包解析诊断，再按 API17 可读文件路径和兼容 install intent 拉起系统安装器；不扩大为静默安装或 OTA 平台重构。
 - 酷狗普通歌曲队列和 radio session 是并列播放会话；当 radio session active 时，next/previous 由 radio session 接管。
 - Emby 作为独立来源保留；切换到 Emby 时才启用 Emby 队列、download-only、resume/refresh 等旧链路。
 

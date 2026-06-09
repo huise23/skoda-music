@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-06-09
+- Completed local `M-S5-UPD-046` code path for API17 app update install compatibility: split APK verification and package inspection into `AppUpdateApkVerifier` / `AppUpdatePackageInspector`, split installer handoff into `AppUpdateInstaller`, and reduced `AppUpdateManager.kt` from 1030 to 878 lines.
+- Fixed the likely API17 parse-failure cause: pre-API24 installs now copy the downloaded APK to public Downloads/`SkodaMusicUpdates`, set it readable, and launch the system installer via `file://` + `application/vnd.android.package-archive`; API24+ keeps FileProvider/content URI behavior.
+- Added low-sensitive update install diagnostics for `failed_stage`, `path_kind`, `uri_kind`, `installer_resolved`, APK readability, expected/actual bytes, and package pre-parse result; update URL diagnostics now use host/path summaries instead of full query URLs.
+- Updated API17 regression and S5 observability docs for the app update install parse-failure verification path.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+
 ## 2026-06-08
 - Completed local Home UX + Discover + DSP diagnostics correction: daily recommend startup autoplay is separated from the left-nav list entry, Home current queue sync/scroll is refreshed on playback changes, Home lyrics use direct Kugou lyric search/download through `KugouLyricClient` and `HomeLyricsBinder`, and the playback block has a Kugou like button.
 - Reworked Discover to preserve `.NET` category/tag grouping and render compact multi-row first/second-level tabs with playlist thumbnail grid cards; standalone Scene left nav is hidden.

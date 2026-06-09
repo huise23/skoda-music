@@ -1,6 +1,6 @@
 # S5 Observability Coverage
 
-Last Updated: 2026-06-08
+Last Updated: 2026-06-09
 
 ## Purpose
 
@@ -24,6 +24,7 @@ Record the minimum diagnostic evidence expected for S5 features without turning 
 | Kugou normal queue | PostHog: `kugou_queue_start`; runtime log keeps visible click context | No track title payload upload, no raw hash in PostHog |
 | Kugou radio | PostHog: `kugou_radio_session_start`; runtime log keeps visible click context | No raw radio payload upload |
 | Home queue auto-scroll / lyrics | Runtime/UI evidence only: screenshot/video proving current row centered, current row follows next/completion/permission skip, lyrics tab loads and 10s idle switch works | No PostHog UI redraw, scroll tick, lyric text, or raw lyric payload |
+| App update install | PostHog/runtime: `update_download_failed`, `update_install_triggered`, `update_install_failed` with `failed_stage`, `error_code`, `path_kind`, `uri_kind`, `apk_bytes`, `expected_bytes`, `preparse_result`, `installer_resolved` | No full URL query, no raw release payload, no private credentials, no full sensitive local path |
 | DSP direct bridge / indicator | Runtime/logcat: `hifi-dsp native direct-buffer bridge ...`, `hifi-dsp native status=...`, `hifi-dsp bypass ...`, `hifi-dsp indicator status=... reason=...` | Not sent to PostHog from audio hot path |
 
 ## PostHog Query Limitation

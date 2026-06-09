@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## 2026-06-09
+- Hotfixed a likely lyrics switch crash: `HomeLyricsBinder` now invalidates stale lyric-centering UI posts with a render generation and guards old offsets against newly rendered or empty lyric text.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
 - Completed local `M-S5-DEV-047`: `.gitignore` now precisely ignores only `3.0.1-R-20210524.1733/`; added API17-safe `DeviceEnvironmentDetector`; `WifiNetworkGate` now allows connected Android Studio emulators to pass non-Wi-Fi active network types while real devices remain Wi-Fi-only.
 - Added low-sensitive network gate diagnostics (`network_type`, `is_emulator`, `gate_mode`) and kept offline/unknown networks blocked.
 - Review validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.

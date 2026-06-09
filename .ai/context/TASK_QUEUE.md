@@ -4,6 +4,7 @@ Last Updated: 2026-06-09
 
 ## Ready
 
+- `T-S5-HOTFIX-158`（P0, Module `M-S5-FIX-046`, Execution Mode: Single）: 歌词加载后切歌崩溃热修设备复测。原因：本地已加 stale lyric render/post 防护并通过构建，需要真实连续切歌确认。
 - `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`, Execution Mode: Module）: S5 集成设备验证执行包与证据回填。原因：`M-S5-FIX-046` 与 `M-S5-DEV-047` 已本地完成，下一步需要手机/API17/模拟器真实验证。
 
 ## Pending / Planned
@@ -48,6 +49,7 @@ Last Updated: 2026-06-09
 - None
 
 ## Done
+- `T-S5-HOTFIX-158-local`: 歌词切歌崩溃本地热修；`HomeLyricsBinder` 增加 render generation 和旧 offset 边界保护，`git diff --check`、API17 guardrail、`compileDebugKotlin`、`assembleDebug` 通过，设备复测待执行。
 - `T-S5-DEV-157`: 模拟器网络 gate 本地验证与 context 回写；`git diff --check`、API17 guardrail、`compileDebugKotlin`、`assembleDebug` 通过，模拟器/真机 smoke 待设备窗口。
 - `T-S5-DEV-156`: 模拟器网络 gate 兼容实现；新增 `DeviceEnvironmentDetector`，`WifiNetworkGate` 在模拟器 active network connected 时允许非 Wi-Fi 类型放行，真机仍 Wi-Fi-only。
 - `T-S5-DEV-155`: `.gitignore` 精确忽略 `3.0.1-R-20210524.1733/`，不泛化其它镜像目录，系统镜像目录不再出现在 `git status --short`。

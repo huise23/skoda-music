@@ -32,6 +32,7 @@ class HomeLyricsBinder(
     private var lines: List<LyricLine> = emptyList()
     private var showingQueueTab = true
     private var playing = false
+    private var renderGeneration = 0
 
     private val idleSwitchRunnable = Runnable {
         if (showingQueueTab && playing && lines.isNotEmpty()) {
@@ -138,6 +139,7 @@ class HomeLyricsBinder(
             renderEmpty()
             return
         }
+        val generation = ++renderGeneration
         val activeIndex = findActiveIndex(positionMs)
         val builder = SpannableStringBuilder()
         var activeStart = -1
@@ -166,24 +168,32 @@ class HomeLyricsBinder(
             }
         }
         textView.text = builder
-        centerActiveLine(activeStart, activeEnd)
+        centerActiveLine(activeStart, activeEnd, generation)
     }
 
     private fun renderEmpty() {
+        renderGeneration++
         if (this::textView.isInitialized) {
             textView.text = textView.context.getString(R.string.home_lyrics_placeholder)
         }
     }
 
-    private fun centerActiveLine(activeStart: Int, activeEnd: Int) {
+    private fun centerActiveLine(activeStart: Int, activeEnd: Int, generation: Int) {
         textView.post {
-            val layout = textView.layout ?: return@post
-            val viewportHeight = scrollView.height
-            if (viewportHeight <= 0 || activeStart < 0 || activeEnd <= activeStart) {
+            if (generation != renderGeneration) {
                 return@post
             }
-            val safeStart = activeStart.coerceIn(0, layout.text.length)
-            val safeEnd = activeEnd.coerceIn(safeStart + 1, layout.text.length)
+            val layout = textView.layout ?: return@post
+            val textLength = layout.text.length
+            val viewportHeight = scrollView.height
+            if (viewportHeight <= 0 || textLength <= 0 || activeStart < 0 || activeEnd <= activeStart) {
+                return@post
+            }
+            if (activeStart >= textLength) {
+                return@post
+            }
+            val safeStart = activeStart.coerceIn(0, textLength - 1)
+            val safeEnd = activeEnd.coerceIn(safeStart + 1, textLength)
             val startLine = layout.getLineForOffset(safeStart)
             val endLine = layout.getLineForOffset((safeEnd - 1).coerceAtLeast(0))
             val lyricTop = layout.getLineTop(startLine)
@@ -192,7 +202,7 @@ class HomeLyricsBinder(
             val verticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
             if (textView.paddingTop != verticalPadding || textView.paddingBottom != verticalPadding) {
                 textView.setPadding(textView.paddingLeft, verticalPadding, textView.paddingRight, verticalPadding)
-                textView.post { centerActiveLine(activeStart, activeEnd) }
+                textView.post { centerActiveLine(activeStart, activeEnd, generation) }
                 return@post
             }
             val lineCenter = textView.paddingTop + (lyricTop + lyricBottom) / 2

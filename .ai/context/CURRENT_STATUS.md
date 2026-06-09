@@ -6,6 +6,22 @@ Last Updated: 2026-06-09
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 
+## Hotfix Progress (Lyrics Switch Crash, 2026-06-09)
+- 状态: 本地完成，等待用户/设备复测切歌。
+- 触发:
+  - 用户反馈：歌词已可加载，但切歌会崩溃。
+- 修复:
+  - `HomeLyricsBinder` 的歌词居中滚动增加 `renderGeneration`，旧 render/post 任务在切歌或文本刷新后自动失效。
+  - `centerActiveLine()` 对空文本、旧 offset、`activeStart >= textLength` 等边界直接返回，避免旧歌词 offset 应用于新歌词/占位文本时触发范围异常。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和 314 行方法；本轮未修改 `MainActivity.kt`。
+- 未验证:
+  - 真实设备/模拟器连续切歌，确认不再崩溃且歌词正常刷新/居中。
+
 ## Execution Progress (M-S5-DEV-047, 2026-06-09)
 - 状态: `T-S5-DEV-155/156/157` 本地完成；等待模拟器/真机 smoke 验证。
 - 已确认:

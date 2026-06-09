@@ -6,7 +6,22 @@ Last Updated: 2026-06-09
 - 项目: `skoda-music`（Android 车机播放器）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: `M-S5-DEV-047` 已本地完成，下一步回到 `T-S5-VAL-137` 手机/API17/模拟器设备验证与证据回填。
+- 当前执行入口: 切歌崩溃热修已本地完成，下一步优先安装当前 debug APK 复测连续切歌；通过后回到 `T-S5-VAL-137` 手机/API17/模拟器设备验证与证据回填。
+
+## Latest Delta (Lyrics Switch Crash Hotfix, 2026-06-09)
+- 本地 Done:
+  - `HomeLyricsBinder` 增加 render generation，切歌/文本刷新后旧歌词居中 `post` 任务直接失效。
+  - `centerActiveLine()` 增加文本长度和旧 offset 边界保护，避免旧歌词 offset 应用于新文本时触发范围异常。
+- 修改文件:
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和一个 314 行方法；本轮未修改 `MainActivity.kt`。
+- 未验证:
+  - 连续切歌实机/模拟器复测，确认不再崩溃。
 
 ## Latest Delta (Dev Hygiene + Emulator Network Gate, 2026-06-09)
 - 本地 Done:

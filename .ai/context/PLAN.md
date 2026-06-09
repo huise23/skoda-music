@@ -6,6 +6,39 @@ Last Updated: 2026-06-09
 - Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 - Scope Source: `.ai/context/SCOPE.md`（2026-06-09）
 
+## Planning Refresh (Dev Hygiene + Emulator Network Gate, 2026-06-09)
+- Trigger:
+  - 用户确认只将系统镜像目录 `3.0.1-R-20210524.1733/` 加入 git 忽略，不泛化到其它目录。
+  - 用户确认 Android Studio 模拟器上不强制判断 Wi-Fi 类型，但仍需要 active network connected；真机/车机继续保持 Wi-Fi gate。
+- Scope Fit:
+  - 属于当前 S5 的工程治理和开发环境兼容小闭环。
+  - 不改变播放、酷狗、更新、Emby 或车机真实网络门禁语义。
+  - 不进入系统镜像修改、系统 app 修改或 ROM 相关实现。
+- Architecture Decision:
+  - 新增 `M-S5-DEV-047`: Git Ignore Hygiene & Emulator Network Gate。
+  - `.gitignore` 只加精确目录项 `3.0.1-R-20210524.1733/`。
+  - 模拟器识别放入 focused helper，如 `DeviceEnvironmentDetector`，不把 `Build.*` 判断散落到 `MainActivity`。
+  - `WifiNetworkGate` 保持网络 gate 责任：真机要求 Wi-Fi；模拟器要求 active network connected 即放行；离线仍拦截。
+  - PostHog/runtime 字段需区分 emulator bypass 和真实 Wi-Fi，且不记录敏感信息。
+- Current Code Reality:
+  - `.gitignore` 当前只忽略 Gradle/build/dist/`KugouMusic.NET/`，系统镜像目录仍显示为 untracked。
+  - `WifiNetworkGate.kt` 当前只把 `ConnectivityManager.TYPE_WIFI` 视为 connected，并用 `WIFI_NOT_CONNECTED` 上报阻断。
+  - `MainActivity.kt` 只通过 `ensureWifiConnectedForNetworkRequest()` 委托网络 gate；本模块不应修改 Activity 逻辑。
+  - `PostHogTracker.resolveNetworkType()` 也读取 active network type，但本轮不改变全局观测口径，除非执行时发现必须同步。
+- Workstreams:
+  - `W21 Git Hygiene`: 精确忽略当前系统镜像目录，恢复工作树可读性。
+  - `W22 Emulator Network Gate`: API17-safe 模拟器检测 + `WifiNetworkGate` emulator connected 分支。
+  - `W23 Validation/Docs`: 验证 git 状态、guardrails、compile，并记录下一步。
+- Recommended Order:
+  1. `T-S5-DEV-155`: 精确忽略本地系统镜像目录。
+  2. `T-S5-DEV-156`: 模拟器网络 gate 兼容实现。
+  3. `T-S5-DEV-157`: 本批验证与 context/checklist 回写。
+- Validation Strategy:
+  - `git status --short` 不再显示 `3.0.1-R-20210524.1733/`。
+  - `git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`。
+  - `python scripts/check_code_health.py` 预期仍因既有 `MainActivity.kt` red-line 失败；本模块不得新增 red finding。
+  - 模拟器手测：active network connected 时受 gate 保护的请求不因非 Wi-Fi 类型被拦截；离线仍拦截。
+
 ## Planning Refresh (Targeted Home/Discover Feedback Fixes, 2026-06-09)
 - Trigger:
   - 用户实机反馈：当前任何酷狗歌曲歌词都稳定显示“暂无歌词”，需要修真实 search/download/decode/parse/cache 链路。

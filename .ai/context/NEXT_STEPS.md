@@ -3,7 +3,7 @@
 Last Updated: 2026-06-09
 
 ## One-Line Summary
-- `M-S5-FIX-046` 已本地完成并通过 compile/assemble；下一步执行 `T-S5-VAL-137` 手机/API17 集成验证，重点看歌词、每日推荐入口、点赞状态和发现页 tab。
+- `M-S5-DEV-047` 已本地完成：系统镜像目录已精确忽略，模拟器 active network connected 可绕过 Wi-Fi 类型要求；下一步回到 `T-S5-VAL-137` 设备验证。
 
 ## Current Highest Priority
 - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
@@ -19,6 +19,8 @@ Last Updated: 2026-06-09
 - 当前 In Progress:
   - None
 - 原因:
+  - `M-S5-DEV-047` 已完成本地实现与基础验证：只忽略 `3.0.1-R-20210524.1733/`；模拟器不强制 Wi-Fi 类型但仍要求 active network connected；真机/车机仍要求 Wi-Fi。
+  - `WifiNetworkGate` 保持 focused gate owner，新增 `DeviceEnvironmentDetector`，未修改 `MainActivity`。
   - `M-S5-FIX-046` 已完成：歌词请求签名/stage 诊断、每日推荐手动入口语义、点赞按钮状态、发现页无边框 tab、回归清单/观测文档。
   - `MainActivity.kt` 最新约 5568 行，仍超过 red-line，但本批通过 `HomePlaybackActionsBinder` / `HomeTabsBinder` 抵消接线增长，没有新增 code health blocking。
   - `T-S5-PLAY-110/111` 已完成 source boundary 和普通队列。
@@ -35,22 +37,23 @@ Last Updated: 2026-06-09
 ## Immediate Next Step
 
 - 推荐执行:
-  - 安装当前 debug APK，按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 `T-S5-VAL-137`。
-  - 优先覆盖 `K5.3/K5.4`、`L7`、`M6.2.1/M6.2.2`、`M6.5/M6.5.1`，并回传截图/日志。
-  - 若歌词仍全部暂无，回传 `kugou lyric ...` stage 日志；若发现页 tab 重叠，回传 1024x600 截图。
+  - 用 Module Mode 执行 `T-S5-VAL-137`。
+  - 安装当前 debug APK 后跑手机/API17/模拟器集成验证，并回填证据。
+  - 顺带验证本轮 network gate：模拟器 active network connected 放行、模拟器 offline 拦截、真机/车机 non-Wi-Fi 仍拦截。
 
-- 本批关键验收:
-  - 多首酷狗歌曲不再全部显示“暂无歌词”；单曲失败有脱敏 stage。
-  - 播放中点击“每日推荐”只展示列表，不改变当前播放；点击列表歌曲才替换队列并播放。
-  - 点赞按钮点击后有 pending/success/failure/not-likeable 等可见状态变化。
-  - 发现页一级/二级 tab 无边框、字号增大，一级尽量一排放下，二级使用不同高亮且无重叠。
-  - 系统镜像、方向盘语音按钮、系统首页卡片和高德调用只看 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，不在本批实现。
+- 本轮 network gate 关键验收:
+  - `git status --short` 不再显示 `3.0.1-R-20210524.1733/`。
+  - 模拟器 active network connected 时，Emby/LrcApi/更新等受 `WifiNetworkGate` 保护的请求不因非 Wi-Fi 类型被拦截。
+  - 模拟器 offline 仍被拦截。
+  - 真机/车机 non-wifi 仍被拦截，Wi-Fi 正常放行。
+  - 日志/PostHog 字段能区分 emulator gate mode，不记录敏感信息。
 
 - 推荐验证命令:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
-  - 触及 layout/resource 后补 `gradle :app:assembleDebug --no-daemon`
+  - `gradle :app:assembleDebug --no-daemon`
+  - `git status --short`
   - `python scripts/check_code_health.py` 可运行但预期仍因既有 `MainActivity.kt` red-line 失败；不得新增 red finding。
 
 - 手机/API17 验证：
@@ -77,9 +80,8 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S
 ```
 
 ## Planned After Ready
-- `T-S5-VAL-137`: 本批 targeted fix 后执行设备验证闭环。
+- `T-S5-TRIAGE-140`: `T-S5-VAL-137` 失败项分流后再进入 targeted fix。
 - `T-S5-DSP-149`: 根据红圈 reason 和 `hifi-dsp` 日志做 targeted fix。
-- `T-S5-TRIAGE-140`: 设备验证失败项分流后再进入 targeted fix。
 - 下一批 MainActivity 红线治理：需先 planning，避免误拆播放/service 主链。
 - 若实机发现发现页/Scene 字段不一致，回到 `KugouMusic.NET` 和真实响应核对，修对应 direct client 字段映射，不猜测协议。
 

@@ -4,7 +4,7 @@ Last Updated: 2026-06-09
 
 ## Ready
 
-- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`, Execution Mode: Module）: S5 集成设备验证执行包与证据回填。原因：`M-S5-FIX-046` 已本地完成，下一步需要手机/API17 真实验证。
+- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`, Execution Mode: Module）: S5 集成设备验证执行包与证据回填。原因：`M-S5-FIX-046` 与 `M-S5-DEV-047` 已本地完成，下一步需要手机/API17/模拟器真实验证。
 
 ## Pending / Planned
 
@@ -48,6 +48,9 @@ Last Updated: 2026-06-09
 - None
 
 ## Done
+- `T-S5-DEV-157`: 模拟器网络 gate 本地验证与 context 回写；`git diff --check`、API17 guardrail、`compileDebugKotlin`、`assembleDebug` 通过，模拟器/真机 smoke 待设备窗口。
+- `T-S5-DEV-156`: 模拟器网络 gate 兼容实现；新增 `DeviceEnvironmentDetector`，`WifiNetworkGate` 在模拟器 active network connected 时允许非 Wi-Fi 类型放行，真机仍 Wi-Fi-only。
+- `T-S5-DEV-155`: `.gitignore` 精确忽略 `3.0.1-R-20210524.1733/`，不泛化其它镜像目录，系统镜像目录不再出现在 `git status --short`。
 - `T-S5-FIX-154`: 本批观测与 API17 回归清单更新；补充歌词失败 stage、多曲歌词验证、点赞按钮状态、每日推荐列表语义和发现页 1024x600 无边框 tab 验收。
 - `T-S5-FIX-152`: 发现页一级/二级 tab 无边框高亮与字号调整；新增一级/二级无 stroke tab drawable，一级 6 列一行优先，二级 4 列多行，样式区分。
 - `T-S5-FIX-151`: 首页播放块点赞按钮状态反馈；新增 `HomePlaybackActionsBinder`，按钮按 disabled/ready/pending/liked/failed 渲染。
@@ -125,8 +128,9 @@ Last Updated: 2026-06-09
 - `T-S4-AUDIO-087`: Kotlin DSP API17 实机听感验证。原因：AC83xx 已反馈 Kotlin 热路径卡顿，已由 native 优化链取代；后续实机验证改走 `T-S4-AUDIO-095`。
 
 ## Recommended Execution Mode
-- 当前最高优先级是 `T-S5-VAL-137` 设备验证闭环。
-- `M-S5-FIX-046` 已本地完成；下一步安装 debug APK 并重点验证歌词、每日推荐手动入口、点赞按钮状态和发现页 tab。
+- 当前最高优先级回到 `T-S5-VAL-137`，推荐 Module Mode 执行手机/API17/模拟器集成设备验证与证据回填。
+- `M-S5-DEV-047` 已本地完成；安装 debug APK 后顺带验证模拟器 active network connected 放行、模拟器 offline 拦截、真机/车机 Wi-Fi-only。
+- `M-S5-FIX-046` 已本地完成；`T-S5-VAL-137` 重点验证歌词、每日推荐手动入口、点赞按钮状态和发现页 tab。
 - 设备验证仍保留：手机/模拟器确认 `T-S5-KG-122` 的扫码、首页推荐、推荐歌曲播放 direct 最小闭环。
 - 设备验证新增：每日推荐自动播放、首页当前队列、Radio/Scene 网格缩略图、Scene tab 展开收缩、各类队列自动滚动当前歌曲。
 - 设备验证新增：每日 VIP record/receive/upgrade、record fallback、失败重试、无权限/VIP 播放提示。

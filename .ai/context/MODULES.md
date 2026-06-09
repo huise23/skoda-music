@@ -5,6 +5,69 @@ Last Updated: 2026-06-09
 ## Active Stage
 - S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
+## Planning Refresh (Dev Hygiene + Emulator Network Gate, 2026-06-09)
+- 用户确认：只忽略本地系统镜像目录 `3.0.1-R-20210524.1733/`，不泛化其它目录。
+- 用户确认：Android Studio 模拟器有 active network 时不强制要求 Wi-Fi 类型；模拟器离线仍拦截；真机/车机仍要求 Wi-Fi。
+- 新增模块:
+  - `M-S5-DEV-047`: Git Ignore Hygiene & Emulator Network Gate。
+- 队列影响:
+  - 该小模块优先于 `T-S5-VAL-137` 设备验证执行，避免本地工作树噪音和模拟器开发验证被 Wi-Fi gate 阻断。
+
+## M-S5-DEV-047
+- Module ID: `M-S5-DEV-047`
+- Name: Git Ignore Hygiene & Emulator Network Gate
+- Goal: 清理本地系统镜像目录的 git 状态噪音，并让 Android Studio 模拟器在有网络连接时不因非 Wi-Fi 网络类型被 `WifiNetworkGate` 阻断。
+- Responsibility Boundary:
+  - `.gitignore`: 只负责精确忽略 `3.0.1-R-20210524.1733/`。
+  - `DeviceEnvironmentDetector` 或等价 focused helper: 负责 API17-safe 模拟器识别。
+  - `WifiNetworkGate`: 负责网络 gate 判定、runtime log 和 PostHog 阻断/放行诊断；真机仍要求 Wi-Fi。
+  - `MainActivity`: 不参与模拟器判断，不新增网络 gate 逻辑。
+- Why it matters: 系统镜像目录持续出现在 `git status` 会干扰提交；模拟器缺少 Wi-Fi 开关会让开发验证被 Wi-Fi-only gate 错误阻断。
+- In Scope:
+  - `.gitignore` 精确加入 `3.0.1-R-20210524.1733/`。
+  - 新增或复用 API17-safe 模拟器判断。
+  - 模拟器 active network connected 时放行网络请求，不要求 `TYPE_WIFI`。
+  - 模拟器 offline 时仍按网络不可用拦截。
+  - 真机/车机仍要求 Wi-Fi，保留现有提示/事件。
+  - 记录低敏字段，例如 `network_type`、`is_emulator`、`gate_mode`。
+- Out of Scope:
+  - 泛化忽略所有镜像目录或所有 `3.0.1*/`。
+  - 修改、删除或提交系统镜像目录。
+  - 真机/车机跳过 Wi-Fi gate。
+  - 模拟器离线时放行网络请求。
+  - 引入新依赖或高 API 检测方式。
+- Dependencies:
+  - 已确认 scope。
+  - 现有 `WifiNetworkGate.kt`。
+- Entry Points Involved:
+  - 无 Activity 入口改动；现有 `MainActivity.ensureWifiConnectedForNetworkRequest()` 继续委托。
+- Files Expected:
+  - `.gitignore`
+  - `app/src/main/java/com/skodamusic/app/core/device/DeviceEnvironmentDetector.kt` 或同等 focused helper
+  - `app/src/main/java/com/skodamusic/app/core/network/WifiNetworkGate.kt`
+  - 可选 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Files To Avoid Expanding:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Size / God Object Risk:
+  - Low if detector is a small helper and gate remains focused.
+  - Medium if emulator detection gets duplicated across app modules; centralize it.
+- Milestone / Done Criteria:
+  - `git status --short` no longer lists `3.0.1-R-20210524.1733/`.
+  - Emulator with active network passes `WifiNetworkGate` even when active type is not Wi-Fi.
+  - Emulator offline remains blocked.
+  - True device behavior remains Wi-Fi-only.
+  - Local guardrails and compile pass.
+- Related Tasks: `T-S5-DEV-155`, `T-S5-DEV-156`, `T-S5-DEV-157`
+- Priority: P0
+- Status: Done locally / Pending emulator and real-device smoke validation
+- Risks:
+  - Emulator detection by `Build.*` is heuristic; use multiple stable signals and keep log visible.
+  - Over-broad detection could weaken real-device Wi-Fi gate; true device path must remain default.
+- Suitable For Module Execution?: Yes
+- Suitable For Full Plan Execution?: Yes
+
 ## Planning Refresh (API17 App Update Parse Failure, 2026-06-09)
 - 用户确认：Android 4.2.2/API17 应用内更新安装提示“包解析失败”，但同版本 APK 可通过“甲壳虫 ADB 助手”安装成功。
 - 新增模块:

@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 2026-06-09
+- Completed local `M-S5-DEV-047`: `.gitignore` now precisely ignores only `3.0.1-R-20210524.1733/`; added API17-safe `DeviceEnvironmentDetector`; `WifiNetworkGate` now allows connected Android Studio emulators to pass non-Wi-Fi active network types while real devices remain Wi-Fi-only.
+- Added low-sensitive network gate diagnostics (`network_type`, `is_emulator`, `gate_mode`) and kept offline/unknown networks blocked.
+- Review validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
 - Completed local targeted feedback batch `M-S5-FIX-046`: lyric requests now include `.NET`-style signature parameters/headers with tolerant candidate parsing and redacted stage logs; KRC parse-empty can fall back to LRC download.
 - Fixed daily recommend manual entry semantics so left-nav opens the recommendation list without replacing the active queue; selecting an item in that list remains the point where the current queue is replaced and playback starts.
 - Added Home playback like-button visual states via `HomePlaybackActionsBinder`, and moved Home lyrics/queue tab styling into `HomeTabsBinder` so `MainActivity.kt` trends down rather than growing.

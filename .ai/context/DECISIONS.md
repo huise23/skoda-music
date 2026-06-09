@@ -2,6 +2,14 @@
 
 Last Updated: 2026-06-09
 
+## 2026-06-09 - 工程治理与模拟器网络 gate 口径（用户确认）
+- 决策: `.gitignore` 只忽略当前本地系统镜像目录 `3.0.1-R-20210524.1733/`，不泛化到 `3.0.1*/` 或其它系统镜像目录。
+- 决策: Android Studio 模拟器上不强制判断 active network 类型是否为 Wi-Fi；只要 active network connected 即允许受 `WifiNetworkGate` 保护的网络请求继续。
+- 决策: Android Studio 模拟器离线时仍必须拦截网络请求，不允许绕过联网判断。
+- 决策: 真机/车机网络 gate 不放宽，仍要求 Wi-Fi，并保留现有提示与诊断。
+- 决策: 模拟器识别必须 API17-safe，优先集中在 focused helper 中，不能把 `Build.*` 判断散落到 `MainActivity`。
+- 决策: runtime/PostHog 诊断需区分 emulator gate mode 与真实 Wi-Fi，不记录敏感信息。
+
 ## 2026-06-09 - 本批 targeted fix 与未来讨论边界（用户确认）
 - 决策: 当前任何酷狗歌曲均显示“暂无歌词”不可接受；本批必须修真实歌词链路，定位 search、download、KRC/LRC decode、parse、cache 的失败点，不得只替换占位文案。
 - 决策: 歌词失败必须有脱敏 runtime/logcat stage，至少区分 search 无结果、download 失败、decode 失败、parse 失败和缓存异常；不得记录 token、完整 URL query、response body 或歌词全文。

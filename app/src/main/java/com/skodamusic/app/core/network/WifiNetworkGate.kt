@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.skodamusic.app.R
+import com.skodamusic.app.core.device.DeviceEnvironmentDetector
 import com.skodamusic.app.observability.PostHogTracker
 import java.util.Locale
 
@@ -20,8 +21,16 @@ class WifiNetworkGate(
 
     fun ensureWifiConnectedForNetworkRequest(requestTag: String, promptUser: Boolean): Boolean {
         val networkType = resolveActiveNetworkType()
-        val connected = networkType == "wifi"
-        log("network gate request=$requestTag connected=$connected type=$networkType")
+        val isEmulator = DeviceEnvironmentDetector.isLikelyEmulator()
+        val activeNetworkConnected = networkType != "offline" && networkType != "unknown"
+        // Android Studio emulator may expose a connected network as non-Wi-Fi; keep real devices Wi-Fi-only.
+        val connected = networkType == "wifi" || (isEmulator && activeNetworkConnected)
+        val gateMode = when {
+            networkType == "wifi" -> "wifi"
+            isEmulator && activeNetworkConnected -> "emulator_connected"
+            else -> "wifi_required"
+        }
+        log("network gate request=$requestTag connected=$connected type=$networkType emulator=$isEmulator gate=$gateMode")
         if (connected) {
             return true
         }
@@ -31,6 +40,8 @@ class WifiNetworkGate(
             properties = mapOf(
                 "request" to requestTag,
                 "network_type" to networkType,
+                "is_emulator" to isEmulator,
+                "gate_mode" to gateMode,
                 "error_code" to "WIFI_NOT_CONNECTED"
             ),
             priority = PostHogTracker.Priority.HIGH

@@ -6,7 +6,36 @@ Last Updated: 2026-06-09
 - 项目: `skoda-music`（Android 车机播放器）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: `M-S5-FIX-046` 本地完成。下一步优先执行 `T-S5-VAL-137` 手机/API17 设备验证与证据回填。
+- 当前执行入口: `M-S5-DEV-047` 已本地完成，下一步回到 `T-S5-VAL-137` 手机/API17/模拟器设备验证与证据回填。
+
+## Latest Delta (Dev Hygiene + Emulator Network Gate, 2026-06-09)
+- 本地 Done:
+  - `M-S5-DEV-047`: Git Ignore Hygiene & Emulator Network Gate。
+  - `T-S5-DEV-155`: `.gitignore` 精确忽略 `3.0.1-R-20210524.1733/`。
+  - `T-S5-DEV-156`: 新增 API17-safe `DeviceEnvironmentDetector`，并让 `WifiNetworkGate` 在模拟器 active network connected 时不强制 Wi-Fi 类型。
+  - `T-S5-DEV-157`: 本地验证与 context 回写完成；模拟器/真机 smoke 待设备窗口。
+- 新增文件:
+  - `app/src/main/java/com/skodamusic/app/core/device/DeviceEnvironmentDetector.kt`
+- 修改文件:
+  - `.gitignore`
+  - `app/src/main/java/com/skodamusic/app/core/network/WifiNetworkGate.kt`
+- 本地验证:
+  - `git status --short` 不再显示 `3.0.1-R-20210524.1733/`。
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和一个 314 行方法；本轮未修改 `MainActivity.kt`。
+- Ready:
+  - `T-S5-VAL-137`: 安装当前 debug APK，执行手机/API17/模拟器集成验证并回填证据；除歌词、每日推荐、点赞、发现页 tab 外，顺带验证模拟器 network gate 与真机 Wi-Fi-only。
+- 保持不变:
+  - 模拟器离线仍拦截网络请求。
+  - 真机/车机仍要求 Wi-Fi，不放宽。
+  - 不忽略其它镜像目录，不修改或提交系统镜像目录。
+- 工程注意:
+  - 模拟器检测逻辑不要放入 `MainActivity.kt`。
+  - `WifiNetworkGate` 是网络 gate owner；调用方继续委托。
+  - 只记录低敏字段，例如 `network_type/is_emulator/gate_mode`。
 
 ## Latest Delta (Targeted Feedback Fixes, 2026-06-09)
 - 本地 Done:
@@ -130,7 +159,7 @@ Last Updated: 2026-06-09
   - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：5579 行、一个 314 行方法。
 - Historical next recommendation:
   - 当时建议设备验证优先；该入口已被 2026-06-08 用户反馈覆盖。
-  - 当前下一步以 `Latest Delta (Targeted Feedback Fixes, 2026-06-09)` 为准，即 `T-S5-VAL-137` 设备验证闭环。
+  - 当前下一步以 `Latest Delta (Dev Hygiene + Emulator Network Gate, 2026-06-09)` 为准，即执行 `T-S5-VAL-137` 设备验证闭环。
 
 ## Latest Requirement (Daily One-Day VIP + Permission-Aware Playback, 2026-06-07)
 - 用户确认:

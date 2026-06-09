@@ -27,6 +27,7 @@ Last Updated: 2026-06-09
   - 2026-06-08 新增用户确认：首页播放块删除按钮前增加点赞按钮，行为与其它页面点赞一致；首页右侧队列当前仍未跟随下一曲，需要作为硬性修复。
   - 2026-06-09 新增用户确认：实机现版本方向盘上下曲已全局可用；方向盘语音键、系统首页卡片、系统镜像分析等暂写入独立讨论文件，不进入本批小改动 scope。
   - 2026-06-09 新增纠偏输入：当前任何酷狗歌曲均显示“暂无歌词”，必须修真实歌词加载链路；点赞点击后必须有按钮状态变化反馈；发现页一级/二级 tab 需去边框、增大字号并用不同高亮区分；手动点击“每日推荐”只能切页面展示推荐列表，不得立即替换当前播放列表，只有点击推荐列表歌曲时才替换当前播放列表并从点击歌曲播放。
+  - 2026-06-09 新增工程治理/模拟器兼容输入：只将系统镜像目录 `3.0.1-R-20210524.1733/` 加入 git 忽略；Android Studio 模拟器上网络 gate 不再强制判断 Wi-Fi 类型，但仍需确认 active network 已连接，真机/车机继续保持 Wi-Fi gate。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -117,6 +118,12 @@ Last Updated: 2026-06-09
 - 缓存与 Emby 入库:
   - 本地播放缓存设计仍以最大不超过 `100MB` 为目标。
   - “点赞后将播放缓存上传到 Emby 并入库”保持阻塞，不进入当前实现 Ready。
+- 工程治理与模拟器网络 gate:
+  - `.gitignore` 只忽略当前系统镜像目录 `3.0.1-R-20210524.1733/`，不使用泛化的 `3.0.1*/` 或其它镜像目录模式。
+  - 新增或复用 API17-safe 的运行环境检测，识别 Android Studio 模拟器时，`WifiNetworkGate` 不强制要求 active network type 为 `TYPE_WIFI`。
+  - 模拟器上仍必须要求 active network connected；离线模拟器不得绕过网络 gate。
+  - 真机/车机逻辑不放宽：仍要求 Wi-Fi，仍保留现有提示和 PostHog/runtime 诊断。
+  - 模拟器绕过 Wi-Fi 类型判断时，runtime/logcat/PostHog 应能区分 `emulator` 与真实 Wi-Fi，避免实机排障误判。
 
 ## Out of Scope
 - 上传播放缓存到 Emby 并纳入媒体库。
@@ -130,6 +137,10 @@ Last Updated: 2026-06-09
 - 一次性全量重写 `MainActivity`。
 - 为减少行数而牺牲左侧一级快速切换、默认酷狗模式、后台控制、浮窗、前台服务通知或 API17 兼容。
 - 引入要求 `minSdk > 17` 的 Fragment/Activity/导航依赖或高 API 页面能力。
+- 泛化忽略所有 `3.0.1*/`、所有系统镜像或其它未确认目录。
+- 在真机/车机上跳过 Wi-Fi gate。
+- 模拟器离线时继续放行网络请求。
+- 引入高 API、第三方库或 Android Studio 专属依赖来判断模拟器。
 
 ## Success Criteria
 - MainActivity 拆分验收:
@@ -184,6 +195,12 @@ Last Updated: 2026-06-09
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`。
+- 工程治理/模拟器网络 gate 验收:
+  - `git status --short` 不再显示 `3.0.1-R-20210524.1733/` 未跟踪目录。
+  - Android Studio 模拟器有 active network 时，Emby/LrcApi/更新等受 `WifiNetworkGate` 保护的请求不因非 `TYPE_WIFI` 网络类型被拦截。
+  - Android Studio 模拟器离线时仍显示网络不可用并阻止请求。
+  - API17 真机/车机非 Wi-Fi 网络仍被 `WifiNetworkGate` 拦截，Wi-Fi 连接时正常放行。
+  - 运行日志或 PostHog 字段能看出模拟器网络 gate 放行原因，不记录敏感信息。
 - 观测与安全验收:
   - 新增功能必须能通过 PostHog/runtime/logcat 追踪关键动作、异步请求结果、状态机跳转和失败路径。
   - PostHog 只记录低频结构化事件，不记录高频进度 tick、逐帧 DSP 状态、UI redraw 或完整 HTTP payload。
@@ -209,6 +226,11 @@ Last Updated: 2026-06-09
   - `HomeLyricsBinder` + `KugouLyricClient` 承接酷狗歌词 search/download/decode/parse/cache/10s idle 切换；本轮优先定位“全部暂无歌词”的真实链路失败点；`MainActivity` 只提供当前播放变化、播放位置 tick 和 tab 切换委托。
   - `HomePlaybackActionsBinder` 或现有播放块接线小范围扩展承接播放块点赞按钮；复用 `requestLikeTrack` 的 source-aware 点赞能力，并负责点赞按钮状态反馈。
   - `DailyRecommendCoordinator` / 首页内容 binder 必须区分“展示每日推荐列表”和“从列表歌曲建立播放队列”：手动入口只展示，列表项点击才替换当前播放列表并播放。
+- 2026-06-09 工程治理/模拟器网络 gate 方向:
+  - `.gitignore` 使用精确目录项 `3.0.1-R-20210524.1733/`。
+  - 推荐新增小型 `DeviceEnvironmentDetector` / `RuntimeDeviceDetector`，集中判断模拟器环境；避免把多字段 `Build.*` 判断散落在 `MainActivity`。
+  - `WifiNetworkGate` 读取检测结果：模拟器要求 active network connected 即放行；真机要求 active network type 为 Wi-Fi。
+  - 模拟器判断需 API17-safe，可使用 `Build.FINGERPRINT/MODEL/MANUFACTURER/BRAND/DEVICE/PRODUCT/HARDWARE`，必要时通过反射读取 `ro.kernel.qemu`；不得依赖高 API。
 - 一日 VIP 领取应落在 focused `kugou/` client + `ui/`/coordinator 中：
   - `KugouDirectUserClient` 或等价类：VIP record / receive / upgrade direct 请求与字段解析。
   - `KugouDailyVipCoordinator` 或等价类：每日触发、服务端记录优先、本地兜底记录、重试/退避、登录后恢复。
@@ -226,11 +248,14 @@ Last Updated: 2026-06-09
 - 稳定性: 网络失败、登录失效、播放 URL 解析失败、不可播均不得导致 app 闪退或主播放链路不可恢复。
 - DSP UI 稳定性: DSP 状态展示不能增加音频热路径负担，不能按 audio frame 推 UI。
 - 工作树注意: `KugouMusic.NET/` 当前为未跟踪目录，只读参考，不修改。
+- 工作树注意: `3.0.1-R-20210524.1733/` 是本地系统镜像目录，只作为本地讨论/分析资料，不提交到 git。
+- 模拟器网络 gate 注意: 模拟器只放宽 Wi-Fi 类型判断，不放宽联网判断；真机行为不能回归。
 
 ## Open Questions
 - Emby 是否支持通过 API 上传音频并纳入媒体库。
 - 如果 Emby 不支持直接上传，是否接受服务端代理写入媒体目录并触发 Emby 扫描。
 - 酷狗某些能力若 Android 直连移植需要签名/加密/设备字段，需以 `KugouMusic.NET` 代码定位后再决定是否阻塞。
+- 无：本轮 `.gitignore` 精确目录和模拟器网络 gate 口径已确认。
 
 ## Blocked / Deferred
 

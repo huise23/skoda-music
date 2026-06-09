@@ -52,6 +52,145 @@ Last Updated: 2026-06-09
   - 手动点击“每日推荐”只展示列表，不替换当前播放列表；点击推荐列表歌曲时才替换当前播放列表并播放。
   - 方向盘语音键、系统镜像、系统首页卡片和高德联动写入 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，不进入本批 Ready。
   - 新增 `M-S5-FIX-046` 与 `T-S5-FIX-150/151/152/153/154`。
+- 2026-06-09 追加规划 2:
+  - 只将 `3.0.1-R-20210524.1733/` 加入 git 忽略，不泛化其它系统镜像目录。
+  - Android Studio 模拟器上不强制判断 Wi-Fi 类型，但仍要求 active network connected；真机/车机仍保持 Wi-Fi gate。
+  - 新增 `M-S5-DEV-047` 与 `T-S5-DEV-155/156/157`，作为 `T-S5-VAL-137` 前的小闭环。
+
+## T-S5-DEV-155
+- Task ID: `T-S5-DEV-155`
+- Module ID: `M-S5-DEV-047`
+- Status: Ready
+- Title: 精确忽略本地系统镜像目录
+- Goal: 将 `3.0.1-R-20210524.1733/` 加入 `.gitignore`，让本地系统镜像资料不再污染 `git status`。
+- Why: 系统镜像目录仅用于本地讨论/分析，不应进入 git，也不应在每次状态检查中干扰待提交文件判断。
+- Responsibility Boundary:
+  - `.gitignore`: 只新增精确目录项。
+  - 不修改、不删除、不提交系统镜像目录内容。
+- Dependencies: 无
+- Inputs:
+  - `.gitignore`
+  - 当前未跟踪目录 `3.0.1-R-20210524.1733/`
+- Expected Outputs:
+  - `.gitignore` 包含 `3.0.1-R-20210524.1733/`。
+  - `git status --short` 不再显示该目录。
+- Expected Files:
+  - `.gitignore`
+- Files Not To Expand:
+  - 无。
+- Architecture Notes:
+  - 不使用 `3.0.1*/` 或通配忽略，避免误忽略其它待确认目录。
+- Comment Requirements:
+  - 无。
+- Done Criteria:
+  - 精确目录已忽略。
+  - 工作树状态不再列出该镜像目录。
+- Validation:
+  - `git status --short`
+  - `git diff --check`
+- Risks:
+  - 若未来放入其它系统镜像目录，需重新确认后再加忽略项，不能自动泛化。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DEV-156
+- Task ID: `T-S5-DEV-156`
+- Module ID: `M-S5-DEV-047`
+- Status: Ready
+- Title: 模拟器网络 gate 兼容实现
+- Goal: 在 Android Studio 模拟器上，只要 active network connected 就允许网络请求通过 `WifiNetworkGate`；真机/车机仍要求 Wi-Fi。
+- Why: Android Studio 模拟器设置里不易控制 Wi-Fi 开关，active network 可能不是 `TYPE_WIFI`，导致开发验证被 Wi-Fi-only gate 错误阻断。
+- Responsibility Boundary:
+  - `DeviceEnvironmentDetector` 或等价 helper: API17-safe 模拟器识别。
+  - `WifiNetworkGate`: 使用 detector 调整 gate 判定、记录低敏 runtime/PostHog 字段。
+  - `MainActivity`: 不新增判断逻辑。
+- Dependencies: 无
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/core/network/WifiNetworkGate.kt`
+  - Android `Build.*` / optional `ro.kernel.qemu` 信号
+  - `.ai/context/ARCHITECTURE.md`
+  - `.ai/context/RED_LINES.md`
+- Expected Outputs:
+  - 小型 detector helper。
+  - `WifiNetworkGate` 判定:
+    - `wifi` -> 放行。
+    - `emulator + connected non-wifi` -> 放行并记录 `gate_mode=emulator_connected`。
+    - `emulator + offline` -> 拦截。
+    - `real device + non-wifi/offline` -> 拦截。
+  - PostHog/runtime 不记录敏感信息。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/core/device/DeviceEnvironmentDetector.kt` 或同等 helper
+  - `app/src/main/java/com/skodamusic/app/core/network/WifiNetworkGate.kt`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+- Architecture Notes:
+  - 模拟器识别使用多信号启发式，默认 false，避免误放宽真机。
+  - `WifiNetworkGate` 仍是唯一 gate owner，不把 gate 逻辑分散到调用方。
+  - 不引入新依赖，不提高 minSdk。
+- Comment Requirements:
+  - 对“模拟器放宽 Wi-Fi 类型但不放宽联网判断”保留短注释。
+- Done Criteria:
+  - 模拟器 connected non-wifi 不被 `WIFI_NOT_CONNECTED` 阻断。
+  - 模拟器 offline 仍被阻断。
+  - 真机/车机 non-wifi 仍被阻断。
+  - 运行日志能看出 `network_type`、`is_emulator`、`gate_mode`。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - `python scripts/check_code_health.py`（允许既有 MainActivity red-line，不得新增 blocking）
+  - 模拟器手测联网/离线路径。
+- Risks:
+  - 某些真实设备可能带有异常 `Build.*` 字段；detector 应保守，只有多信号命中才视为 emulator。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-DEV-157
+- Task ID: `T-S5-DEV-157`
+- Module ID: `M-S5-DEV-047`
+- Status: Pending
+- Title: 模拟器网络 gate 验证与 context 回写
+- Goal: 验证 `.gitignore` 和模拟器网络 gate 结果，并将状态回写到 `.ai/context`。
+- Why: 该需求直接影响本地开发验证与后续设备验证入口，需要在交接文件中留下真实状态和剩余风险。
+- Responsibility Boundary:
+  - `.ai/context`: 状态、队列、交接更新。
+  - 可选 docs/checklist: 如执行中新增可复用验证口径，再补 API17 回归清单。
+  - 不修改功能代码，除非前序任务遗漏了必要诊断。
+- Dependencies:
+  - `T-S5-DEV-155`
+  - `T-S5-DEV-156`
+- Inputs:
+  - `.gitignore`
+  - `WifiNetworkGate` 实现结果
+  - 本地验证命令输出
+- Expected Outputs:
+  - `.ai/context/CURRENT_STATUS.md`、`NEXT_STEPS.md`、`HANDOFF.md` 与队列一致。
+  - 必要时更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`。
+- Expected Files:
+  - `.ai/context/CURRENT_STATUS.md`
+  - `.ai/context/NEXT_STEPS.md`
+  - `.ai/context/HANDOFF.md`
+  - 可选 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+- Architecture Notes:
+  - 文档必须区分 emulator bypass 与真机 Wi-Fi gate，不得让设备验证误以为真机可跳过 Wi-Fi。
+- Comment Requirements:
+  - 无。
+- Done Criteria:
+  - context Ready 队列回到 `T-S5-VAL-137` 或后续真实优先项。
+  - 验证结果清楚记录。
+- Validation:
+  - `git diff --check`
+  - 文档人工复查。
+- Risks:
+  - 若无法在当前环境启动模拟器，需记录为未验证，不能标记模拟器路径已实测通过。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
 
 ## T-S5-FIX-150
 - Task ID: `T-S5-FIX-150`

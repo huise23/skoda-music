@@ -6,6 +6,35 @@ Last Updated: 2026-06-09
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 
+## Execution Progress (M-S5-DEV-047, 2026-06-09)
+- 状态: `T-S5-DEV-155/156/157` 本地完成；等待模拟器/真机 smoke 验证。
+- 已确认:
+  - `.gitignore` 只忽略 `3.0.1-R-20210524.1733/`，不泛化其它镜像目录。
+  - Android Studio 模拟器上不强制要求 active network type 为 Wi-Fi，但仍要求 active network connected。
+  - 模拟器离线仍拦截网络请求。
+  - 真机/车机仍保持 Wi-Fi gate，不放宽。
+- 已完成:
+  - `.gitignore` 精确加入 `3.0.1-R-20210524.1733/`，`git status --short` 不再显示该系统镜像目录。
+  - 新增 `DeviceEnvironmentDetector`，用 API17-safe `Build.*` 多信号 + `ro.kernel.qemu` reflection 识别模拟器。
+  - `WifiNetworkGate` 保持网络 gate owner：真机仍 Wi-Fi-only；模拟器 active network connected 时允许非 Wi-Fi 类型放行；offline/unknown 仍拦截。
+  - runtime log 增加 `emulator/gate` 字段；PostHog 阻断事件增加 `is_emulator/gate_mode/network_type` 低敏字段。
+- 架构结论:
+  - 模拟器识别应放入 focused helper，如 `DeviceEnvironmentDetector`，不得把 `Build.*` 判断放进 `MainActivity`。
+  - `WifiNetworkGate` 继续作为唯一网络 gate owner；真机 Wi-Fi gate 行为不能回归。
+  - 新增 runtime/PostHog 字段只记录 `network_type/is_emulator/gate_mode` 等低敏字段。
+- 本地验证:
+  - `git diff --check` 通过。
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `gradle :app:compileDebugKotlin --no-daemon` 通过。
+  - `gradle :app:assembleDebug --no-daemon` 通过。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和 314 行方法；本轮未修改 `MainActivity.kt`，未新增 blocking finding。
+- 未验证:
+  - Android Studio 模拟器 active non-Wi-Fi network 放行路径。
+  - 模拟器 offline 拦截路径。
+  - 真机/车机 non-Wi-Fi 仍拦截、Wi-Fi 正常放行路径。
+- 下一步:
+  - `T-S5-VAL-137` 重新作为当前 Ready，执行手机/API17 集成设备验证，并顺带覆盖本轮 network gate smoke。
+
 ## Execution Progress (M-S5-FIX-046, 2026-06-09)
 - 状态: `T-S5-FIX-150/151/152/153/154` 本地完成；等待手机/API17 设备验证。
 - 已完成:

@@ -326,6 +326,8 @@ class KugouContentRenderer(
             container = tagList,
             items = categories,
             collapsedRows = DISCOVER_CATEGORY_COLLAPSED_ROWS,
+            columns = DISCOVER_CATEGORY_COLUMNS,
+            style = DiscoverChipStyle.PRIMARY,
             expanded = categoryExpanded,
             selected = { it.name == selectedCategoryName },
             titleOf = { it.name },
@@ -338,6 +340,8 @@ class KugouContentRenderer(
             container = tagList,
             items = tags,
             collapsedRows = DISCOVER_TAG_COLLAPSED_ROWS,
+            columns = DISCOVER_TAG_COLUMNS,
+            style = DiscoverChipStyle.SECONDARY,
             expanded = tagExpanded,
             selected = { it.tagId == selectedTagId },
             titleOf = { it.name },
@@ -372,6 +376,8 @@ class KugouContentRenderer(
         container: LinearLayout,
         items: List<T>,
         collapsedRows: Int,
+        columns: Int,
+        style: DiscoverChipStyle,
         expanded: Boolean,
         selected: (T) -> Boolean,
         titleOf: (T) -> CharSequence,
@@ -381,11 +387,11 @@ class KugouContentRenderer(
         if (items.isEmpty()) {
             return
         }
-        val visibleCount = (collapsedRows * CHIP_COLUMNS).coerceAtLeast(CHIP_COLUMNS)
+        val visibleCount = (collapsedRows * columns).coerceAtLeast(columns)
         val visible = if (expanded) items else items.take(visibleCount)
         var row: LinearLayout? = null
         visible.forEachIndexed { index, item ->
-            if (index % CHIP_COLUMNS == 0) {
+            if (index % columns == 0) {
                 row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -400,23 +406,29 @@ class KugouContentRenderer(
                 text = titleOf(item)
                 gravity = Gravity.CENTER
                 maxLines = 1
-                textSize = 15f
-                setTextColor(context.resources.getColor(if (selected(item)) R.color.white else R.color.text_secondary))
-                setBackgroundResource(if (selected(item)) R.drawable.row_recommend_active else R.drawable.row_recommend_idle)
-                setPadding(dpToPx(8), dpToPx(9), dpToPx(8), dpToPx(9))
+                textSize = if (style == DiscoverChipStyle.PRIMARY) 18f else 17f
+                val active = selected(item)
+                setTextColor(context.resources.getColor(chipTextColor(style, active)))
+                setBackgroundResource(chipBackground(style, active))
+                setPadding(
+                    dpToPx(if (style == DiscoverChipStyle.PRIMARY) 4 else 7),
+                    dpToPx(if (style == DiscoverChipStyle.PRIMARY) 7 else 8),
+                    dpToPx(if (style == DiscoverChipStyle.PRIMARY) 4 else 7),
+                    dpToPx(if (style == DiscoverChipStyle.PRIMARY) 7 else 8)
+                )
                 setOnClickListener { onClick(item) }
             }
             row?.addView(chip, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                if (index % CHIP_COLUMNS > 0) {
-                    leftMargin = dpToPx(8)
+                if (index % columns > 0) {
+                    leftMargin = dpToPx(if (style == DiscoverChipStyle.PRIMARY) 4 else 6)
                 }
             })
         }
-        val remainder = visible.size % CHIP_COLUMNS
+        val remainder = visible.size % columns
         if (remainder > 0) {
-            for (index in remainder until CHIP_COLUMNS) {
+            for (index in remainder until columns) {
                 row?.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
-                    leftMargin = dpToPx(8)
+                    leftMargin = dpToPx(if (style == DiscoverChipStyle.PRIMARY) 4 else 6)
                 })
             }
         }
@@ -431,6 +443,21 @@ class KugouContentRenderer(
             container.addView(action, wrapContentParams().apply {
                 topMargin = dpToPx(8)
             })
+        }
+    }
+
+    private fun chipTextColor(style: DiscoverChipStyle, active: Boolean): Int {
+        return when {
+            active -> R.color.white
+            style == DiscoverChipStyle.PRIMARY -> R.color.text_primary
+            else -> R.color.text_secondary
+        }
+    }
+
+    private fun chipBackground(style: DiscoverChipStyle, active: Boolean): Int {
+        return when (style) {
+            DiscoverChipStyle.PRIMARY -> if (active) R.drawable.discover_primary_tab_active else R.drawable.discover_primary_tab_idle
+            DiscoverChipStyle.SECONDARY -> if (active) R.drawable.discover_secondary_tab_active else R.drawable.discover_secondary_tab_idle
         }
     }
 
@@ -491,8 +518,14 @@ class KugouContentRenderer(
     companion object {
         private const val GRID_COLUMNS = 2
         private const val SCENE_COLLAPSED_COUNT = 6
-        private const val CHIP_COLUMNS = 3
-        private const val DISCOVER_CATEGORY_COLLAPSED_ROWS = 2
+        private const val DISCOVER_CATEGORY_COLUMNS = 6
+        private const val DISCOVER_TAG_COLUMNS = 4
+        private const val DISCOVER_CATEGORY_COLLAPSED_ROWS = 1
         private const val DISCOVER_TAG_COLLAPSED_ROWS = 3
+    }
+
+    private enum class DiscoverChipStyle {
+        PRIMARY,
+        SECONDARY
     }
 }

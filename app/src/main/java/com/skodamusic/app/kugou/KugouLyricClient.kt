@@ -22,7 +22,19 @@ class KugouLyricClient(
     fun loadLyrics(hash: String, albumAudioId: String, keyword: String): List<LyricLine> {
         val candidate = searchLyric(hash, albumAudioId, keyword) ?: return emptyList()
         val content = downloadLyric(candidate) ?: return emptyList()
-        return parseLyricLines(content)
+        val parsed = parseLyricLines(content)
+        if (parsed.isNotEmpty()) {
+            log("kugou lyric parse success fmt=${candidate.fmt} lines=${parsed.size}")
+            return parsed
+        }
+        log("kugou lyric parse empty fmt=${candidate.fmt}")
+        if (!candidate.fmt.equals("lrc", ignoreCase = true)) {
+            val fallback = downloadLyric(candidate.copy(fmt = "lrc")) ?: return emptyList()
+            val fallbackLines = parseLyricLines(fallback)
+            log("kugou lyric fallback fmt=lrc lines=${fallbackLines.size}")
+            return fallbackLines
+        }
+        return emptyList()
     }
 
     private fun searchLyric(hash: String, albumAudioId: String, keyword: String): LyricCandidate? {
@@ -36,14 +48,22 @@ class KugouLyricClient(
             "lrctxt" to "1",
             "man" to "no"
         )
-        val json = executeGet("https://lyrics.kugou.com/v1/search?${queryString(params)}", "kugou lyric search")
+        val json = executeGet("https://lyrics.kugou.com/v1/search", params, "kugou lyric search")
             ?: return null
-        val candidates = json.optJSONArray("candidates") ?: return null
+        val candidates = json.optJSONArray("candidates")
+            ?: json.optJSONObject("data")?.optJSONArray("candidates")
+            ?: json.optJSONObject("data")?.optJSONArray("lists")
+            ?: json.optJSONArray("data")
+        if (candidates == null || candidates.length() == 0) {
+            log("kugou lyric search empty status=${json.optInt("status", -1)}")
+            return null
+        }
         for (index in 0 until candidates.length()) {
             val item = candidates.optJSONObject(index) ?: continue
             val id = item.optString("id").trim()
-            val accessKey = item.optString("accesskey").trim()
+            val accessKey = item.optString("accesskey").ifBlank { item.optString("access_key") }.trim()
             if (id.isNotEmpty() && accessKey.isNotEmpty()) {
+                log("kugou lyric search candidate index=$index fmt=${item.optString("fmt").ifBlank { "krc" }}")
                 return LyricCandidate(
                     id = id,
                     accessKey = accessKey,
@@ -51,6 +71,7 @@ class KugouLyricClient(
                 )
             }
         }
+        log("kugou lyric search invalid-candidates count=${candidates.length()}")
         return null
     }
 
@@ -64,10 +85,11 @@ class KugouLyricClient(
             "fmt" to fmt,
             "charset" to "utf8"
         )
-        val json = executeGet("https://lyrics.kugou.com/download?${queryString(params)}", "kugou lyric download")
+        val json = executeGet("https://lyrics.kugou.com/download", params, "kugou lyric download")
             ?: return null
         val encoded = json.optString("content").trim()
         if (encoded.isEmpty()) {
+            log("kugou lyric download empty fmt=$fmt status=${json.optInt("status", -1)}")
             return null
         }
         val contentType = json.optInt("contenttype", 0)
@@ -80,18 +102,27 @@ class KugouLyricClient(
         }
     }
 
-    private fun executeGet(url: String, label: String): JSONObject? {
+    private fun executeGet(baseUrl: String, params: Map<String, String>, label: String): JSONObject? {
+        val signedParams = signedParams(params)
+        val url = "$baseUrl?${queryString(signedParams)}"
         val request = Request.Builder()
             .url(url)
             .get()
             .header("Accept", "application/json")
             .header("User-Agent", KugouDirectSigner.USER_AGENT)
+            .header("dfid", signedParams["dfid"].orEmpty())
+            .header("mid", signedParams["mid"].orEmpty())
+            .header("clienttime", signedParams["clienttime"].orEmpty())
+            .header("kg-rc", "1")
+            .header("kg-thash", "5d816a0")
+            .header("kg-rec", "1")
+            .header("kg-rf", "B9EDA08A64250DEFFBCADDEE00F8F25F")
             .build()
         return runCatching {
             httpClient.newCall(request).execute().use { response ->
                 val payload = response.body()?.string().orEmpty()
                 if (!response.isSuccessful || payload.isBlank()) {
-                    log("$label http=${response.code()}")
+                    log("$label empty http=${response.code()}")
                     return null
                 }
                 JSONObject(payload)
@@ -182,6 +213,13 @@ class KugouLyricClient(
         return params.entries.joinToString("&") { (key, value) ->
             "${urlEncode(key)}=${urlEncode(value)}"
         }
+    }
+
+    private fun signedParams(params: Map<String, String>): LinkedHashMap<String, String> {
+        val clientTimeSeconds = System.currentTimeMillis() / 1000L
+        val merged = KugouDirectSigner.withDefaultParams(params, clientTimeSeconds)
+        merged["signature"] = KugouDirectSigner.calcPostSignature(merged, "")
+        return merged
     }
 
     private fun urlEncode(value: String): String {

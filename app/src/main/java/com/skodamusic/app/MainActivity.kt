@@ -84,7 +84,9 @@ import com.skodamusic.app.ui.KugouContentRenderer
 import com.skodamusic.app.ui.DailyRecommendCoordinator
 import com.skodamusic.app.ui.EqualizerPageBinder
 import com.skodamusic.app.ui.HomeLyricsBinder
+import com.skodamusic.app.ui.HomePlaybackActionsBinder
 import com.skodamusic.app.ui.HomeQueuePanelBinder
+import com.skodamusic.app.ui.HomeTabsBinder
 import com.skodamusic.app.ui.KugouDailyVipCoordinator
 import com.skodamusic.app.ui.KugouLoginRecoveryCoordinator
 import com.skodamusic.app.ui.KugouSceneBinder
@@ -289,6 +291,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var kugouContentRenderer: KugouContentRenderer
     private lateinit var homeQueuePanelBinder: HomeQueuePanelBinder
     private lateinit var homeLyricsBinder: HomeLyricsBinder
+    private lateinit var homePlaybackActionsBinder: HomePlaybackActionsBinder
+    private lateinit var homeTabsBinder: HomeTabsBinder
     private lateinit var sourceRowRenderer: SourceRowRenderer
     private lateinit var thumbnailLoader: RemoteThumbnailLoader
     private lateinit var kugouSceneBinder: KugouSceneBinder
@@ -384,11 +388,16 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         thumbnailLoader = RemoteThumbnailLoader(backgroundExecutor) { message -> appendRuntimeLog(message) }
         kugouContentRenderer = KugouContentRenderer(this, sourceRowRenderer, thumbnailLoader)
         homeQueuePanelBinder = HomeQueuePanelBinder(this, sourceRowRenderer)
+        homePlaybackActionsBinder = HomePlaybackActionsBinder(this)
         homeLyricsBinder = HomeLyricsBinder(
             lyricClient = kugouLyricClient,
             backgroundExecutor = backgroundExecutor,
             appendRuntimeLog = { message -> appendRuntimeLog(message) },
             switchToLyricsTab = { switchHomeTab(showRecommend = false) }
+        )
+        homeTabsBinder = HomeTabsBinder(
+            homeLyricsBinder = homeLyricsBinder,
+            currentPositionMs = { playbackEngine?.currentPositionMs() ?: 0L }
         )
         embySessionCache = EmbySessionCache(
             context = applicationContext,
@@ -471,6 +480,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playPauseButton = findViewById(R.id.btn_play_pause)
         nextButton = findViewById(R.id.btn_next)
         likeCurrentTrackButton = findViewById(R.id.btn_like_current_track)
+        homePlaybackActionsBinder.bind(likeCurrentTrackButton)
         deleteCurrentTrackButton = findViewById(R.id.btn_delete_current_track)
         homeTabRecommendButton = findViewById(R.id.btn_home_tab_recommend)
         homeTabLyricsButton = findViewById(R.id.btn_home_tab_lyrics)
@@ -480,6 +490,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         homeLyricsScroll = findViewById(R.id.home_lyrics_scroll)
         homeLyricsText = findViewById(R.id.home_lyrics_text)
         homeLyricsBinder.bind(homeLyricsScroll, homeLyricsText)
+        homeTabsBinder.bind(homeRecommendPanel, homeLyricsPanel, homeTabRecommendButton, homeTabLyricsButton)
         testEmbyButton = findViewById(R.id.btn_test_emby)
         testLrcApiButton = findViewById(R.id.btn_test_lrcapi)
         eqPage = findViewById(R.id.page_eq)
@@ -1234,6 +1245,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             KugouLoginRecoveryCoordinator.PendingAction.RADIO_PAGE -> requestKugouRecommendedRadios()
             KugouLoginRecoveryCoordinator.PendingAction.SCENE_PAGE -> requestKugouScenes()
             KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE -> requestKugouDiscoverTags()
+            KugouLoginRecoveryCoordinator.PendingAction.DAILY_RECOMMEND_LIST -> showDailyRecommendList("login_recovery_daily_list")
             KugouLoginRecoveryCoordinator.PendingAction.LIKE_ACTION -> renderLikeStatusPage()
             KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK -> rebuildTrackLists()
             KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND,
@@ -1310,12 +1322,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun showDailyRecommendList(reason: String) {
         showingDailyRecommendListOnHome = true
+        dailyRecommendCoordinator.cancelPendingAutoPlay("manual_list")
         switchHomeTab(showRecommend = true)
         if (!hasKugouSession()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_kugou)) }
             requestKugouLogin(
                 reason = "daily_recommend_list_missing_session",
-                action = KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND
+                action = KugouLoginRecoveryCoordinator.PendingAction.DAILY_RECOMMEND_LIST
             )
             renderHomeRecommendationPreview()
             return
@@ -1430,9 +1443,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun rebuildTrackLists() {
         val canDeleteCurrentEmbyTrack = loadedTracks.isNotEmpty() && !sourcePlaybackSession.isKugouActive()
-        val canLikeCurrentKugouTrack = sourcePlaybackSession.currentKugouTrack() != null
-        likeCurrentTrackButton.isEnabled = canLikeCurrentKugouTrack
-        likeCurrentTrackButton.alpha = if (canLikeCurrentKugouTrack) 1f else 0.45f
+        refreshHomeLikeButtonState()
         deleteCurrentTrackButton.isEnabled = canDeleteCurrentEmbyTrack
         deleteCurrentTrackButton.alpha = if (canDeleteCurrentEmbyTrack) 1f else 0.45f
         if (kugouRadioSessionManager.isActive() || sourcePlaybackSession.isKugouActive() || kugouQueueManager.snapshot().isNotEmpty()) {
@@ -1457,35 +1468,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         renderHomeRecommendationPreview()
     }
 
+    private fun refreshHomeLikeButtonState() {
+        homePlaybackActionsBinder.renderLikeState(sourcePlaybackSession.currentKugouTrack(), likeStatusStore)
+    }
+
     private fun switchHomeTab(showRecommend: Boolean) {
         showingHomeRecommendTab = showRecommend
-        homeRecommendPanel.visibility = if (showRecommend) View.VISIBLE else View.GONE
-        homeLyricsPanel.visibility = if (showRecommend) View.GONE else View.VISIBLE
-        homeTabRecommendButton.setBackgroundResource(
-            if (showRecommend) R.drawable.tab_home_selected else R.drawable.tab_home_unselected
-        )
-        homeTabLyricsButton.setBackgroundResource(
-            if (showRecommend) R.drawable.tab_home_unselected else R.drawable.tab_home_selected
-        )
-        homeTabRecommendButton.setTextColor(
-            resources.getColor(if (showRecommend) R.color.white else R.color.text_secondary)
-        )
-        homeTabLyricsButton.setTextColor(
-            resources.getColor(if (showRecommend) R.color.text_secondary else R.color.white)
-        )
-        homeTabRecommendButton.setTypeface(
-            null,
-            if (showRecommend) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
-        )
-        homeTabLyricsButton.setTypeface(
-            null,
-            if (showRecommend) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD
-        )
-        if (!showRecommend) {
-            val positionMs = playbackEngine?.currentPositionMs()?.coerceAtLeast(0L) ?: 0L
-            homeLyricsBinder.renderPosition(positionMs)
-        }
-        homeLyricsBinder.setQueueTabVisible(showRecommend)
+        homeTabsBinder.switch(showRecommend)
     }
 
     private fun bindLibraryPaging() {
@@ -1796,6 +1785,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val pending = buildLikeStatusItem(track, LikeStatusStore.REMOTE_PENDING, LikeStatusStore.INGEST_BLOCKED, "")
         likeStatusStore.upsert(pending)
         renderLikeStatusPage()
+        refreshHomeLikeButtonState()
         updateState { it.copy(feedbackText = getString(R.string.feedback_kugou_like_pending)) }
         captureKugouLikeEvent("kugou_like_request", "direct_add")
         backgroundExecutor.execute {
@@ -1826,6 +1816,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 )
                 likeStatusStore.upsert(item)
                 renderLikeStatusPage()
+                refreshHomeLikeButtonState()
                 updateState {
                     it.copy(
                         feedbackText = if (success) {
@@ -5233,9 +5224,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         prevButton.setColorFilter(resources.getColor(R.color.white))
         nextButton.setColorFilter(resources.getColor(R.color.white))
         playPauseButton.setColorFilter(resources.getColor(R.color.white))
-        val canLikeCurrentKugouTrack = sourcePlaybackSession.currentKugouTrack() != null
-        likeCurrentTrackButton.isEnabled = canLikeCurrentKugouTrack
-        likeCurrentTrackButton.alpha = if (canLikeCurrentKugouTrack) 1f else 0.45f
+        refreshHomeLikeButtonState()
         prevButton.isEnabled = sourceSnapshot?.hasTrack == true || loadedTracks.isNotEmpty()
         nextButton.isEnabled = state.nextEnabled
         testEmbyButton.isEnabled = state.testEmbyEnabled

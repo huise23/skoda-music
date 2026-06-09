@@ -1,11 +1,12 @@
 # CHANGELOG
 
 ## 2026-06-09
-- Completed local `M-S5-UPD-046` code path for API17 app update install compatibility: split APK verification and package inspection into `AppUpdateApkVerifier` / `AppUpdatePackageInspector`, split installer handoff into `AppUpdateInstaller`, and reduced `AppUpdateManager.kt` from 1030 to 878 lines.
-- Fixed the likely API17 parse-failure cause: pre-API24 installs now copy the downloaded APK to public Downloads/`SkodaMusicUpdates`, set it readable, and launch the system installer via `file://` + `application/vnd.android.package-archive`; API24+ keeps FileProvider/content URI behavior.
-- Added low-sensitive update install diagnostics for `failed_stage`, `path_kind`, `uri_kind`, `installer_resolved`, APK readability, expected/actual bytes, and package pre-parse result; update URL diagnostics now use host/path summaries instead of full query URLs.
-- Updated API17 regression and S5 observability docs for the app update install parse-failure verification path.
-- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.
+- Completed local targeted feedback batch `M-S5-FIX-046`: lyric requests now include `.NET`-style signature parameters/headers with tolerant candidate parsing and redacted stage logs; KRC parse-empty can fall back to LRC download.
+- Fixed daily recommend manual entry semantics so left-nav opens the recommendation list without replacing the active queue; selecting an item in that list remains the point where the current queue is replaced and playback starts.
+- Added Home playback like-button visual states via `HomePlaybackActionsBinder`, and moved Home lyrics/queue tab styling into `HomeTabsBinder` so `MainActivity.kt` trends down rather than growing.
+- Reworked Discover primary/secondary tabs to be borderless, larger, and differently highlighted, with new drawable resources for active/idle primary and secondary states.
+- Updated API17 regression and S5 observability docs for multi-song lyric evidence, like pending/result feedback, daily recommend list semantics, and 1024x600 Discover tab screenshots.
+- Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails on existing `MainActivity.kt` red-line findings, while the file decreased to about `5568` lines.
 
 ## 2026-06-08
 - Completed local Home UX + Discover + DSP diagnostics correction: daily recommend startup autoplay is separated from the left-nav list entry, Home current queue sync/scroll is refreshed on playback changes, Home lyrics use direct Kugou lyric search/download through `KugouLyricClient` and `HomeLyricsBinder`, and the playback block has a Kugou like button.

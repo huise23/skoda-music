@@ -25,7 +25,8 @@ Last Updated: 2026-06-09
   - 2026-06-08 新增用户确认：`.NET` UI 没有独立 Scene 页面，发现页按一级 tab + 二级 tab + 歌单网格呈现；Android 发现页需移除“发现歌单”“二级分类：xxx”和刷新按钮等占位，切换一/二级分类时自动获取歌单。
   - 2026-06-08 新增用户确认：首页歌词需要恢复，歌词直接从酷狗查；当首页当前切在播放列表且正在播放时，10s 未操作自动切回歌词页，空播放不处理。
   - 2026-06-08 新增用户确认：首页播放块删除按钮前增加点赞按钮，行为与其它页面点赞一致；首页右侧队列当前仍未跟随下一曲，需要作为硬性修复。
-  - 2026-06-09 新增用户确认：Android 4.2.2/API17 上应用内更新安装仍提示“包解析失败”，但通过“甲壳虫 ADB 助手”连接车机后安装同版本 APK 可成功；本次按推荐方案 B 收敛为“修应用内更新安装链路”，不重做整套更新系统。
+  - 2026-06-09 新增用户确认：实机现版本方向盘上下曲已全局可用；方向盘语音键、系统首页卡片、系统镜像分析等暂写入独立讨论文件，不进入本批小改动 scope。
+  - 2026-06-09 新增纠偏输入：当前任何酷狗歌曲均显示“暂无歌词”，必须修真实歌词加载链路；点赞点击后必须有按钮状态变化反馈；发现页一级/二级 tab 需去边框、增大字号并用不同高亮区分；手动点击“每日推荐”只能切页面展示推荐列表，不得立即替换当前播放列表，只有点击推荐列表歌曲时才替换当前播放列表并从点击歌曲播放。
 
 ## In Scope
 - MainActivity 拆分（当前阶段必须执行）:
@@ -55,6 +56,8 @@ Last Updated: 2026-06-09
   - 左侧一级导航新增“每日推荐”按钮；该入口不替代首页中间播放块。
   - 首次进入首页时自动加载每日推荐列表，并直接播放第一首；每日推荐当天只使用一批，不提供刷新按钮。
   - 左侧“每日推荐”入口点击后只展示当日推荐列表；不直接播放，列表项点击才建立每日推荐队列并播放。
+  - 手动点击左侧“每日推荐”入口时，必须只切换到每日推荐列表页面/视图并展示列表，不得自动替换当前播放列表或改变当前播放。
+  - 每日推荐列表中的歌曲被点击时，才允许用当日推荐列表替换现有当前播放列表，并从用户点击的歌曲开始播放。
   - 用户手动切到任意其它播放列表后，每日推荐自动播放 guard 失效，后续不得自动抢回当前播放。
   - 酷狗默认模式下隐藏旧 Emby 队列按钮，避免用户进入 Emby 队列语义；Emby 显式入口仍保留。
   - 首页右侧面板展示当前播放列表/队列，适配每日推荐、普通歌单、Radio session、Scene 来源和 Emby 显式模式。
@@ -62,6 +65,8 @@ Last Updated: 2026-06-09
   - Radio 队列展示 current/upcoming/history，并同样自动滚动到 current。
   - 推荐电台和 Scene 入口使用网格卡片展示，卡片包含缩略图、标题和必要辅助信息。
   - 发现页 UI 对齐 `.NET` / 手机版酷狗的信息结构：一级 tab（场景/主题/语种/风格/心情/年代）全量显示，二级 tab 按当前一级显示并多行换行，下面是歌单网格。
+  - 发现页一级 tab 不使用边框框选，改用高亮选中态，增大字号并控制 padding，使一级 tab 在 1024x600 横屏下尽量一排放下。
+  - 发现页二级 tab 同样不使用边框框选，使用区别于一级 tab 的高亮样式，增大字号并保持多行排布清晰。
   - 发现页不显示“发现歌单”标题行、“二级分类：xxx”标题行或刷新按钮；切换一级/二级分类自动请求歌单。
   - 发现页 tab 不使用横向滚动；有图分类默认两行，多余展开/收缩；无图标签默认三行，多余展开/收缩；点击 tab 后自动收缩。
   - 现有独立 Scene 左侧入口/页面不作为用户可见入口继续扩展；Scene direct client/renderer 能力可复用到发现页。
@@ -69,8 +74,11 @@ Last Updated: 2026-06-09
 - 首页歌词与播放块操作:
   - 首页歌词 tab 必须恢复可用，并直接按 `KugouMusic.NET` `LyricClient` / `RawLyricApi` 流程查询酷狗歌词。
   - 酷狗歌词流程为先查 `lyrics.kugou.com/v1/search` 获取 `id/accesskey/fmt`，再查 `lyrics.kugou.com/download`，按 KRC/LRC 解码并解析行时间。
+  - 当前实机反馈为任何歌曲均显示“暂无歌词”；本轮必须排查 search/download/decode/parse/cache 的真实失败点并修复，不得仅替换占位文案。
+  - 歌词失败路径必须输出脱敏 runtime/logcat 诊断，至少区分 search 无结果、download 失败、KRC/LRC 解码失败、解析失败和缓存命中异常。
   - 首页当前在播放列表 tab 且正在播放时，若 10s 无用户操作则自动切回歌词 tab；空播放状态不触发。
   - 播放块删除按钮前新增点赞按钮，复用现有酷狗点赞逻辑、状态记录、失败提示和脱敏观测；Emby/非酷狗来源按现有点赞能力边界处理。
+  - 点赞点击后必须产生按钮状态变化反馈；成功后按钮进入已点赞/选中态，取消或失败时状态必须可辨识，不以仅打日志作为反馈。
 - 酷狗一日 VIP 与无权限播放处理:
   - 每日首次启动且存在有效酷狗登录态时，按 `KugouMusic.NET` `MainWindowViewModel.TryGetVip()` / `UserClient` / `RawUserApi` 流程自动尝试领取当天 VIP。
   - 登录成功后也执行同一 VIP 流程。
@@ -85,13 +93,6 @@ Last Updated: 2026-06-09
   - QR refresh、QR polling、session validation 的失败路径必须 fail-soft，不得因网络、解析、图片下载、旧回调或生命周期切换导致闪退。
   - 新增或确认脱敏 PostHog/runtime/logcat 证据，覆盖 QR refresh start/success/failure、polling failure、session validation failure。
   - 不记录 token、session key、cookie、手机号、验证码、完整 URL query、认证 header、私有 API key 或可复用设备凭据。
-- API17 应用内更新安装链路:
-  - 定位并修复 Android 4.2.2/API17 上应用内更新安装提示“包解析失败”的问题。
-  - 重点检查更新 APK 下载完成后的文件完整性、大小/校验值、保存位置、文件可读性、安装 intent URI 类型和 MIME type。
-  - API17 安装路径必须使用系统安装器可读取的 APK 文件位置，并采用 API17 兼容的 handoff；高版本路径可继续使用现有兼容方案。
-  - 安装前使用 `PackageManager.getPackageArchiveInfo()` 或等价 API 对下载后的 APK 做本地预解析，区分“文件损坏/不可读”和“系统安装器拉起问题”。
-  - 更新链路必须补充脱敏 runtime/logcat/PostHog 诊断，至少覆盖 download complete、file size、pre-parse result、install intent result、失败 error_code。
-  - 仍保持更新能力 fail-open：检测、下载或安装拉起失败不得影响播放主链路和应用启动。
 - 纯酷狗默认模式:
   - 默认进入酷狗推荐歌曲。
   - 酷狗播放期间 Now Playing、队列页、next/previous、service state、按钮状态应来自酷狗/source session，而不是 Emby `loadedTracks`。
@@ -119,9 +120,6 @@ Last Updated: 2026-06-09
 
 ## Out of Scope
 - 上传播放缓存到 Emby 并纳入媒体库。
-- 重做整套应用更新/OTA 系统。
-- 静默安装或绕过系统安装确认流程。
-- 改变 GitHub Releases 作为更新真源的口径。
 - 独立 Scene 左侧入口作为长期产品入口继续扩展（已被发现页内一级/二级 tab 方案取代；若用户后续反向确认再恢复）。
 - Emby 入库失败的真实网络空闲重试队列。
 - 未经 `KugouMusic.NET` 支撑的酷狗接口、字段、流程或协议扩展。
@@ -153,17 +151,20 @@ Last Updated: 2026-06-09
   - 队列页能显示当前酷狗队列状态。
 - 酷狗首页/Scene/队列 UI 验收:
   - 左侧可见“每日推荐”入口；点击只展示当日推荐列表，点击列表歌曲才播放。
+  - 手动点击“每日推荐”入口不会替换当前播放列表、不会改变当前播放曲目；只有点击推荐列表歌曲才替换当前播放列表并从点击歌曲播放。
   - 冷启动/首次进入首页可自动加载每日推荐并播放第一首；用户手动切到其它播放列表后不再被每日推荐抢回；无刷新按钮。
   - 酷狗模式下旧 Emby 队列按钮不可见；显式 Emby 模式不被删除。
   - 首页右侧显示当前播放队列，不显示推荐列表。
   - 每日推荐、歌单、发现场景、Radio、Emby 显式队列均能在当前曲目变化时更新选中态并自动滚动到当前歌曲。
   - Radio 队列展示 current/upcoming/history。
   - 发现页只保留紧凑一级 tab、二级 tab 和歌单网格；无“发现歌单”标题行、无“二级分类：xxx”标题行、无刷新按钮。
+  - 发现页一级 tab 采用无边框高亮选中态，字号增大后一排可放下；二级 tab 采用不同无边框高亮选中态，字号增大后仍不遮挡网格。
   - 发现页一级/二级切换会自动获取歌单；Radio/发现网格含缩略图，1024x600 横屏无重叠、无横向 tab 滚动。
 - 首页歌词/播放块验收:
   - 首页歌词 tab 显示当前酷狗歌曲歌词；切歌后重新按酷狗歌词接口加载并滚动当前行。
+  - 不允许所有歌曲都稳定落到“暂无歌词”；若单曲确实无歌词，日志必须能说明失败分类。
   - 当前首页停留播放列表 tab 且有正在播放歌曲时，10s 无操作自动切回歌词 tab；空播放不切。
-  - 播放块删除按钮前有点赞按钮，点击后走现有酷狗点赞逻辑并更新点赞状态/失败提示。
+  - 播放块删除按钮前有点赞按钮，点击后走现有酷狗点赞逻辑并更新点赞按钮状态；成功、失败、不可点赞状态可区分。
 - 酷狗一日 VIP / 无权限验收:
   - 冷启动存在有效酷狗 session 时，每日最多触发一次 VIP 领取流程；登录成功后也能触发，但同账号同日不重复刷接口。
   - 能查询服务端记录时，以服务端记录为准；查询不可用时，以本地账号+日期记录兜底。
@@ -183,11 +184,6 @@ Last Updated: 2026-06-09
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - 触及资源/播放/native 时执行 `gradle :app:assembleDebug --no-daemon`。
-- API17 更新安装验收:
-  - Android 4.2.2/API17 车机上，应用内更新下载完成后能正常拉起系统安装器并识别 APK，不再提示“包解析失败”。
-  - 同一版本 APK 通过应用内下载后的文件大小/校验值与发布资产一致。
-  - 失败时日志能明确区分下载损坏、文件不可读、安装 intent/URI/MIME 不兼容、签名/版本/SDK 不兼容。
-  - 通过“甲壳虫 ADB 助手”安装成功的 APK，与应用内更新链路使用的目标 APK 版本一致。
 - 观测与安全验收:
   - 新增功能必须能通过 PostHog/runtime/logcat 追踪关键动作、异步请求结果、状态机跳转和失败路径。
   - PostHog 只记录低频结构化事件，不记录高频进度 tick、逐帧 DSP 状态、UI redraw 或完整 HTTP payload。
@@ -209,15 +205,15 @@ Last Updated: 2026-06-09
   - `MainActivity` 只做左侧按钮接线和当前 source/page 委托。
 - 2026-06-08 发现页与首页修正方向:
   - `KugouDiscoverBinder` / `KugouContentBinder` 承接发现页一级/二级 tab 状态、切换自动加载、展开/收起和网格刷新；独立 Scene 页面只作为代码复用来源，不作为产品入口继续扩展。
-  - `KugouDiscoverRenderer` / `KugouContentRenderer` 承接紧凑 tab 和歌单网格渲染；不得把“发现歌单”标题/刷新按钮作为必需 UI。
-  - `HomeLyricsBinder` + `KugouLyricClient` 承接酷狗歌词 search/download/decode/parse/cache/10s idle 切换；`MainActivity` 只提供当前播放变化、播放位置 tick 和 tab 切换委托。
-  - `HomePlaybackActionsBinder` 或现有播放块接线小范围扩展承接播放块点赞按钮；复用 `requestLikeTrack` 的 source-aware 点赞能力。
+  - `KugouDiscoverRenderer` / `KugouContentRenderer` 承接紧凑 tab 和歌单网格渲染；不得把“发现歌单”标题/刷新按钮作为必需 UI；一级/二级 tab 采用无边框高亮体系，字号增大后仍满足 1024x600 布局。
+  - `HomeLyricsBinder` + `KugouLyricClient` 承接酷狗歌词 search/download/decode/parse/cache/10s idle 切换；本轮优先定位“全部暂无歌词”的真实链路失败点；`MainActivity` 只提供当前播放变化、播放位置 tick 和 tab 切换委托。
+  - `HomePlaybackActionsBinder` 或现有播放块接线小范围扩展承接播放块点赞按钮；复用 `requestLikeTrack` 的 source-aware 点赞能力，并负责点赞按钮状态反馈。
+  - `DailyRecommendCoordinator` / 首页内容 binder 必须区分“展示每日推荐列表”和“从列表歌曲建立播放队列”：手动入口只展示，列表项点击才替换当前播放列表并播放。
 - 一日 VIP 领取应落在 focused `kugou/` client + `ui/`/coordinator 中：
   - `KugouDirectUserClient` 或等价类：VIP record / receive / upgrade direct 请求与字段解析。
   - `KugouDailyVipCoordinator` 或等价类：每日触发、服务端记录优先、本地兜底记录、重试/退避、登录后恢复。
   - `MainActivity` 只在 cached session/login success 时委托调用，不承载 VIP 状态机。
 - 页面壳拆分优先级：设置/日志/EQ 等低耦合页面优先；播放页、后台控制、方向盘按键、浮窗/service bridge 最后拆。
-- 应用内更新安装链路采用 API17-safe 兼容修复：先对下载后的 APK 做本地文件与包解析诊断，再按 API17 可读文件路径和兼容 install intent 拉起系统安装器；不扩大为静默安装或 OTA 平台重构。
 - 酷狗普通歌曲队列和 radio session 是并列播放会话；当 radio session active 时，next/previous 由 radio session 接管。
 - Emby 作为独立来源保留；切换到 Emby 时才启用 Emby 队列、download-only、resume/refresh 等旧链路。
 

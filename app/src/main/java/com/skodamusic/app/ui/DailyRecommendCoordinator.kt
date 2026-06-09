@@ -26,6 +26,14 @@ class DailyRecommendCoordinator(
         pendingForce = false
     }
 
+    fun cancelPendingAutoPlay(reason: String) {
+        if (pendingAutoPlay) {
+            appendRuntimeLog("daily recommend auto-play cancel reason=$reason")
+        }
+        pendingAutoPlay = false
+        pendingForce = false
+    }
+
     fun requestPlay(
         reason: String,
         force: Boolean,

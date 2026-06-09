@@ -3,7 +3,7 @@
 Last Updated: 2026-06-09
 
 ## Active Stage
-- S5 热修插队 - API17 App Update Install Compatibility
+- S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
 ## Planning Refresh (API17 App Update Parse Failure, 2026-06-09)
 - 用户确认：Android 4.2.2/API17 应用内更新安装提示“包解析失败”，但同版本 APK 可通过“甲壳虫 ADB 助手”安装成功。
@@ -68,6 +68,78 @@ Last Updated: 2026-06-09
 - Risks:
   - API17 外部存储权限/挂载状态不可控；需要 fail-soft fallback 和明确 error_code。
   - 如果下载资产与 ADB 安装资产不是同一个 APK，需先用 size/hash 证据纠正发布资产。
+- Suitable For Module Execution?: Yes
+- Suitable For Full Plan Execution?: Yes
+
+## Planning Refresh (Targeted Home/Discover Feedback Fixes, 2026-06-09)
+- 用户反馈：歌词链路实际不可用，所有歌曲稳定显示“暂无歌词”；本批必须修真实酷狗歌词链路，而不是只换占位文案。
+- 用户确认：点赞按钮状态变化反馈即可作为本批验收。
+- 用户反馈：发现页一级/二级 tab 字号太小、框选占空间；一级/二级都改无边框高亮，且高亮样式不同。
+- 用户纠正：手动点击“每日推荐”只切页面展示推荐列表；点击推荐列表中的歌曲时才替换当前播放列表并从点击歌曲播放。
+- 用户确认：方向盘上下曲全局可用；方向盘语音键、系统首页卡片、系统镜像/Amap 联动只进入独立讨论文件。
+- 新增模块:
+  - `M-S5-FIX-046`: Lyrics, Like Feedback, Discover Tabs & Daily Recommend List Semantics。
+
+## M-S5-FIX-046
+- Module ID: `M-S5-FIX-046`
+- Name: Lyrics, Like Feedback, Discover Tabs & Daily Recommend List Semantics
+- Goal: 修正 2026-06-09 用户反馈的小批体验问题：歌词真实加载、点赞状态反馈、发现页 tab 可读性和每日推荐手动入口语义。
+- Responsibility Boundary:
+  - `KugouLyricClient`: 酷狗歌词 search/download/KRC-LRC decode/parse/cache 诊断与修复；只记录脱敏 stage/error，不记录 token、完整 URL query 或歌词全文。
+  - `HomeLyricsBinder`: 歌词加载状态、当前行渲染、暂无歌词展示和 10s idle 切换；不承担协议解析。
+  - `DailyRecommendCoordinator` / `KugouContentBinder`: 区分“手动入口展示列表”和“列表歌曲点击建队列播放”。
+  - `HomePlaybackActionsBinder` 或既有首页播放块小 helper: 点赞按钮 pending/success/failure/not-likeable 状态反馈，复用既有点赞逻辑。
+  - `KugouContentRenderer` / 可选 `KugouDiscoverRenderer`: 发现页一级/二级 tab 无边框高亮、字号和布局；不承担 direct API。
+  - `MainActivity`: 只做 wiring/delegation，不新增歌词协议、点赞状态机、发现页布局算法或每日推荐播放语义。
+- Why it matters: 6 月 8 日本地完成项在实机/用户观察下仍有关键体验偏差；这些偏差会阻断后续 API17 集成验证。
+- In Scope:
+  - 修复酷狗歌词全量落入“暂无歌词”的真实链路问题，并输出失败 stage。
+  - 播放块点赞按钮点击后可见状态变化，至少覆盖 pending、已点赞/成功、失败或不可点赞。
+  - 发现页一级 tab 无边框高亮、字号增大并尽量一排放下；二级 tab 无边框且使用不同高亮样式，字号增大后不重叠。
+  - 手动“每日推荐”入口只展示列表，不替换当前播放列表；列表歌曲点击才替换当前播放列表并播放点击歌曲。
+  - 更新本批回归清单和观测覆盖。
+- Out of Scope:
+  - 方向盘语音键覆盖、语音助手、系统首页卡片、高德车机调用。
+  - 读取或修改系统镜像内容后的实现落地。
+  - 改变冷启动/首次首页自动加载并播放每日推荐第一首口径。
+  - 全量 MainActivity 拆分或发现页大重写。
+- Dependencies:
+  - `T-S5-HOME-141/143/144`、`T-S5-DISC-146` 已本地完成但需要 targeted correction。
+  - `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md` 仅作为未来讨论记录，不作为本模块依赖。
+  - `KugouMusic.NET/` 只读，用于歌词协议核对。
+- Entry Points Involved:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（wiring only）
+  - `app/src/main/res/layout/activity_main.xml`
+- Files Expected:
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouLyricClient.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt` 或新 `KugouDiscoverRenderer.kt`
+  - 可选 `app/src/main/java/com/skodamusic/app/ui/HomePlaybackActionsBinder.kt`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+- Files To Avoid Expanding:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`（已有 layout warning）
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+- Size / God Object Risk:
+  - High if execution pushes lyric protocol or tab layout state back into `MainActivity` or continues bloating `KugouContentRenderer`.
+  - Medium for `DailyRecommendCoordinator` because it already owns startup/manual semantics and must stay focused.
+- Milestone / Done Criteria:
+  - 多首酷狗歌曲不再全部稳定显示“暂无歌词”；失败时有明确脱敏 stage。
+  - 点赞按钮点击后有可见状态变化。
+  - 发现页一级/二级 tab 在 1024x600 横屏下可读、无边框、无重叠。
+  - 手动点击每日推荐不改变当前播放；点击列表歌曲才替换队列并播放。
+  - 本地构建和 API17 guardrail 通过，回归清单已更新。
+- Related Tasks: `T-S5-FIX-150`, `T-S5-FIX-151`, `T-S5-FIX-152`, `T-S5-FIX-153`, `T-S5-FIX-154`
+- Priority: P0
+- Status: Done locally / Pending device validation
+- Risks:
+  - 歌词真实失败点可能在 KRC 解密/压缩、候选筛选或 accesskey/fmt 参数，需按 `.NET` 与真实响应逐段排查。
+  - 发现页字号增大会挤占歌单网格，需在 1024x600 上验证。
+  - 每日推荐冷启动自动播和手动入口展示列表语义容易再次混线。
 - Suitable For Module Execution?: Yes
 - Suitable For Full Plan Execution?: Yes
 

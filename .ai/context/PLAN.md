@@ -3,43 +3,47 @@
 Last Updated: 2026-06-09
 
 ## Current Stage
-- Stage Name: S5 热修插队 - API17 App Update Install Compatibility
+- Stage Name: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 - Scope Source: `.ai/context/SCOPE.md`（2026-06-09）
 
-## Planning Refresh (API17 App Update Parse Failure, 2026-06-09)
+## Planning Refresh (Targeted Home/Discover Feedback Fixes, 2026-06-09)
 - Trigger:
-  - 用户反馈 Android 4.2.2/API17 上应用内更新安装仍提示“包解析失败”。
-  - 同版本 APK 通过“甲壳虫 ADB 助手”连接车机后可安装成功，具体 adb 命令未知。
-  - 用户确认按方案 B 修应用内更新安装链路，不重做整套更新系统。
+  - 用户实机反馈：当前任何酷狗歌曲歌词都稳定显示“暂无歌词”，需要修真实 search/download/decode/parse/cache 链路。
+  - 用户确认：点赞按钮需要可见状态变化反馈，先以按钮状态变化为验收。
+  - 用户反馈：发现页一级/二级 tab 字号太小且框选占空间；一级改无边框高亮并尽量一排放下，二级也无边框但使用不同高亮样式。
+  - 用户纠正：手动点击左侧“每日推荐”只切页面并显示推荐列表，不得替换当前播放列表；只有点击推荐列表歌曲时才替换现有播放列表并从点击歌曲播放。
+  - 用户确认：方向盘上下曲当前全局可用；方向盘语音键覆盖、系统首页卡片、Amap 联动和系统镜像读取先写入独立讨论文件，不进入本批实现。
 - Scope Fit:
-  - 属于既有 S4/S5 更新检测与分发能力的 API17 兼容热修。
-  - 不改变 GitHub Releases 更新真源，不做静默安装，不提高 `minSdk=17`。
+  - 属于 S5 首页歌词、点赞反馈、发现页可读性和每日推荐入口语义的小批 targeted fix。
+  - 不改变既有冷启动/首次首页自动加载并播放每日推荐第一首口径，除非后续用户反向确认。
+  - 不进入语音助手、系统镜像、系统首页卡片或高德车机联动开发。
+- Architecture Decision:
+  - 新增 `M-S5-FIX-046`: Lyrics, Like Feedback, Discover Tabs & Daily Recommend List Semantics。
+  - `KugouLyricClient` 负责歌词 search/download/KRC-LRC decode/parse/cache 诊断和修复；不得把协议或解析逻辑放回 `MainActivity`。
+  - 播放块点赞状态反馈优先由 focused action binder 或既有小范围 UI helper 承接；复用 `LikeStatusStore` 和既有点赞请求，不新增第二套点赞协议。
+  - 发现页 tab 样式由 renderer 负责；若 `KugouContentRenderer` 继续膨胀，执行时优先拆 `KugouDiscoverRenderer`。
+  - 每日推荐手动入口和列表歌曲点击必须是两个独立路径：manual nav only show list；song click builds/replaces current Kugou queue and plays clicked item。
 - Current Code Reality:
-  - 更新代码位于 `app/src/main/java/com/skodamusic/app/update/`。
-  - `AppUpdateManager.kt` 约 1030 行，已处于 general source warning/refactor 风险；当前同时承担 release 检查、下载、APK 验证、安装 intent dispatch。
-  - 下载 APK 当前写入 `File(appContext.cacheDir, "updates")`，API24 以下用 `Uri.fromFile(apkFile)` 拉起系统安装器；API17 上系统安装器很可能无法读取应用私有 cache 路径，从而表现为“包解析失败”。
-  - 已有 `getPackageArchiveInfo()` 预解析、包名/版本/签名检查，但诊断字段不足，成功路径没有记录 URI 类型、保存位置可读性、文件权限、installer resolve 等关键证据。
-  - `AppUpdateCoordinator.kt` 已承担 UI 状态和 PostHog capture，不应吸收安装兼容逻辑。
-- Architecture Direction:
-  - 新增 `M-S5-UPD-046`: API17 App Update Install Compatibility。
-  - `AppUpdateManager`: 保留 check/download/install orchestration；不得继续堆入大段 installer 细节。
-  - 新增 `AppUpdateInstaller` 或等价小类：负责 API17-safe APK handoff，包括可读文件位置、权限、URI/MIME、installer resolve 和 startActivity。
-  - 新增 `AppUpdateApkVerifier` 或等价小类：负责文件大小/digest/package pre-parse/signature/version 诊断，避免 `AppUpdateManager` 继续膨胀。
-  - `AppUpdateCoordinator`: 只消费结构化 result 并显示 UI/记录 PostHog；不直接判断 Android 版本或文件路径策略。
-  - `MainActivity`: 仍只初始化 update manager/coordinator，不新增更新流程逻辑。
+  - `MainActivity.kt` 仍约 5579 行且超过 entry red-line；本批任务只允许做 wiring/delegation。
+  - `HomeLyricsBinder.kt`、`KugouLyricClient.kt` 已存在，但实测结果显示链路仍全部落入暂无歌词，需要按阶段诊断修复。
+  - `DailyRecommendCoordinator.kt` 已存在，但用户反馈说明手动入口仍可能影响当前播放列表语义，需要重检入口和列表点击边界。
+  - `KugouContentRenderer.kt` / `KugouContentBinder.kt` 已接近大文件风险，tab UI 调整不得继续堆成 god renderer。
+- Workstreams:
+  - `W17 Lyrics Chain Fix`: 定位并修复酷狗歌词 search/download/decode/parse/cache 的全失败问题，补脱敏 stage 诊断。
+  - `W18 Playback Action Feedback`: 播放块点赞按钮 pending/success/failure/not-likeable 状态反馈。
+  - `W19 Discover Tab Readability`: 一级/二级 tab 无边框高亮、字号增大、1024x600 一排/多行布局稳定。
+  - `W20 Daily Recommend Semantics`: 手动入口只展示列表，列表歌曲点击才替换播放队列。
 - Recommended Order:
-  1. `T-S5-UPD-150`: 更新安装链路职责拆分与诊断模型。
-  2. `T-S5-UPD-151`: API17-safe APK 文件位置与安装 intent handoff 修复。
-  3. `T-S5-UPD-152`: 更新链路观测与 API17 回归清单升级。
-  4. `T-S5-UPD-153`: API17 应用内更新实机验证与证据回填。
+  1. `T-S5-FIX-150`: 酷狗歌词全为暂无歌词 targeted fix。
+  2. `T-S5-FIX-153`: 每日推荐手动入口列表语义修正。
+  3. `T-S5-FIX-151`: 首页播放块点赞按钮状态反馈。
+  4. `T-S5-FIX-152`: 发现页一级/二级 tab 无边框高亮与字号调整。
+  5. `T-S5-FIX-154`: 本批观测与 API17 回归清单更新。
 - Validation Strategy:
-  - 本地: `git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、`gradle :app:assembleDebug --no-daemon`。
-  - 代码健康: `python scripts/check_code_health.py` 预期仍可能因既有 `MainActivity.kt` 红线失败；本模块不得新增 red finding，且应降低 `AppUpdateManager.kt` 职责/行数风险。
-  - 设备: API17 车机执行“检查更新 -> 下载 -> 打开安装器”，确认不再出现“包解析失败”；回传 `update_install_*`、文件 size/hash/preparse/uri kind/path kind/installer resolve 日志。
-- Risks & Assumptions:
-  - 假设 ADB 助手安装成功代表 APK 本体签名、SDK、包名可被设备接受；仍需用下载后 APK 的 size/hash/pre-parse 证据确认同一资产。
-  - API17 系统安装器对 `file://` 路径读取权限敏感；优先使用外部可读更新目录或公开下载目录，必要时补 `WRITE_EXTERNAL_STORAGE` 并设置文件 world-readable。
-  - 外部存储不可用时应 fail-soft 并记录 `UPDATE_APK_PUBLIC_DIR_UNAVAILABLE`，不得阻塞播放主链路。
+  - 本地最小闭环：`git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`。
+  - 触及 XML/resource/布局后执行 `gradle :app:assembleDebug --no-daemon`。
+  - `python scripts/check_code_health.py` 预期仍因既有 `MainActivity.kt` red-line 失败；本批不得新增 red finding，且不得让入口文件继续承担新逻辑。
+  - 设备/手测重点：至少多首酷狗歌曲歌词能加载或明确失败 stage；点赞按钮状态变化可见；发现页 1024x600 tab 不重叠；手动每日推荐入口不改变当前播放，列表歌曲点击才替换队列。
 
 ## Execution Snapshot (2026-06-08)
 - `T-S5-HOME-141/142/143/144`、`T-S5-DISC-145/146`、`T-S5-OBS-147`、`T-S5-DSP-148` 已本地完成。

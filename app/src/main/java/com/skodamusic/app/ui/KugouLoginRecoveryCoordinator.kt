@@ -11,6 +11,7 @@ class KugouLoginRecoveryCoordinator(
     enum class PendingAction(val eventValue: String) {
         NONE("none"),
         HOME_RECOMMEND("home_recommend"),
+        DAILY_RECOMMEND_LIST("daily_recommend_list"),
         RADIO_PAGE("radio_page"),
         SCENE_PAGE("scene_page"),
         DISCOVER_PAGE("discover_page"),

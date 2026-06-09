@@ -6,48 +6,58 @@ Last Updated: 2026-06-09
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 
-## Requirement Confirmation (API17 App Update Parse Failure, 2026-06-09)
-- 用户反馈:
-  - Android 4.2.2/API17 上现有应用内更新仍提示“包解析失败”。
-  - 通过“甲壳虫 ADB 助手”连接车机后安装同版本 APK 可成功；具体底层命令未知，可能是 `adb install` 或等价安装流程。
-- 已确认范围:
-  - 本次按方案 B 处理：修复应用内更新安装链路的 API17 兼容性。
-  - 重点检查下载后 APK 文件完整性、文件可读位置、安装 intent URI/MIME、系统安装器 handoff 与本地 package pre-parse。
-  - 不重做整套更新系统、不做静默安装、不改变 GitHub Releases 更新真源。
-- 下一步建议:
-  - 已完成 planning：新增 `M-S5-UPD-046` 与 `T-S5-UPD-150~153`。
-  - 本地执行已完成 `T-S5-UPD-150/151/152`；下一步执行 `T-S5-UPD-153` API17 实机更新安装验证。
-
-## Execution Progress (API17 App Update Install Compatibility, 2026-06-09)
-- 状态: `M-S5-UPD-046` 本地完成；等待 Android 4.2.2/API17 车机实机验证。
+## Execution Progress (M-S5-FIX-046, 2026-06-09)
+- 状态: `T-S5-FIX-150/151/152/153/154` 本地完成；等待手机/API17 设备验证。
 - 已完成:
-  - 新增 `AppUpdateApkVerifier` 与 `AppUpdatePackageInspector`，从 `AppUpdateManager` 拆出 APK 文件完整性、size/hash、package pre-parse、包名/版本/签名检查。
-  - 新增 `AppUpdateInstaller`，从 `AppUpdateManager` 拆出安装器 handoff；API17/API23 及以下不再直接把私有 cache APK 交给安装器，而是复制到公开 Downloads/`SkodaMusicUpdates`，设置可读后用 `file://` + `application/vnd.android.package-archive` 拉起系统安装器。
-  - API24+ 继续保留 FileProvider/content URI 路径；API26+ 未授权安装未知来源时仍打开系统设置。
-  - `UpdateInstallResult` 与 PostHog/runtime 诊断新增 `failed_stage/path_kind/uri_kind/mime_type/installer_resolved/apk_readable/parent_readable/parent_executable/expected_bytes/preparse_result/preparse_package/preparse_version_code` 等低敏字段。
-  - 更新 URL 诊断统一脱敏为 host/path 摘要，不再记录完整 URL query。
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` F 组补 API17 包解析失败专项验证；`docs/S5_OBSERVABILITY_COVERAGE.md` 补 update install 观测字段。
-  - `AndroidManifest.xml` 新增 `WRITE_EXTERNAL_STORAGE`，用于 API17 写入公开 Downloads 更新目录。
-- 文件规模:
-  - `AppUpdateManager.kt`: `1030 -> 878` 行，职责下降但仍为 warning 文件。
-  - 新增 `AppUpdateInstaller.kt` 193 行、`AppUpdateApkVerifier.kt` 179 行、`AppUpdatePackageInspector.kt` 110 行。
-  - `MainActivity.kt` 未新增更新职责，仍 5579 行。
+  - 酷狗歌词请求补齐 `.NET` Default signature 参数和 header：`dfid/mid/uuid/userid/clienttime/signature`，不再裸请求 `lyrics.kugou.com`。
+  - `KugouLyricClient` 增强候选解析：支持顶层 `candidates`、`data.candidates`、`data.lists`、数组型 `data`，并兼容 `accesskey/access_key`。
+  - 歌词链路补脱敏 runtime stage：search empty/invalid、download empty、KRC/LRC decode failed、parse empty/success、LRC fallback lines；不记录完整 URL query、响应 body 或歌词全文。
+  - 每日推荐手动入口新增 `DAILY_RECOMMEND_LIST` 登录恢复 action；手动点击每日推荐会取消 pending auto-play，只展示列表，不在登录成功后误触发自动播放。
+  - 首页播放块点赞按钮新增 `HomePlaybackActionsBinder`，按 disabled/ready/pending/liked/failed 渲染按钮图标、背景、可用态和透明度。
+  - 首页 tab 切换抽出 `HomeTabsBinder`，抵消本批 Activity 接线增长；`MainActivity.kt` 行数约 `5579 -> 5568`。
+  - 发现页一级/二级 tab 改无边框高亮：一级 6 列一行优先、18sp；二级 4 列多行、17sp；新增无 stroke drawable，一级/二级高亮样式不同。
+  - 更新 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 与 `docs/S5_OBSERVABILITY_COVERAGE.md`，覆盖歌词多曲验证、点赞按钮状态、每日推荐列表语义和 1024x600 tab 可读性。
 - 本地验证:
   - `git diff --check` 通过。
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - `gradle :app:assembleDebug --no-daemon` 通过。
-  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` 两个 blocking；新增 update 文件无 blocking/refactor，`AppUpdateApkVerifier.kt` 为 174 行 warning，`AppUpdateManager.kt` 为 878 行 warning。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和 314 行方法；本批将 `MainActivity.kt` 从约 5579 行降到 5568 行，未新增 blocking finding。
 - 未验证:
-  - API17 车机应用内更新实际是否还提示“包解析失败”。
-  - 公开 Downloads 目录在目标车机 ROM 上是否可写/可被系统安装器读取。
-- 本轮执行复核:
-  - `TASK_QUEUE.md` 当前无 Ready；剩余 `T-S5-UPD-153` 需要 API17 车机和可下载安装的新版本 APK。
-  - 当前 workspace 未安装 `adb`（`adb devices` 返回 command not found），无法本地代跑设备验证。
-- Review closure:
-  - `$ai-review` 已复核 scope/architecture/red-lines：本轮仍在 API17 应用内更新安装热修范围内，未修改 `KugouMusic.NET/`，未提高 `minSdk`，未向 `MainActivity.kt` 增加更新职责。
-  - 验证通过：`git diff --check`、`./scripts/check_api17_guardrails.sh`、`gradle :app:compileDebugKotlin --no-daemon`、`gradle :app:assembleDebug --no-daemon`。
-  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line（5579 行、line 3385 附近 314 行）；新增 update 文件无 blocking/refactor。
+  - 真实酷狗账号/设备上 3 首以上歌曲歌词是否均能加载或明确失败 stage。
+  - 1024x600 实机发现页 tab 是否一排/多行无重叠。
+  - 点赞按钮状态在真实 direct like 成功/失败下的视觉反馈。
+  - 每日推荐手动入口在“已有播放中”和“未登录后登录恢复”两种路径下是否不替换当前队列。
+- 下一步:
+  - `T-S5-VAL-137` 重新进入 Ready，执行手机/API17 设备验证闭环。
+
+## Planning Refresh (Targeted Feedback Fixes, 2026-06-09)
+- 状态: 用户 2026-06-09 反馈已复开本批 targeted fix；6 月 8 日本地完成项不再直接进入设备验证，先修歌词、点赞状态、发现页 tab 和每日推荐手动入口语义。
+- 已确认进入本批 scope:
+  - 歌词：当前任何歌曲均显示“暂无歌词”，需修真实酷狗歌词 search/download/decode/parse/cache 链路，并补脱敏失败 stage。
+  - 点赞：点击后需要按钮状态变化反馈。
+  - 发现页 tab：一级/二级都去边框，增大字号；一级用高亮尽量一排放下，二级用不同高亮样式并保持多行清晰。
+  - 每日推荐：手动点击左侧入口只展示推荐列表，不替换当前播放列表；点击推荐列表歌曲时才替换当前播放列表并从点击歌曲播放。
+- 不进入本批 scope:
+  - 方向盘语音按钮覆盖/语音助手。
+  - 系统首页音乐卡片第三方入口。
+  - 系统镜像进一步读取落地。
+  - 高德地图车机调用联动。
+  - 以上均已写入 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md` 供下次讨论。
+- 新增模块:
+  - `M-S5-FIX-046`: Lyrics, Like Feedback, Discover Tabs & Daily Recommend List Semantics。
+- 当时 Ready:
+  - `T-S5-FIX-150`: 酷狗歌词全为暂无歌词 targeted fix；本轮已完成。
+  - `T-S5-FIX-153`: 每日推荐手动入口列表语义修正；本轮已完成。
+  - `T-S5-FIX-151`: 首页播放块点赞按钮状态反馈；本轮已完成。
+  - `T-S5-FIX-152`: 发现页一级/二级 tab 无边框高亮与字号调整；本轮已完成。
+  - `T-S5-FIX-154`: 本批观测与 API17 回归清单更新；本轮已完成。
+- Planned/Pending:
+  - `T-S5-VAL-137`: 本批 fix 已完成，当前重新进入 Ready，等待 S5 集成设备验证。
+  - `T-S5-DSP-149`: 仍等待真实 `hifi-dsp` 日志和红圈 reason 后 targeted fix。
+- 架构结论:
+  - `MainActivity.kt` 仍是 red-line 文件；本批不得增加歌词协议、点赞状态机、发现页布局算法或每日推荐队列语义逻辑。
+  - `KugouContentBinder`、`KugouContentRenderer`、`HomeLyricsBinder`、`KugouLyricClient` 已有规模风险；执行时若改动扩大，应拆小 focused binder/renderer/client helper。
 
 ## Execution Progress (Home UX + Discover + DSP Diagnostics, 2026-06-08)
 - 状态: `T-S5-HOME-141/142/143/144`、`T-S5-DISC-145/146`、`T-S5-OBS-147`、`T-S5-DSP-148` 本地完成；等待手机/API17 实机验证。

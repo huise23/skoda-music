@@ -2,7 +2,7 @@
 
 Last Updated: 2026-06-09
 
-## Active Stage: S5 热修插队 - API17 App Update Install Compatibility
+## Active Stage: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
 
 ## Planning Snapshot
 - 用户新增确认：
@@ -46,198 +46,251 @@ Last Updated: 2026-06-09
   - `.NET` UI 没有独立 Scene 页面，发现页改为一级 tab + 二级 tab + 歌单网格；去掉标题、二级说明和刷新按钮，一二级切换自动获取歌单。
   - 新增 `M-S5-HOMEUX-043`、`M-S5-DISCOVER-044`、`M-S5-DSP-045`。
 - 2026-06-09 追加规划:
-  - Android 4.2.2/API17 应用内更新安装提示“包解析失败”，但同版本 APK 可通过“甲壳虫 ADB 助手”安装成功。
-  - 用户确认按方案 B 修应用内更新安装链路，不重做整套更新系统。
-  - 新增 `M-S5-UPD-046`，作为当前最高优先级热修模块。
-  - 现有 `AppUpdateManager.kt` 约 1030 行，已混合 release check/download/verify/install；本轮必须拆 `AppUpdateInstaller` / `AppUpdateApkVerifier` 或等价 focused 类，避免继续扩大 manager。
+  - 歌词当前对任何歌曲都显示“暂无歌词”，本批必须修真实 search/download/decode/parse/cache 链路，并补脱敏失败 stage。
+  - 点赞按钮需要点击后状态变化反馈。
+  - 发现页一级/二级 tab 改无边框高亮、增大字号；一级尽量一排放下，二级使用不同高亮样式。
+  - 手动点击“每日推荐”只展示列表，不替换当前播放列表；点击推荐列表歌曲时才替换当前播放列表并播放。
+  - 方向盘语音键、系统镜像、系统首页卡片和高德联动写入 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，不进入本批 Ready。
+  - 新增 `M-S5-FIX-046` 与 `T-S5-FIX-150/151/152/153/154`。
 
-## T-S5-UPD-150
-- Task ID: `T-S5-UPD-150`
-- Module ID: `M-S5-UPD-046`
-- Status: Done locally
-- Title: 更新安装链路职责拆分与诊断模型
-- Goal: 将 APK 验证与安装 dispatch 从 `AppUpdateManager` 拆入 focused 类，并定义可用于 API17 现场排障的结构化诊断字段。
-- Why: `AppUpdateManager.kt` 已约 1030 行且职责混合；直接追加 API17 兼容逻辑会扩大 god object 风险，也不利于区分下载损坏、文件不可读和安装器 handoff 问题。
+## T-S5-FIX-150
+- Task ID: `T-S5-FIX-150`
+- Module ID: `M-S5-FIX-046`
+- Status: Done locally / Pending device validation
+- Title: 酷狗歌词全为暂无歌词 targeted fix
+- Goal: 定位并修复当前任何酷狗歌曲都显示“暂无歌词”的真实链路失败点，覆盖 search、download、KRC/LRC decode、parse 和 cache。
+- Why: 歌词功能虽然已抽出 `KugouLyricClient` / `HomeLyricsBinder`，但实机表现仍是全量失败；不修真实链路会让后续设备验收失真。
 - Responsibility Boundary:
-  - `AppUpdateApkVerifier`: 文件存在/大小/hash/pre-parse/包名/版本/签名检查。
-  - `AppUpdateInstaller`: installer handoff 的准备与 dispatch，不做网络下载。
-  - `AppUpdateManager`: 编排 download -> verify -> install，汇总 result。
-  - `AppUpdateCoordinator`: 只展示 result 和 capture event。
+  - `KugouLyricClient`: 请求参数、候选筛选、download、KRC/LRC decode/parse 和失败 stage。
+  - `HomeLyricsBinder`: 加载状态、失败展示、当前行刷新、缓存命中处理。
+  - `MainActivity`: 只委托当前播放变化和 position tick。
 - Dependencies:
-  - 用户已确认方案 B。
-  - 现有 `AppUpdateManager.verifyDownloadedApkCompatibility()`、`validateDownloadedApkFile()`、`dispatchInstallIntent()` 可迁移。
+  - `T-S5-HOME-143` 已本地完成但需纠偏。
+  - `.NET` `RawLyricApi` / `LyricClient` / `KrcParser` 只读参考。
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
-  - `.ai/context/RED_LINES.md`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouLyricClient.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Protocol/Raw/RawLyricApi.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Clients/LyricClient.cs`
+  - `KugouMusic.NET/src/Libraries/KuGou.Net/Adapters/Lyrics/KrcParser.cs`
 - Expected Outputs:
-  - 新增 verifier/installer focused 类或等价拆分。
-  - `UpdateInstallResult` 或内部诊断对象包含 `failed_stage`、`path_kind`、`uri_kind`、`apk_bytes`、`expected_bytes`、`preparse_package`、`preparse_version_code`、`installer_resolved` 等低敏字段。
-  - `AppUpdateManager` 行数/职责风险下降或至少不再增加。
+  - 歌词请求链路按 stage 输出脱敏 runtime/logcat 诊断。
+  - 多首酷狗歌曲能加载歌词；确实无歌词时明确分类为 search 无结果或其它稳定 stage。
+  - KRC/LRC decode/parse 失败不阻塞播放，且不会吞掉错误原因。
 - Expected Files:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateApkVerifier.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouLyricClient.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeLyricsBinder.kt`
+  - 可选 `docs/S5_OBSERVABILITY_COVERAGE.md`
 - Files Not To Expand:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
+  - `app/src/main/java/com/skodamusic/app/kugou/KugouDirectContentClient.kt`
 - Architecture Notes:
-  - 新类保持 package-private 风格即可，不引入新依赖。
-  - 不记录完整下载 URL query；现有 `used_url/attempt_urls` 若进入 PostHog 需截断/脱敏。
+  - 不记录 token、完整 URL query、响应 body 或歌词全文。
+  - 如需小型 parser helper，应放在 `kugou/` 或专用 lyrics 文件，不回填到 Activity。
 - Comment Requirements:
-  - 对 API17 安装器读取路径限制和诊断字段用途加短注释。
+  - 对 KRC decode/压缩格式兼容分支保留短注释。
 - Done Criteria:
-  - 代码职责拆分完成，编译通过。
-  - result 能携带安装链路关键诊断字段。
-  - `MainActivity` 无新增更新逻辑。
+  - 不再出现所有歌曲稳定“暂无歌词”的现象。
+  - 切歌后歌词重新加载并能看到当前失败/成功 stage。
+  - 单曲失败时 UI 仍可显示暂无歌词，但日志能说明分类。
 - Validation:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
-  - `python scripts/check_code_health.py`（允许既有 MainActivity red-line，不能新增 update red finding）
+  - 真实账号/设备或手机手测至少 3 首歌。
 - Risks:
-  - 迁移时可能改变现有更新成功路径；先保持行为等价，再进入 API17 handoff 修复。
+  - 真实响应字段或 KRC 格式与当前移植不一致，需要按 `.NET` 和脱敏响应形态继续校正。
 - Size: M
 - Execution Mode: Module
 - Minimal Loop: Yes
 
-## T-S5-UPD-151
-- Task ID: `T-S5-UPD-151`
-- Module ID: `M-S5-UPD-046`
-- Status: Done locally
-- Title: API17-safe APK 文件位置与安装 intent handoff 修复
-- Goal: 修复 API17 系统安装器无法读取应用私有 cache APK 导致“包解析失败”的路径，使用系统安装器可读取的 APK 位置和兼容 intent。
-- Why: 当前 API24 以下直接 `Uri.fromFile(File(appContext.cacheDir, "updates/...apk"))`，Android 4.2.2 安装器通常无法读取应用私有 cache 文件；ADB 安装成功说明 APK 本体更可能是可安装的。
+## T-S5-FIX-151
+- Task ID: `T-S5-FIX-151`
+- Module ID: `M-S5-FIX-046`
+- Status: Done locally / Pending device validation
+- Title: 首页播放块点赞按钮状态反馈
+- Goal: 让播放块点赞按钮在点击后出现可见状态变化，覆盖 pending、成功已点赞、失败或不可点赞状态。
+- Why: 用户明确要求“点赞按钮状态变化”；仅记录日志或 toast 不足以证明点击已响应。
 - Responsibility Boundary:
-  - `AppUpdateInstaller`: 选择/准备 installer-readable APK 文件，设置必要可读权限，构建 `ACTION_VIEW` intent。
-  - `AppUpdateManager`: 调用 installer 并接收 result。
-  - `AndroidManifest` / `file_paths.xml`: 仅补必要权限/路径，不改变其它组件。
+  - 播放块 action helper 或新 `HomePlaybackActionsBinder`: 按钮 enabled/selected/loading/error 状态。
+  - 既有点赞逻辑: `requestLikeTrack`、`LikeStatusStore` 和酷狗 direct like API。
+  - `MainActivity`: 只提供当前播放 track/source 和按钮接线。
 - Dependencies:
-  - `T-S5-UPD-150`
+  - `T-S5-HOME-144` 已本地完成但状态反馈不足。
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
-  - `app/src/main/AndroidManifest.xml`
-  - `app/src/main/res/xml/file_paths.xml`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/like/LikeStatusStore.kt`
+  - 现有 `requestLikeTrack` 路径
 - Expected Outputs:
-  - API17 使用外部可读更新目录或公开下载目录中的 APK 文件，`Uri.fromFile()` + `application/vnd.android.package-archive`。
-  - 若需写公开/外部目录，补充 API17 兼容权限并记录原因。
-  - 高版本继续使用 `FileProvider` + `FLAG_GRANT_READ_URI_PERMISSION`。
-  - dispatch 前记录 `path_kind`、`can_read`、`parent_can_execute/read`、`uri_kind`、`mime`、`installer_resolved`。
-  - 外部存储不可用、复制失败、权限失败时 fail-soft 并返回稳定 error_code。
+  - 点赞按钮点击立即进入 pending/disabled 或等价反馈。
+  - 成功后 selected/已点赞态可见。
+  - 失败后恢复可点并显示失败态或失败提示。
+  - 非酷狗/空播放状态不可点赞且状态可辨识。
 - Expected Files:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateInstaller.kt`
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateManager.kt`
-  - `app/src/main/AndroidManifest.xml`
-  - `app/src/main/res/xml/file_paths.xml`
+  - `app/src/main/res/layout/activity_main.xml`
+  - 可选 `app/src/main/java/com/skodamusic/app/ui/HomePlaybackActionsBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（wiring only）
 - Files Not To Expand:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Architecture Notes:
-  - 不使用 `content://` 作为 API17 主路径；API17 采用 `file://` 但文件必须位于安装器可读路径。
-  - 不做静默安装，不绕过系统安装确认。
+  - 不新增第二套点赞 store；状态反馈必须读取/写入既有点赞状态源。
 - Comment Requirements:
-  - 对 API17 使用外部可读 APK 的原因加短注释。
+  - 无特别要求。
 - Done Criteria:
-  - API17 路径不再把私有 cache APK 直接交给系统安装器。
-  - 安装 intent 可 resolve，失败 result 可区分文件位置/权限/installer 缺失。
-  - 高版本 FileProvider 路径不回归。
+  - 点击点赞后按钮视觉状态立刻变化。
+  - 成功、失败、不可点赞至少三类状态能区分。
+  - 不破坏其它页面点赞逻辑。
+- Validation:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 手测酷狗当前曲、空播放/非酷狗来源。
+- Risks:
+  - 当前播放 source 快照不稳定时可能错判可点赞状态，需 source-aware guard。
+- Size: S
+- Execution Mode: Single
+- Minimal Loop: Yes
+
+## T-S5-FIX-152
+- Task ID: `T-S5-FIX-152`
+- Module ID: `M-S5-FIX-046`
+- Status: Done locally / Pending device validation
+- Title: 发现页一级/二级 tab 无边框高亮与字号调整
+- Goal: 将发现页一级/二级 tab 从框选样式改为无边框高亮，增大字号，保证一级尽量一排放下、二级多行清晰且高亮样式不同。
+- Why: 当前 tab 字号过小且边框占空间，不适合 1024x600 横屏车机快速扫读。
+- Responsibility Boundary:
+  - `KugouContentRenderer` 或新 `KugouDiscoverRenderer`: tab 文本、padding、选中/未选中样式、换行布局。
+  - `KugouContentBinder`: 只保留选中状态与加载触发。
+  - `MainActivity`: 不参与 tab 渲染策略。
+- Dependencies:
+  - `T-S5-DISC-146` 已本地完成但需要视觉纠偏。
+- Inputs:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+- Expected Outputs:
+  - 一级 tab 无边框，选中态用高亮文字/底线/背景带之一表达，字号增大后一排尽量完整展示。
+  - 二级 tab 无边框，选中态区别于一级，字号增大并保持多行排布。
+  - 无横向滚动、无文字截断导致不可读、无控件重叠。
+- Expected Files:
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt` 或新 `KugouDiscoverRenderer.kt`
+  - 可选 `app/src/main/res/values/colors.xml` / `styles.xml`
+- Files Not To Expand:
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/res/layout/activity_main.xml`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentRenderer.kt`（若改动扩大则拆 renderer）
+- Architecture Notes:
+  - UI 尺寸需固定或有响应式约束，避免选中/加载状态改变布局高度导致网格跳动。
+- Comment Requirements:
+  - 对 API17 兼容的 selected state 处理如有非直观点，保留短注释。
+- Done Criteria:
+  - 发现页一级/二级 tab 均无边框框选。
+  - 字号明显增大，一级一排尽量放下，二级高亮样式不同且不遮挡歌单网格。
+  - 1024x600 横屏无重叠、无横向 tab 滚动。
 - Validation:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
   - `gradle :app:assembleDebug --no-daemon`
+  - 1024x600 截图/设备 smoke。
 - Risks:
-  - API17 设备外部存储挂载策略不一；需要明确 fallback 与 error_code。
-- Size: M
-- Execution Mode: Module
+  - 增大字号后一级 tab 可能仍无法一排完整放下；执行时优先调 padding/权重，不恢复边框或横向滚动。
+- Size: S
+- Execution Mode: Single
 - Minimal Loop: Yes
 
-## T-S5-UPD-152
-- Task ID: `T-S5-UPD-152`
-- Module ID: `M-S5-UPD-046`
-- Status: Done locally
-- Title: 更新链路观测与 API17 回归清单升级
-- Goal: 将更新安装诊断字段接入 runtime/logcat/PostHog，并升级 API17 回归清单，确保现场能验证“包解析失败”是否消除及失败原因。
-- Why: 当前失败发生在系统安装器内，应用只能通过安装前诊断和 intent dispatch 证据定位；没有字段会导致实机反馈无法复盘。
+## T-S5-FIX-153
+- Task ID: `T-S5-FIX-153`
+- Module ID: `M-S5-FIX-046`
+- Status: Done locally / Pending device validation
+- Title: 每日推荐手动入口列表语义修正
+- Goal: 确保手动点击左侧“每日推荐”只切到推荐列表页面并展示列表，不替换当前播放列表；只有点击推荐列表歌曲时才替换当前播放列表并从点击歌曲播放。
+- Why: 用户再次明确推荐列表实现不对；入口点击自动替换播放列表会破坏当前播放上下文。
 - Responsibility Boundary:
-  - `AppUpdateCoordinator`: capture result 字段、UI error code、runtime log。
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`: F 组和 evidence template。
-  - `AppUpdateInstaller/Verifier`: 提供低敏字段，不直接发 PostHog。
+  - `DailyRecommendCoordinator`: 冷启动自动播和手动入口展示列表的状态/guard 分离。
+  - `KugouContentBinder`: 每日推荐列表点击时建立队列并传入 clicked index。
+  - `MainActivity`: 左侧按钮只委托 show daily recommend list，不直接调用 play-first 或 replace queue。
 - Dependencies:
-  - `T-S5-UPD-150`
-  - `T-S5-UPD-151`
+  - `T-S5-HOME-141` 已本地完成但需按用户反馈复核。
 - Inputs:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - `docs/S5_OBSERVABILITY_COVERAGE.md`（如需）
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
+  - `app/src/main/java/com/skodamusic/app/playback/KugouPlaybackQueueManager.kt`
 - Expected Outputs:
-  - `update_install_triggered/update_install_failed/update_download_failed` 包含 `failed_stage/error_code/apk_bytes/expected_bytes/path_kind/uri_kind/preparse_result/installer_resolved`。
-  - runtime log 包含短路径类别和文件大小，不记录完整敏感 URL query。
-  - 回归清单 F 组新增 API17 包解析失败专项步骤。
+  - 手动入口只更新页面/列表可见状态和列表数据。
+  - 当前播放曲、当前播放列表和 queue manager 不因入口点击改变。
+  - 推荐列表歌曲点击时用当日推荐列表替换当前播放列表，并从点击 index 播放。
+  - 冷启动/首次首页自动播放第一首行为仍保留。
 - Expected Files:
-  - `app/src/main/java/com/skodamusic/app/update/AppUpdateCoordinator.kt`
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
-  - 可选 `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - `app/src/main/java/com/skodamusic/app/ui/DailyRecommendCoordinator.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/KugouContentBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`（wiring only）
 - Files Not To Expand:
   - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Architecture Notes:
-  - PostHog 只记录低频结构化事件，不上传完整 APK path 中的用户目录细节或完整 URL query。
+  - 方法命名应表达 `show` vs `playFromList` 的差异，避免后续再次误接。
 - Comment Requirements:
-  - 无特别要求。
+  - 对“manual nav must not replace current queue”的 guard 保留短注释。
 - Done Criteria:
-  - 更新失败能按 download/verify/prepare/install_intent 分类。
-  - API17 checklist 可直接指导现场复测并回传证据。
+  - 播放 A 列表时点击“每日推荐”，仍继续播放 A，当前播放列表不变。
+  - 在每日推荐列表中点击第 N 首，当前播放列表替换为每日推荐并从第 N 首播放。
+  - 首次进入首页仍能自动加载并播放每日推荐第一首。
 - Validation:
   - `git diff --check`
   - `./scripts/check_api17_guardrails.sh`
   - `gradle :app:compileDebugKotlin --no-daemon`
+  - 手测：已有播放中点击入口、再点击列表歌曲、冷启动自动播。
 - Risks:
-  - 字段过多可能污染 PostHog；需控制为枚举、布尔、大小和短错误码。
-- Size: S
-- Execution Mode: Single
+  - 登录恢复和冷启动 auto-play 可能共用同一入口方法；执行时需拆出语义清晰的调用路径。
+- Size: M
+- Execution Mode: Module
 - Minimal Loop: Yes
 
-## T-S5-UPD-153
-- Task ID: `T-S5-UPD-153`
-- Module ID: `M-S5-UPD-046`
-- Status: Planned
-- Title: API17 应用内更新实机验证与证据回填
-- Goal: 在 Android 4.2.2/API17 车机上验证应用内更新下载后可正常拉起安装器识别 APK，并把结果回填 context。
-- Why: 本缺陷只在目标系统安装器路径上暴露，本地编译不能证明修复完成。
+## T-S5-FIX-154
+- Task ID: `T-S5-FIX-154`
+- Module ID: `M-S5-FIX-046`
+- Status: Done locally / Pending device validation
+- Title: 本批观测与 API17 回归清单更新
+- Goal: 更新本批歌词、点赞、发现页 tab、每日推荐手动入口语义的观测记录和 API17 回归清单。
+- Why: 这些问题来自实机/用户反馈，必须形成可复测条目，否则后续设备验证会再次遗漏。
 - Responsibility Boundary:
-  - 设备执行与证据回填，不在验证任务中继续改代码。
-  - 若失败，按 `error_code/failed_stage` 生成 targeted fix。
+  - docs/checklist: 验收步骤、PASS/FAIL 观察点和最小证据。
+  - app observability docs: 只记录新增或修正的脱敏事件/runtime log stage。
+  - 不在本任务中修改功能代码，除非前序任务遗漏了必要的低频诊断点。
 - Dependencies:
-  - `T-S5-UPD-152`
-  - 可用 API17 设备和可发布/可下载的新版本 APK。
+  - 建议在 `T-S5-FIX-150/151/152/153` 后执行；若执行时需要先补诊断字段，可与前序任务联动。
 - Inputs:
-  - 修复后的 APK。
-  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` F 组。
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - 本批实现结果
 - Expected Outputs:
-  - Device report：下载文件 size/hash/preparse、path_kind、uri_kind、installer result、是否仍包解析失败。
-  - `.ai/context/CURRENT_STATUS.md` / `HANDOFF.md` / `NEXT_STEPS.md` 回写验证结论。
+  - 歌词多曲验证与失败 stage 条目。
+  - 点赞按钮状态变化条目。
+  - 发现页 1024x600 tab 可读性条目。
+  - 每日推荐入口不替换队列、列表歌曲点击替换队列条目。
 - Expected Files:
-  - `.ai/context/CURRENT_STATUS.md`
-  - `.ai/context/HANDOFF.md`
-  - `.ai/context/NEXT_STEPS.md`
+  - `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md`
+  - `docs/S5_OBSERVABILITY_COVERAGE.md`
+  - 可选 `.ai/context/CURRENT_STATUS.md`
 - Files Not To Expand:
-  - Android 源码文件。
+  - `app/src/main/java/com/skodamusic/app/MainActivity.kt`
 - Architecture Notes:
-  - 若失败原因是发布资产不一致或签名问题，回到 release/signing 任务；若是 installer handoff，回到 `AppUpdateInstaller`。
+  - 文档要区分本批 Ready 修复和未来系统镜像/语音按钮讨论项。
 - Comment Requirements:
   - 无。
 - Done Criteria:
-  - 至少一台 API17 设备完成应用内更新链路验证。
-  - 结论为 PASS / FAIL，失败带复现步骤和日志。
+  - 回归清单可直接指导手机/API17 实测。
+  - 观测文档列出新增/修正 stage 且说明敏感字段过滤。
 - Validation:
-  - 设备手测。
-  - 推荐 logcat: `adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I PackageParser:E PackageInstaller:E AndroidRuntime:E '*:S'`
+  - `git diff --check`
+  - 文档人工复查。
 - Risks:
-  - 无可下载“新版本”时需要临时发布或调整版本号构建；这属于执行环境前置，不在代码修复内解决。
+  - 若前序任务未实际补足诊断，本任务只能记录缺口，不能虚标覆盖。
 - Size: S
 - Execution Mode: Single
-- Minimal Loop: No
+- Minimal Loop: Yes
 
 ## T-S5-HOME-141
 - Task ID: `T-S5-HOME-141`

@@ -3,30 +3,24 @@
 Last Updated: 2026-06-09
 
 ## One-Line Summary
-- API17 应用内更新安装热修已本地完成；下一步在 Android 4.2.2/API17 车机执行应用内更新安装验证。
+- `M-S5-FIX-046` 已本地完成并通过 compile/assemble；下一步执行 `T-S5-VAL-137` 手机/API17 集成验证，重点看歌词、每日推荐入口、点赞状态和发现页 tab。
 
 ## Current Highest Priority
-- `M-S5-UPD-046`: API17 App Update Install Compatibility。
-- 当前最高优先级任务: `T-S5-UPD-153`。
-- 目标: 在 API17 车机确认应用内更新下载后能拉起安装器并识别 APK，不再提示“包解析失败”。
+- `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
 
 ## Guardrail-Adjusted Queue
 - 当前 Ready:
-  - None. 本轮代码侧 Ready 已本地完成。
+  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填。
 - 当前 Planned:
-  - `T-S5-UPD-153`: API17 应用内更新实机验证与证据回填。
   - `T-S5-DSP-149`: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 和实机日志。
-  - `T-S5-VAL-137`: S5 集成设备验证执行包与证据回填，需等本轮纠偏和清单更新。
   - `T-S5-TRIAGE-140`: 真实设备失败分流与 targeted fix 计划。
   - 后续 MainActivity 拆分任务：需重新规划。
   - API17 A~N/P 实机回归，需真实设备/手机环境回传证据。
 - 当前 In Progress:
   - None
 - 原因:
-  - `T-S5-UPD-150/151/152` 已本地完成并通过 compile/assemble；是否解决“包解析失败”必须在目标系统安装器上验证。
-  - 修复后 API17 路径会把 APK 复制到公开 Downloads/`SkodaMusicUpdates`，再用 `file://` + APK MIME 拉起安装器。
-  - 本轮 `$ai-execution` 复核时当前 workspace 无 `adb` 命令，无法直接检测或操作车机设备。
-  - `$ai-review` 已完成：scope、architecture、red-lines 无新增阻断；本地 diff/API17 guardrails/compile/assemble 通过，code health 仅剩既有 `MainActivity.kt` red-line。
+  - `M-S5-FIX-046` 已完成：歌词请求签名/stage 诊断、每日推荐手动入口语义、点赞按钮状态、发现页无边框 tab、回归清单/观测文档。
+  - `MainActivity.kt` 最新约 5568 行，仍超过 red-line，但本批通过 `HomePlaybackActionsBinder` / `HomeTabsBinder` 抵消接线增长，没有新增 code health blocking。
   - `T-S5-PLAY-110/111` 已完成 source boundary 和普通队列。
   - `KugouContentRenderer`、`KugouContentBinder`、`RuntimeLogBinder`、`EqualizerPageBinder`、`HomeLyricsBinder` 与 `KugouLyricClient` 已迁出内容页、日志、音效页和歌词职责，`MainActivity.kt` 最新约 5579 行，但仍超过 entry red-line。
   - `T-S5-PLAY-112` 已完成：radio active 时 next/previous/completion 由 `KugouRadioSessionManager` 接管，不走普通 queue 或 Emby queue。
@@ -41,18 +35,25 @@ Last Updated: 2026-06-09
 ## Immediate Next Step
 
 - 推荐执行:
-  - 安装本轮 debug APK 或发布可用于更新的新版本 APK。
-  - 在 API17 车机执行设置页“检查更新 -> 下载 -> 打开安装器”。
-  - 按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` F 组回传结果。
+  - 安装当前 debug APK，按 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 执行 `T-S5-VAL-137`。
+  - 优先覆盖 `K5.3/K5.4`、`L7`、`M6.2.1/M6.2.2`、`M6.5/M6.5.1`，并回传截图/日志。
+  - 若歌词仍全部暂无，回传 `kugou lyric ...` stage 日志；若发现页 tab 重叠，回传 1024x600 截图。
 
-- 更新安装验证重点：
-  - 下载后的 APK size/hash 与 release asset 一致。
-  - `getPackageArchiveInfo()` 能解析包名、版本、签名。
-  - API17 安装 handoff 使用安装器可读路径，`uri_kind=file`，MIME 为 `application/vnd.android.package-archive`。
-  - `update_install_triggered` / `update_install_failed` 包含 `failed_stage/error_code/path_kind/uri_kind/apk_bytes/preparse_result/installer_resolved`。
-  - API17 车机不再提示“包解析失败”。
+- 本批关键验收:
+  - 多首酷狗歌曲不再全部显示“暂无歌词”；单曲失败有脱敏 stage。
+  - 播放中点击“每日推荐”只展示列表，不改变当前播放；点击列表歌曲才替换队列并播放。
+  - 点赞按钮点击后有 pending/success/failure/not-likeable 等可见状态变化。
+  - 发现页一级/二级 tab 无边框、字号增大，一级尽量一排放下，二级使用不同高亮且无重叠。
+  - 系统镜像、方向盘语音按钮、系统首页卡片和高德调用只看 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，不在本批实现。
 
-- 后续手机/API17 验证：
+- 推荐验证命令:
+  - `git diff --check`
+  - `./scripts/check_api17_guardrails.sh`
+  - `gradle :app:compileDebugKotlin --no-daemon`
+  - 触及 layout/resource 后补 `gradle :app:assembleDebug --no-daemon`
+  - `python scripts/check_code_health.py` 可运行但预期仍因既有 `MainActivity.kt` red-line 失败；不得新增 red finding。
+
+- 手机/API17 验证：
   - 未登录首页点击刷新应弹窗显示二维码。
   - 扫码成功后弹窗关闭并自动加载首页推荐。
   - 进入 Radio/Discover 时应懒加载 direct 数据；失败时显示“加载失败，点击重试”，不清已有内容。
@@ -72,13 +73,12 @@ Last Updated: 2026-06-09
 推荐 logcat:
 
 ```bash
-adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I PackageParser:E PackageInstaller:E AndroidRuntime:E Toast:E '*:S'
+adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I AndroidRuntime:E Toast:E '*:S'
 ```
 
 ## Planned After Ready
-- `T-S5-UPD-153`: 更新安装链路 API17 实机验证和 context 回填。
+- `T-S5-VAL-137`: 本批 targeted fix 后执行设备验证闭环。
 - `T-S5-DSP-149`: 根据红圈 reason 和 `hifi-dsp` 日志做 targeted fix。
-- `T-S5-VAL-137`: 本轮纠偏后执行设备验证闭环。
 - `T-S5-TRIAGE-140`: 设备验证失败项分流后再进入 targeted fix。
 - 下一批 MainActivity 红线治理：需先 planning，避免误拆播放/service 主链。
 - 若实机发现发现页/Scene 字段不一致，回到 `KugouMusic.NET` 和真实响应核对，修对应 direct client 字段映射，不猜测协议。
@@ -92,7 +92,6 @@ adb logcat -v time SkodaMusicEmby:D SkodaPostHog:I PackageParser:E PackageInstal
 
 ## Important Notes
 - 当前主干为 `master`；本轮首页/发现页/DSP 诊断实现经 review 后提交推送，具体 commit 以 `git log -1` 为准。
-- 2026-06-09 最新需求已规划：API17 应用内更新安装“包解析失败”热修，新增 `M-S5-UPD-046` 与 `T-S5-UPD-150~153`。
 - 2026-06-08 最新需求已规划：每日推荐启动自动播放但入口列表化、首页右侧队列跟随、首页歌词酷狗 direct、播放块点赞、发现页紧凑两级 tab + 歌单网格、DSP 红圈原因采证。
 - `M-S5-KG-037` 已新增：Kugou Post-login Loading & Login Recovery。
 - `T-S5-MAIN-108` 已完成：`MainActivity.kt` 由 6443 行降到 6213 行，新增 `SourceRowRenderer`。

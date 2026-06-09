@@ -6,42 +6,37 @@ Last Updated: 2026-06-09
 - 项目: `skoda-music`（Android 车机播放器）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 - 当前阶段: S5 纠偏 - Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split
-- 当前执行入口: 新增最高优先级热修输入为 API17 应用内更新安装“包解析失败”；先规划/执行 update installer 兼容修复，再继续 `T-S5-VAL-137` 设备验证。若 DSP 仍红圈，收集 `hifi-dsp indicator ... reason=...` 后进入 `T-S5-DSP-149`。
+- 当前执行入口: `M-S5-FIX-046` 本地完成。下一步优先执行 `T-S5-VAL-137` 手机/API17 设备验证与证据回填。
 
-## Latest Requirement (API17 App Update Parse Failure, 2026-06-09)
-- 用户反馈:
-  - Android 4.2.2/API17 上应用内更新安装仍提示“包解析失败”。
-  - 通过“甲壳虫 ADB 助手”连接车机后安装同版本 APK 可成功；具体 adb 命令未知。
-- 用户确认:
-  - 按方案 B 收敛：修复应用内更新安装链路的 API17 兼容性。
-  - 不重做整套更新系统。
-- 执行方向:
-  - 定位现有 update/downloader/installer 代码路径。
-  - 校验下载后 APK 的 size/hash、保存位置和可读性。
-  - 安装前增加 package pre-parse，拉起安装器时使用 API17-safe 文件位置、URI 和 `application/vnd.android.package-archive`。
-  - 增加脱敏 runtime/logcat/PostHog 诊断，失败时能区分下载损坏、文件不可读、intent/URI/MIME 不兼容、签名/版本/SDK 不兼容。
-- Planning result:
-  - 新增模块 `M-S5-UPD-046`。
-- Execution result:
-  - `T-S5-UPD-150/151/152` 本地完成。
-  - 新增 `AppUpdateApkVerifier`、`AppUpdatePackageInspector`、`AppUpdateInstaller`。
-  - API17 安装路径改为复制 APK 到公开 Downloads/`SkodaMusicUpdates` 后用 `file://` + `application/vnd.android.package-archive` 拉起安装器；API24+ 保持 FileProvider/content URI。
-  - `AppUpdateManager.kt` 由 1030 行降至 878 行，`MainActivity.kt` 未新增更新职责。
-  - 更新安装 PostHog/runtime 诊断新增 `failed_stage/path_kind/uri_kind/mime_type/installer_resolved/apk_readable/expected_bytes/preparse_result/preparse_package/preparse_version_code`。
-  - URL 诊断改为 host/path 摘要，不记录完整 query。
-- Validation:
+## Latest Delta (Targeted Feedback Fixes, 2026-06-09)
+- 本地 Done:
+  - `T-S5-FIX-150`: 酷狗歌词链路补 `.NET` Default signature 参数/header、候选容错解析、KRC parse-empty 后 LRC fallback，并记录脱敏 search/download/decode/parse stage。
+  - `T-S5-FIX-153`: 每日推荐手动入口改为列表语义；点击左侧入口取消 pending auto-play，只展示当日列表，列表歌曲点击才替换当前播放列表并播放。
+  - `T-S5-FIX-151`: 首页播放块点赞按钮新增状态反馈，覆盖 disabled/ready/pending/liked/failed。
+  - `T-S5-FIX-152`: 发现页一级/二级 tab 改为无边框高亮并增大字号，一级/二级使用不同高亮样式。
+  - `T-S5-FIX-154`: 更新 API17 回归清单与 S5 观测覆盖。
+- 新增文件:
+  - `app/src/main/java/com/skodamusic/app/ui/HomePlaybackActionsBinder.kt`
+  - `app/src/main/java/com/skodamusic/app/ui/HomeTabsBinder.kt`
+  - `app/src/main/res/drawable/discover_primary_tab_active.xml`
+  - `app/src/main/res/drawable/discover_primary_tab_idle.xml`
+  - `app/src/main/res/drawable/discover_secondary_tab_active.xml`
+  - `app/src/main/res/drawable/discover_secondary_tab_idle.xml`
+- 本地验证:
   - `git diff --check` 通过。
   - `./scripts/check_api17_guardrails.sh` 通过。
   - `gradle :app:compileDebugKotlin --no-daemon` 通过。
   - `gradle :app:assembleDebug --no-daemon` 通过。
-  - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` blocking；新增 update 文件无 blocking/refactor。
-- Next:
-  - 执行 `T-S5-UPD-153`：API17 车机应用内更新实机验证与证据回填。
-  - 本轮 `$ai-execution` 复核后确认队列无代码侧 Ready；当前 workspace 未安装 `adb`，不能直接代跑设备验证。
-- Review closure:
-  - `$ai-review` 未发现新的 scope/architecture/red-line 阻断。
-  - 本轮本地验证通过 `git diff --check`、API17 guardrails、`compileDebugKotlin`、`assembleDebug`。
-  - code health 失败仍限定在既有 `MainActivity.kt` red-line；新增 update 类只有 warning，无 blocking/refactor。
+  - `python scripts/check_code_health.py` 仍失败：既有 `MainActivity.kt` entry file red-line 和一个 314 行方法；本批将 `MainActivity.kt` 从约 5579 行降到 5568 行，未新增 blocking finding。
+- Ready:
+  - `T-S5-VAL-137`: 安装当前 debug APK，执行手机/API17 集成验证并回填证据；优先覆盖歌词多曲、每日推荐手动入口、点赞状态和发现页 1024x600 tab。
+- Deferred:
+  - 方向盘语音按钮覆盖、语音助手、系统首页卡片、系统镜像进一步分析、高德地图车机调用联动均不进入本批实现；详见 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`。
+- 工程注意:
+  - `MainActivity.kt` 仍约 5568 行且超过 red-line；后续只能 wiring/delegation，继续优先拆 focused binder。
+  - 歌词协议和解析归 `KugouLyricClient`，歌词 UI 归 `HomeLyricsBinder`。
+  - 每日推荐必须保留冷启动自动播口径，同时手动入口不得改变当前播放列表。
+  - 发现页 UI 如需较大调整，优先拆 `KugouDiscoverRenderer`，不要继续堆大 `KugouContentRenderer`。
 
 ## Latest Delta (Home UX + Discover + DSP Diagnostics, 2026-06-08)
 - 本地 Done:
@@ -135,7 +130,7 @@ Last Updated: 2026-06-09
   - `python scripts/check_code_health.py` 仍失败，仅因既有 `MainActivity.kt` red-line：5579 行、一个 314 行方法。
 - Historical next recommendation:
   - 当时建议设备验证优先；该入口已被 2026-06-08 用户反馈覆盖。
-  - 当前下一步以 `Latest Planning (Home UX + Discover + DSP, 2026-06-08)` 的 Ready 队列为准。
+  - 当前下一步以 `Latest Delta (Targeted Feedback Fixes, 2026-06-09)` 为准，即 `T-S5-VAL-137` 设备验证闭环。
 
 ## Latest Requirement (Daily One-Day VIP + Permission-Aware Playback, 2026-06-07)
 - 用户确认:

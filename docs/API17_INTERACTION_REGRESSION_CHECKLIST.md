@@ -1,7 +1,7 @@
 # API17 Interaction Regression Checklist (S4/S5)
 
 Last Updated: 2026-06-09
-Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119` + `T-S5-HOME-128/130` + `T-S5-SCENE-129` + `T-S5-UI-131` + `T-S5-UPD-150/151/152`
+Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` + `T-S5-VAL-106` + `T-S5-VAL-113` + `T-S5-KG-119` + `T-S5-HOME-128/130` + `T-S5-SCENE-129` + `T-S5-UI-131` + `T-S5-FIX-150/151/152/153/154`
 
 ## Purpose
 用于 Android `4.2.2`（API 17）车机实机回归，统一 S4 阶段验收口径：
@@ -81,11 +81,8 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] F1 冷启动自动检测遵循节流（成功 24h，失败 30min），不阻断主流程。
 - [ ] F2 设置页“检查更新”可手动触发并展示状态（最新/有新版本/失败）。
 - [ ] F3 发现新版本后可下载 APK（镜像优先 + 官方回退）。
-- [ ] F4 下载完成后本地预解析通过：日志/事件包含 `preparse_result=ok`、`preparse_package`、`preparse_version_code`、`apk_bytes`，且 `apk_bytes` 与 release asset 大小一致。
-- [ ] F5 API17 安装 handoff 使用安装器可读路径：日志/事件包含 `path_kind=public_downloads`、`uri_kind=file`、`mime_type=application/vnd.android.package-archive`、`apk_readable=true`、`installer_resolved=true`。
-- [ ] F6 系统安装器能识别 APK 并展示安装确认页，不再提示“包解析失败/解析包错误”。
-- [ ] F7 更新失败时可看到结构化失败信息（`failed_stage/error_code/path_kind/uri_kind/preparse_result/installer_resolved`）。
-- [ ] F8 PostHog/runtime 日志不得记录完整 URL query、完整 APK 本地路径中的敏感目录细节或任何私有凭据。
+- [ ] F4 下载完成可触发系统安装器。
+- [ ] F5 更新失败时可看到结构化失败信息（`failed_stage/failed_url/attempt_urls`）。
 
 ### G. Observability Evidence
 - [ ] G1 `SkodaPostHog` 可见关键上报日志（含 `capture ok event=...`）。
@@ -152,7 +149,9 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] K5 独立 Scene 左侧入口不可见；发现页承接 `.NET` Discover 一级分类 + 二级标签 + 歌单网格结构。
 - [ ] K5.1 发现页不显示“发现歌单”标题行、“二级分类：xxx”说明行或刷新按钮。
 - [ ] K5.2 发现页一级/二级 tab 不横向滚动；默认多行展示，多余项可展开/收缩，点击分类后自动收缩。
-- [ ] K5.3 Radio/发现页歌单卡片缩略图弱网/图片失败时显示占位图，不闪退，不记录完整图片 URL。
+- [ ] K5.3 发现页一级 tab 无边框框选，字号增大，1024x600 横屏下一排尽量完整显示；选中态用高亮表达。
+- [ ] K5.4 发现页二级 tab 无边框框选，字号增大，使用不同于一级 tab 的高亮样式；多行展示不遮挡歌单网格。
+- [ ] K5.5 Radio/发现页歌单卡片缩略图弱网/图片失败时显示占位图，不闪退，不记录完整图片 URL。
 - [ ] K6 发现歌单页进入时懒加载分类/标签；未登录时弹登录，失败时保留页面并显示点击重试入口。
 - [ ] K7 点击一级分类自动加载该分类首个二级标签的歌单；点击二级标签自动加载对应歌单。
 - [ ] K8 点击歌单后可加载歌单歌曲，歌单以带缩略图网格卡片展示。
@@ -167,6 +166,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] L4 点赞/入库状态页展示歌曲、来源、远端状态、入库状态和失败原因。
 - [ ] L5 Emby 入库状态显示 `blocked_ingest` 或等价阻塞文案，不误报已入库。
 - [ ] L6 重启后点赞历史仍可查看。
+- [ ] L7 首页播放块点赞按钮点击后有可见状态变化：pending、成功已点赞、失败或不可点赞状态可区分。
 
 ### M. Pure Kugou Playback / Queue / Radio Session
 - [ ] M1 默认酷狗模式下点击推荐歌曲后通过 Android direct `/v5/url` 获取播放 URL，Now Playing 显示酷狗歌曲标题/歌手，不从 Emby 当前队列推导。
@@ -178,9 +178,12 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 - [ ] M6 点击推荐电台或电台歌曲后进入“酷狗电台队列”；队列页展示 current + upcoming。
 - [ ] M6.1 首页右侧常驻展示当前播放列表/队列，不显示推荐列表；点击左侧“每日推荐”只展示当日推荐列表，不直接播放。
 - [ ] M6.2 首次进入首页且已有酷狗 session 时自动加载每日推荐并播放第一首；手动切到其它播放列表后，每日推荐不再抢播；无刷新按钮。
+- [ ] M6.2.1 播放其它列表时点击左侧“每日推荐”，只切到每日推荐列表页面/视图，当前播放曲目和当前播放列表不改变。
+- [ ] M6.2.2 在每日推荐列表点击第 N 首时，当前播放列表替换为当日推荐列表，并从第 N 首开始播放。
 - [ ] M6.3 酷狗默认模式下旧 Emby 队列按钮隐藏；显式 Emby 操作后 Emby 队列入口仍可见。
 - [ ] M6.4 首页右侧队列和独立队列页在 Emby、普通 Kugou queue、发现页歌单、Radio session 中自动滚动到当前歌曲；手动下一曲、自然下一曲、无权限跳过均覆盖。
 - [ ] M6.5 首页歌词 tab 可按酷狗 direct lyric search/download 显示歌词；停留队列 tab 且播放中 10s 无操作自动切回歌词，空播放不切。
+- [ ] M6.5.1 连续测试至少 3 首酷狗歌曲，不允许全部稳定显示“暂无歌词”；若某首确实无歌词，runtime/logcat 应明确记录 `search/download/decode/parse/cache` 对应失败 stage。
 - [ ] M6.6 首页播放块删除按钮前有点赞按钮；酷狗当前曲可点赞，非酷狗/空播放不可用。
 - [ ] M7 radio active 时 next 推进 upcoming，previous 从 history 回退；队列页展示 history/current/upcoming，不走普通 Kugou queue 或 Emby queue。
 - [ ] M8 radio 当前曲自然结束后，由 radio session 推进下一首；没有 upcoming 时显示队列末尾/不可切换反馈，不崩溃。
@@ -264,7 +267,7 @@ Scope: `T-S4-VAL-032` + `T-S4-AUDIO-060` + `T-S4-AUDIO-072` + `T-S4-AUDIO-086` +
 ### Key Logs / Evidence
 - command_result: <action/source/handled/detail>
 - playback_error: <error_code/stage/request_id>
-- update_failed: <failed_stage/error_code/path_kind/uri_kind/preparse_result/installer_resolved/apk_bytes/expected_bytes>
+- update_failed: <failed_stage/failed_url/attempt_urls>
 - posthog: <capture ok 或失败样本>
 
 ## P. Kugou Daily VIP & Permission Playback

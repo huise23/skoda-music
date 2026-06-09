@@ -3,15 +3,21 @@
 Last Updated: 2026-06-09
 
 ## Ready
-- None. `M-S5-UPD-046` 代码侧本地完成，下一步需要 API17 车机实机验证。
+
+- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`, Execution Mode: Module）: S5 集成设备验证执行包与证据回填。原因：`M-S5-FIX-046` 已本地完成，下一步需要手机/API17 真实验证。
 
 ## Pending / Planned
 
-- `T-S5-UPD-153`（P0, Module `M-S5-UPD-046`）: API17 应用内更新实机验证与证据回填，依赖 `T-S5-UPD-152` 和设备/可下载新版本 APK。
 - `T-S5-DSP-149`（P0, Module `M-S5-DSP-045`）: DSP 音效无效 targeted fix，依赖 `T-S5-DSP-148` 和实机/手机 `hifi-dsp` 日志。
 - `T-S5-TRIAGE-140`（P0, Module `M-S5-VAL-041`）: 真实设备失败分流与 targeted fix 计划，依赖 `T-S5-VAL-137`。
-- `T-S5-VAL-137`（P0, Module `M-S5-VAL-041`）: S5 集成设备验证执行包与证据回填。原因：当前用户已提供新纠偏需求，验证清单需先由 `T-S5-OBS-147` 更新后再执行。
-- API17 A~N/P 实机回归：等待本轮首页/发现页/DSP 诊断纠偏完成后，执行并回传 QR 登录、direct content、每日推荐、发现页、队列自动滚动、VIP、歌词、DSP 与 PostHog/logcat 脱敏证据。
+- API17 A~N/P 实机回归：随 `T-S5-VAL-137` 执行并回传 QR 登录、direct content、每日推荐、发现页、队列自动滚动、VIP、歌词、DSP 与 PostHog/logcat 脱敏证据。
+
+## Deferred
+
+- 方向盘语音按钮覆盖响应 / 语音助手：已记录到 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，待后续确认是否进入需求；当前不 Ready。
+- 系统首页音乐卡片第三方入口：已记录到 `.ai/context/SYSTEM_IMAGE_DISCUSSION_NOTES.md`，依赖系统能力/接口确认；当前不 Ready。
+- 系统镜像进一步读取分析：当前只作为讨论资料；不进入本批实现。
+- 高德地图车机调用联动：需后续确认语音意图分流和 `com.autonavi.amapauto` 调用方式；当前不 Ready。
 
 ## Blocked
 
@@ -42,9 +48,11 @@ Last Updated: 2026-06-09
 - None
 
 ## Done
-- `T-S5-UPD-152`: 更新链路观测与 API17 回归清单升级；PostHog/runtime 增加安装阶段、路径/URI、pre-parse 和 installer resolve 低敏字段，并更新 F 组回归项。
-- `T-S5-UPD-151`: API17-safe APK 文件位置与安装 intent handoff 修复；API17 安装前复制 APK 到公开 Downloads/`SkodaMusicUpdates`，设置可读并用 `file://` + APK MIME 拉起安装器。
-- `T-S5-UPD-150`: 更新安装链路职责拆分与诊断模型；新增 `AppUpdateApkVerifier`、`AppUpdateInstaller`、`AppUpdatePackageInspector`，降低 `AppUpdateManager` 职责和行数。
+- `T-S5-FIX-154`: 本批观测与 API17 回归清单更新；补充歌词失败 stage、多曲歌词验证、点赞按钮状态、每日推荐列表语义和发现页 1024x600 无边框 tab 验收。
+- `T-S5-FIX-152`: 发现页一级/二级 tab 无边框高亮与字号调整；新增一级/二级无 stroke tab drawable，一级 6 列一行优先，二级 4 列多行，样式区分。
+- `T-S5-FIX-151`: 首页播放块点赞按钮状态反馈；新增 `HomePlaybackActionsBinder`，按钮按 disabled/ready/pending/liked/failed 渲染。
+- `T-S5-FIX-153`: 每日推荐手动入口列表语义修正；新增 `DAILY_RECOMMEND_LIST` 登录恢复 action，手动入口取消 pending auto-play 且只展示列表。
+- `T-S5-FIX-150`: 酷狗歌词全为暂无歌词 targeted fix；歌词请求补 `.NET` Default signature 参数/header、候选容错解析、KRC parse 失败 LRC fallback 和脱敏 stage 日志。
 - `T-S5-DSP-148`: DSP 红圈原因显示与 runtime/logcat 采证补齐；播放按钮 DSP 指示按完整 runtime state 低频刷新并记录 `hifi-dsp indicator status=... reason=...`。
 - `T-S5-OBS-147`: 首页/发现页纠偏观测与 API17 回归清单更新；同步 `docs/API17_INTERACTION_REGRESSION_CHECKLIST.md` 与 `docs/S5_OBSERVABILITY_COVERAGE.md`。
 - `T-S5-DISC-146`: 发现页紧凑 tab + 歌单网格 UI 重构；隐藏独立 Scene 左侧入口，去掉发现页标题/状态占位，一级/二级 tab 多行展示并自动加载歌单。
@@ -117,7 +125,8 @@ Last Updated: 2026-06-09
 - `T-S4-AUDIO-087`: Kotlin DSP API17 实机听感验证。原因：AC83xx 已反馈 Kotlin 热路径卡顿，已由 native 优化链取代；后续实机验证改走 `T-S4-AUDIO-095`。
 
 ## Recommended Execution Mode
-- 当前最高优先级是 `T-S5-VAL-137` 设备验证闭环；设备窗口不可用时，`M-S5-MAIN-042` 已完成 RuntimeLog/EQ 两个低耦合 Binder 提取，下一轮需重新规划后续 MainActivity 拆分目标。
+- 当前最高优先级是 `T-S5-VAL-137` 设备验证闭环。
+- `M-S5-FIX-046` 已本地完成；下一步安装 debug APK 并重点验证歌词、每日推荐手动入口、点赞按钮状态和发现页 tab。
 - 设备验证仍保留：手机/模拟器确认 `T-S5-KG-122` 的扫码、首页推荐、推荐歌曲播放 direct 最小闭环。
 - 设备验证新增：每日推荐自动播放、首页当前队列、Radio/Scene 网格缩略图、Scene tab 展开收缩、各类队列自动滚动当前歌曲。
 - 设备验证新增：每日 VIP record/receive/upgrade、record fallback、失败重试、无权限/VIP 播放提示。

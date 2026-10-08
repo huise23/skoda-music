@@ -6,6 +6,21 @@ Last Updated: 2026-06-09
 - 当前阶段: S5 纠偏子阶段（Kugou Pure Source Playback, Queue/Radio Parity & MainActivity Split）
 - 当前主干: `master`（本轮 Home/Discover/DSP review 后提交推送；具体 commit 以 `git log -1` 为准）
 
+## Execution Progress (API17 Update Installer Fix & Incremental Update, 2026-10-08)
+- 状态: 本地开发与代码健康校验完成，已支持应用层差分增量更新（bspatch）与安装器权限强化。
+- 根因闭环:
+  - 车机实机“解析包失败”主因是 Android 4.2.2 系统 `PackageInstallerActivity` 无 `READ_EXTERNAL_STORAGE` 权限，且 FUSE 外部存储忽略 POSIX chmod，导致安装器进程读取 APK 报 EACCES。
+  - 在 `AppUpdateInstaller` 中补齐内部存储（ext4）chmod 755/777 穿透、外部存储目录树递归 chmod 777，并增加 root/pm 静默安装探针（`su -c "pm install -r"` 与 `pm install -r`），优先静默更新，失败再拉起系统安装器。
+- 增量更新支持:
+  - 系统原生层面：Android 4.2.2（API 17）不支持系统原生增量更新（原生增量为 Android 11+ 能力）。
+  - 应用层层面：基于 `bspatch` 差分算法实现应用层增量更新，原生 C/C++ 实现并入 `libnative-playback.so`（零第三方 Java 依赖，严格遵守 `minSdk=17` 红线）。
+  - `AppUpdatePatcher` 读取已安装基准包（`applicationInfo.sourceDir`）与下载的 `.patch` 补丁，本地合成新 APK 并进行 SHA-256 完整性双校验。
+  - `AppUpdateManager` 优先检测并下载差分补丁，补丁缺失或合成失败自动平滑回退全量 APK 下载。
+  - `.github/workflows/package-mvp.yml` 增加 CI 自动 `bsdiff` 补丁生成与 Release 资产发布。
+- 本地验证:
+  - `./scripts/check_api17_guardrails.sh` 通过。
+  - `python3 scripts/check_code_health.py` 仅剩既有 `MainActivity.kt` 遗留项。
+
 ## Hotfix Progress (Lyrics Switch Crash, 2026-06-09)
 - 状态: 本地完成，等待用户/设备复测切歌。
 - 触发:

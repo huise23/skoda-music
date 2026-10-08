@@ -49,6 +49,8 @@ Last Updated: 2026-06-09
 - None
 
 ## Done
+- `T-S5-UPD-155`: 应用层差分增量更新（bspatch）支持与 CI 发布自动化；集成 native bspatch 与 embedded bzip2，增加 `NativeUpdatePatcher` 与 `AppUpdatePatcher`，`AppUpdateManager` 优先差分合成并在失败时回退全量包，CI 工作流自动生成并发布 bsdiff 补丁资产。
+- `T-S5-UPD-154`: API17 update installer handoff 权限强化与静默安装探测；增强 `AppUpdateInstaller` 权限穿透（内部存储 chmod 755/777 与外部公共目录递归 chmod 777）并增加 su/pm 静默安装探测，解决未授权 PackageInstaller 解析包失败。
 - `T-S5-HOTFIX-158-local`: 歌词切歌崩溃本地热修；`HomeLyricsBinder` 增加 render generation 和旧 offset 边界保护，`git diff --check`、API17 guardrail、`compileDebugKotlin`、`assembleDebug` 通过，设备复测待执行。
 - `T-S5-DEV-157`: 模拟器网络 gate 本地验证与 context 回写；`git diff --check`、API17 guardrail、`compileDebugKotlin`、`assembleDebug` 通过，模拟器/真机 smoke 待设备窗口。
 - `T-S5-DEV-156`: 模拟器网络 gate 兼容实现；新增 `DeviceEnvironmentDetector`，`WifiNetworkGate` 在模拟器 active network connected 时允许非 Wi-Fi 类型放行，真机仍 Wi-Fi-only。

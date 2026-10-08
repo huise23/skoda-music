@@ -40,7 +40,8 @@ class AppUpdateManager(
         val publishedAt: String,
         val versionCode: Long,
         val versionName: String,
-        val asset: ReleaseAsset
+        val asset: ReleaseAsset,
+        val patchAsset: ReleaseAsset? = null
     )
 
     data class CachedState(
@@ -144,6 +145,7 @@ class AppUpdateManager(
     private val worker = Executors.newSingleThreadExecutor()
     private val apkVerifier = AppUpdateApkVerifier(appContext)
     private val installer = AppUpdateInstaller(appContext, log)
+    private val patcher = AppUpdatePatcher(appContext, log)
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(CLIENT_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .readTimeout(CLIENT_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -212,7 +214,7 @@ class AppUpdateManager(
         callback: (UpdateInstallResult) -> Unit
     ) {
         worker.execute {
-            val downloadResult = downloadReleaseApk(releaseInfo, onProgress)
+            val downloadResult = obtainReleaseApk(releaseInfo, onProgress)
             if (!downloadResult.success || downloadResult.file == null) {
                 callback(
                     UpdateInstallResult(
@@ -445,6 +447,8 @@ class AppUpdateManager(
                     hasReleaseWithoutApk = true
                     continue
                 }
+                val localVersion = resolveLocalVersion()
+                val patchAsset = pickPreferredPatchAsset(item.optJSONArray("assets"), localVersion.versionCode)
                 val resolvedVersionCode = resolveRemoteVersionCode(tagName, asset.name)
                 val resolvedVersionName = resolveRemoteVersionName(tagName, releaseName, asset.name)
                 val releaseInfo = ReleaseInfo(
@@ -454,7 +458,8 @@ class AppUpdateManager(
                     publishedAt = publishedAt,
                     versionCode = resolvedVersionCode,
                     versionName = resolvedVersionName,
-                    asset = asset
+                    asset = asset,
+                    patchAsset = patchAsset
                 )
                 return ReleaseFetchResult(
                     releaseInfo = releaseInfo
@@ -473,6 +478,39 @@ class AppUpdateManager(
                 failedStage = "parse_release_payload"
             )
         }
+    }
+
+    private fun pickPreferredPatchAsset(assets: JSONArray?, localVersionCode: Long): ReleaseAsset? {
+        if (assets == null) {
+            return null
+        }
+        var bestAsset: ReleaseAsset? = null
+        for (index in 0 until assets.length()) {
+            val item = assets.optJSONObject(index) ?: continue
+            val name = item.optString("name").orEmpty().trim()
+            val lower = name.lowercase(Locale.US)
+            if (!lower.endsWith(".patch") && !lower.endsWith(".bspatch")) {
+                continue
+            }
+            val downloadUrl = item.optString("browser_download_url").orEmpty().trim()
+            if (downloadUrl.isBlank()) {
+                continue
+            }
+            val matchesLocal = localVersionCode > 0L && (lower.contains("r$localVersionCode") || lower.contains("from-$localVersionCode"))
+            val candidate = ReleaseAsset(
+                name = name,
+                downloadUrl = downloadUrl,
+                sizeBytes = item.optLong("size", -1L),
+                sha256Digest = normalizeSha256Digest(item.optString("digest").orEmpty())
+            )
+            if (matchesLocal) {
+                return candidate
+            }
+            if (bestAsset == null) {
+                bestAsset = candidate
+            }
+        }
+        return bestAsset
     }
 
     private fun pickPreferredApkAsset(assets: JSONArray?): ReleaseAsset? {
@@ -603,11 +641,65 @@ class AppUpdateManager(
         return Triple(major, minor, patch)
     }
 
-    private fun downloadReleaseApk(
+    private fun obtainReleaseApk(
         releaseInfo: ReleaseInfo,
         onProgress: (DownloadProgress) -> Unit
     ): DownloadResult {
-        val officialUrl = releaseInfo.asset.downloadUrl
+        val patchAsset = releaseInfo.patchAsset
+        if (patchAsset != null && patcher.isPatchingSupported()) {
+            log("incremental update available: patch=${patchAsset.name} size=${patchAsset.sizeBytes}B")
+            val patchDownload = downloadAssetFile(
+                asset = patchAsset,
+                targetFileName = sanitizeFileName(patchAsset.name),
+                validateApk = false,
+                onProgress = onProgress
+            )
+            if (patchDownload.success && patchDownload.file != null) {
+                val updatesDir = File(appContext.cacheDir, UPDATE_CACHE_DIR_NAME)
+                val finalName = sanitizeApkFileName(releaseInfo.asset.name)
+                val synthesizedApk = File(updatesDir, finalName)
+                val patchResult = patcher.synthesizeNewApk(patchDownload.file, synthesizedApk)
+                patchDownload.file.delete()
+                if (patchResult.success && synthesizedApk.exists() && synthesizedApk.length() > 0L) {
+                    val validation = apkVerifier.validateDownloadFile(
+                        apkFile = synthesizedApk,
+                        expectedBytes = releaseInfo.asset.sizeBytes,
+                        expectedSha256Digest = releaseInfo.asset.sha256Digest
+                    )
+                    if (validation.success) {
+                        log("incremental update synthesized and validated successfully")
+                        return DownloadResult(
+                            success = true,
+                            file = synthesizedApk,
+                            attemptedUrls = patchDownload.attemptedUrls,
+                            usedUrl = patchDownload.usedUrl
+                        )
+                    } else {
+                        log("incremental update synthesized validation failed: ${validation.errorCode}, fallback to full apk")
+                        synthesizedApk.delete()
+                    }
+                } else {
+                    log("incremental update patch synthesis failed: ${patchResult.errorCode}, fallback to full apk")
+                }
+            } else {
+                log("incremental update patch download failed: ${patchDownload.errorCode}, fallback to full apk")
+            }
+        }
+        return downloadAssetFile(
+            asset = releaseInfo.asset,
+            targetFileName = sanitizeApkFileName(releaseInfo.asset.name),
+            validateApk = true,
+            onProgress = onProgress
+        )
+    }
+
+    private fun downloadAssetFile(
+        asset: ReleaseAsset,
+        targetFileName: String,
+        validateApk: Boolean,
+        onProgress: (DownloadProgress) -> Unit
+    ): DownloadResult {
+        val officialUrl = asset.downloadUrl
         val candidates = buildMirrorCandidates(officialUrl)
         val updatesDir = File(appContext.cacheDir, UPDATE_CACHE_DIR_NAME)
         if (!updatesDir.exists() && !updatesDir.mkdirs()) {
@@ -619,7 +711,7 @@ class AppUpdateManager(
             )
         }
 
-        val finalName = sanitizeApkFileName(releaseInfo.asset.name)
+        val finalName = targetFileName
         val finalFile = File(updatesDir, finalName)
         val tmpFile = File(updatesDir, "$finalName.download")
         var lastFailureCode = "UPDATE_DOWNLOAD_ALL_FAILED"
@@ -686,11 +778,24 @@ class AppUpdateManager(
                     tmpFile.delete()
                 }
 
-                val validation = apkVerifier.validateDownloadFile(
-                    apkFile = finalFile,
-                    expectedBytes = releaseInfo.asset.sizeBytes,
-                    expectedSha256Digest = releaseInfo.asset.sha256Digest
-                )
+                val validation = if (validateApk) {
+                    apkVerifier.validateDownloadFile(
+                        apkFile = finalFile,
+                        expectedBytes = asset.sizeBytes,
+                        expectedSha256Digest = asset.sha256Digest
+                    )
+                } else {
+                    if (asset.sha256Digest.isNotBlank()) {
+                        val actualDigest = runCatching { AppUpdatePackageInspector(appContext).sha256File(finalFile) }.getOrDefault("")
+                        if (!actualDigest.equals(asset.sha256Digest, ignoreCase = true)) {
+                            AppUpdateApkVerifier.Result(success = false, errorCode = "UPDATE_PATCH_DIGEST_MISMATCH", message = "patch digest mismatch")
+                        } else {
+                            AppUpdateApkVerifier.Result(success = true)
+                        }
+                    } else {
+                        AppUpdateApkVerifier.Result(success = true)
+                    }
+                }
                 if (!validation.success) {
                     finalFile.delete()
                     throw IllegalStateException("${validation.errorCode}:${validation.message}")
@@ -719,6 +824,11 @@ class AppUpdateManager(
             errorCode = lastFailureCode,
             message = lastFailureMessage
         )
+    }
+
+    private fun sanitizeFileName(raw: String): String {
+        val source = raw.ifBlank { "update_asset" }
+        return source.replace(Regex("[^a-zA-Z0-9._-]"), "_")
     }
 
     private fun computePercent(downloadedBytes: Long, totalBytes: Long): Int {

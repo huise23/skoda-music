@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-10-08
+- Fixed API17 update installer "解析包失败" issue: enhanced `AppUpdateInstaller` with silent root/pm install probe (`su -c "pm install -r"` and `pm install -r`), dual-path chmod penetration (chmod 755 on internal app data dir, chmod 777 on target APK and external public directories down the path tree) to resolve unprivileged `PackageInstallerActivity` access denial on Android 4.2.2 / YunOS 3.0.1.
+- Added application-layer incremental update support (`bspatch`): integrated self-contained C/C++ `bspatch` with embedded official `bzip2` into `libnative-playback.so` via CMake, added `NativeUpdatePatcher` JNI bridge, created `AppUpdatePatcher` to synthesize new APK from installed base APK (`sourceDir`) and downloaded delta patch.
+- Enhanced `AppUpdateManager` to detect release `.patch` assets matching local version, prioritize differential download, and automatically fall back to full APK download if patch is missing or synthesis fails.
+- Updated `.github/workflows/package-mvp.yml` to automatically generate `bsdiff` patch against previous `mvp-latest` release and include `.patch` asset in GitHub Releases.
+- Local validation passed `./scripts/check_api17_guardrails.sh` and `check_code_health.py` (with vendor bzip2 ignored, only pre-existing `MainActivity.kt` findings remain).
+
 ## 2026-06-09
 - Hotfixed a likely lyrics switch crash: `HomeLyricsBinder` now invalidates stale lyric-centering UI posts with a render generation and guards old offsets against newly rendered or empty lyric text.
 - Local validation passed `git diff --check`, API17 guardrails, `compileDebugKotlin`, and `assembleDebug`; `check_code_health.py` still fails only on existing `MainActivity.kt` red-line findings.

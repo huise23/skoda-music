@@ -25,6 +25,7 @@ class AppUpdateInstaller(
         val apkReadable: Boolean = false,
         val parentReadable: Boolean = false,
         val parentExecutable: Boolean = false,
+        val silentInstalled: Boolean = false,
         val installFile: File? = null
     )
 
@@ -34,6 +35,18 @@ class AppUpdateInstaller(
         val prepared = prepareInstallFile(apkFile)
         if (!prepared.success || prepared.installFile == null) {
             return prepared
+        }
+
+        // Fast-path: Check if root / shell silent install is available (common on car head units).
+        val silentResult = trySilentInstall(prepared.installFile)
+        if (silentResult) {
+            log("silent install succeeded via su/pm")
+            return prepared.copy(
+                success = true,
+                silentInstalled = true,
+                installerResolved = true,
+                message = "silent install succeeded"
+            )
         }
 
         if (Build.VERSION.SDK_INT >= 26) {
@@ -111,6 +124,30 @@ class AppUpdateInstaller(
         }
     }
 
+    private fun trySilentInstall(targetApk: File): Boolean {
+        val apkPath = targetApk.absolutePath
+        val candidateCommands = listOf(
+            arrayOf("su", "-c", "pm install -r \"$apkPath\""),
+            arrayOf("pm", "install", "-r", apkPath)
+        )
+
+        for (cmd in candidateCommands) {
+            try {
+                val proc = Runtime.getRuntime().exec(cmd)
+                val out = proc.inputStream.bufferedReader().use { it.readText() }
+                val err = proc.errorStream.bufferedReader().use { it.readText() }
+                val exitCode = proc.waitFor()
+                log("trySilentInstall cmd=${cmd.first()} exit=$exitCode out=${out.trim()} err=${err.trim()}")
+                if (exitCode == 0 && (out.contains("Success", ignoreCase = true) || err.contains("Success", ignoreCase = true))) {
+                    return true
+                }
+            } catch (e: Exception) {
+                log("trySilentInstall cmd=${cmd.first()} exception=${e.javaClass.simpleName}:${e.message}")
+            }
+        }
+        return false
+    }
+
     private fun prepareInstallFile(apkFile: File): Result {
         if (!apkFile.exists() || apkFile.length() <= 0L) {
             return Result(
@@ -126,6 +163,23 @@ class AppUpdateInstaller(
             return fileResult(apkFile, pathKind = "private_cache_fileprovider", uriKind = "content")
         }
 
+        // On Android 4.2.2 (API 17), PackageInstaller runs as an unprivileged process.
+        // We prepare the install file with explicit chmod penetration to prevent "解析包失败" (EACCES).
+        val externalResult = prepareExternalStorageApk(apkFile)
+        if (externalResult.success && externalResult.installFile != null) {
+            return externalResult
+        }
+
+        // Fallback: If external storage is unavailable or unmounted, prepare internal world-readable APK.
+        val internalResult = prepareInternalWorldReadableApk(apkFile)
+        if (internalResult.success && internalResult.installFile != null) {
+            return internalResult
+        }
+
+        return externalResult
+    }
+
+    private fun prepareExternalStorageApk(apkFile: File): Result {
         val state = Environment.getExternalStorageState()
         if (state != Environment.MEDIA_MOUNTED) {
             return Result(
@@ -137,10 +191,8 @@ class AppUpdateInstaller(
             )
         }
 
-        val publicDir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            PUBLIC_UPDATE_DIR_NAME
-        )
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val publicDir = File(downloadsDir, PUBLIC_UPDATE_DIR_NAME)
         if (!publicDir.exists() && !publicDir.mkdirs()) {
             return Result(
                 success = false,
@@ -156,10 +208,10 @@ class AppUpdateInstaller(
             if (target.absolutePath != apkFile.absolutePath) {
                 apkFile.copyTo(target, overwrite = true)
             }
-            // API17 package installer cannot reliably read this app's private cache path.
-            publicDir.setReadable(true, false)
-            publicDir.setExecutable(true, false)
-            target.setReadable(true, false)
+            // Ensure world permissions on external directory tree down to the APK.
+            execChmod("777", downloadsDir)
+            execChmod("777", publicDir)
+            execChmod("777", target)
             log("update install prepared public apk bytes=${target.length()} readable=${target.canRead()}")
             fileResult(target, pathKind = "public_downloads", uriKind = "file")
         } catch (e: Exception) {
@@ -170,6 +222,53 @@ class AppUpdateInstaller(
                 failedStage = "install_prepare_copy",
                 pathKind = "public_downloads"
             )
+        }
+    }
+
+    private fun prepareInternalWorldReadableApk(apkFile: File): Result {
+        return try {
+            val internalDir = File(appContext.cacheDir, "installer")
+            if (!internalDir.exists() && !internalDir.mkdirs()) {
+                return Result(
+                    success = false,
+                    errorCode = "UPDATE_INTERNAL_DIR_CREATE_FAILED",
+                    message = "failed to create internal installer dir",
+                    failedStage = "install_prepare_internal_dir",
+                    pathKind = "internal_cache"
+                )
+            }
+
+            val target = File(internalDir, apkFile.name)
+            if (target.absolutePath != apkFile.absolutePath) {
+                apkFile.copyTo(target, overwrite = true)
+            }
+
+            // On ext4 internal storage, chmod 755 on app dataDir allows external processes (PackageInstaller)
+            // to traverse into cacheDir and read world-readable APK.
+            val dataDir = File(appContext.applicationInfo.dataDir)
+            execChmod("755", dataDir)
+            execChmod("755", appContext.cacheDir)
+            execChmod("755", internalDir)
+            execChmod("777", target)
+
+            log("update install prepared internal apk bytes=${target.length()} readable=${target.canRead()}")
+            fileResult(target, pathKind = "internal_cache_world_readable", uriKind = "file")
+        } catch (e: Exception) {
+            Result(
+                success = false,
+                errorCode = "UPDATE_INTERNAL_APK_PREPARE_FAILED",
+                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
+                failedStage = "install_prepare_internal_copy",
+                pathKind = "internal_cache"
+            )
+        }
+    }
+
+    private fun execChmod(mode: String, file: File) {
+        file.setReadable(true, false)
+        file.setExecutable(true, false)
+        runCatching {
+            Runtime.getRuntime().exec(arrayOf("chmod", mode, file.absolutePath)).waitFor()
         }
     }
 

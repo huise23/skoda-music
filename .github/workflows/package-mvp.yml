@@ -277,6 +277,29 @@ jobs:
             jarsigner -verify -verbose -certs dist/release/skoda-music-mvp-signed.aab
           fi
 
+      - name: Generate incremental bsdiff patch
+        if: env.HAS_SIGNING_SECRETS == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y && sudo apt-get install -y bsdiff
+          APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
+          if [[ -f "${APK_ASSET}" ]]; then
+            mkdir -p dist/prev_release
+            if gh release download mvp-latest --repo "${GITHUB_REPOSITORY}" --pattern "skoda-music-mvp-signed.apk" --dir dist/prev_release 2>/dev/null; then
+              PREV_APK="dist/prev_release/skoda-music-mvp-signed.apk"
+              if [[ -f "${PREV_APK}" && -s "${PREV_APK}" ]]; then
+                PATCH_ASSET="dist/release/skoda-music-mvp-signed.patch"
+                bsdiff "${PREV_APK}" "${APK_ASSET}" "${PATCH_ASSET}"
+                echo "Generated incremental patch size: $(stat -c%s "${PATCH_ASSET}") bytes"
+              fi
+            else
+              echo "No previous release found for incremental diff."
+            fi
+          fi
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         shell: bash
@@ -295,9 +318,13 @@ jobs:
             exit 1
           fi
           AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
+          PATCH_ASSET="dist/release/skoda-music-mvp-signed.patch"
           RELEASE_ASSETS=("${APK_ASSET}")
           if [[ -f "${AAB_ASSET}" ]]; then
             RELEASE_ASSETS+=("${AAB_ASSET}")
+          fi
+          if [[ -f "${PATCH_ASSET}" ]]; then
+            RELEASE_ASSETS+=("${PATCH_ASSET}")
           fi
 
           NOTES="Automated release from ${GITHUB_SHA}"
@@ -327,9 +354,13 @@ jobs:
 
           APK_ASSET="dist/release/skoda-music-mvp-signed.apk"
           AAB_ASSET="dist/release/skoda-music-mvp-signed.aab"
+          PATCH_ASSET="dist/release/skoda-music-mvp-signed.patch"
           RELEASE_ASSETS=("${APK_ASSET}")
           if [[ -f "${AAB_ASSET}" ]]; then
             RELEASE_ASSETS+=("${AAB_ASSET}")
+          fi
+          if [[ -f "${PATCH_ASSET}" ]]; then
+            RELEASE_ASSETS+=("${PATCH_ASSET}")
           fi
 
           if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then

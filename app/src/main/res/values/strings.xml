@@ -351,4 +351,14 @@
     <string name="library_placeholder">暂无媒体库数据</string>
     <string name="library_empty">媒体库为空，请先从 Emby 拉取数据。</string>
     <string name="app_name_version">v1.0.0 玻璃版</string>
+    <string name="toast_kugou_session_expired_scan_qr">酷狗登录已失效，请扫码重新登录</string>
+    <string name="toast_kugou_playlist_switched">已切换歌单并开始播放: %1$s</string>
+    <string name="source_mode_kugou">酷狗音乐</string>
+    <string name="source_mode_emby">Emby 媒体库</string>
+    <string name="label_source_mode">音源模式切换</string>
+    <string name="label_kugou_settings">酷狗音乐设置</string>
+    <string name="label_emby_settings">Emby 媒体库设置</string>
+    <string name="label_system_settings">系统与音效扩展</string>
+    <string name="btn_mode_kugou_desc">酷狗音乐 (在线/电台/每日推荐)</string>
+    <string name="btn_mode_emby_desc">Emby 媒体库 (自建私有云)</string>
 </resources>

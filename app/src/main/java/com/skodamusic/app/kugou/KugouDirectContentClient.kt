@@ -293,6 +293,10 @@ class KugouDirectContentClient(
             "pagesize" to pageSize.toString(),
             "global_collection_id" to cleanPlaylistId
         )
+        if (cleanPlaylistId.all { it.isDigit() }) {
+            params["special_id"] = cleanPlaylistId
+            params["listid"] = cleanPlaylistId
+        }
         val json = execute(
             path = "/pubsongs/v2/get_other_list_file_nofilt",
             method = "GET",
@@ -519,7 +523,11 @@ class KugouDirectContentClient(
             json.optString("errmsg"),
             json.optString("msg")
         ).joinToString(" ").lowercase()
+        val isSessionExpired = httpCode == 401 ||
+            containsAny(summary, "token", "session", "expire", "login", "auth", "userid", "未登录", "重新登录") ||
+            errCode in listOf(20001, 20002, 20003, 10001, 10002)
         val kind = when {
+            isSessionExpired -> KugouPlayUrlFailureKind.SESSION_REQUIRED
             containsAny(summary, "vip", "会员", "svip", "tvip") -> KugouPlayUrlFailureKind.VIP_REQUIRED
             containsAny(summary, "权限", "priv", "permission", "forbid", "denied") -> KugouPlayUrlFailureKind.PERMISSION_DENIED
             containsAny(summary, "付费", "购买", "paid", "pay") -> KugouPlayUrlFailureKind.PAID_REQUIRED
@@ -530,6 +538,7 @@ class KugouDirectContentClient(
             else -> KugouPlayUrlFailureKind.UNKNOWN
         }
         val code = when {
+            kind == KugouPlayUrlFailureKind.SESSION_REQUIRED -> "KUGOU_PLAY_SESSION_EXPIRED"
             kind == KugouPlayUrlFailureKind.VIP_REQUIRED -> "KUGOU_PLAY_VIP_REQUIRED"
             kind == KugouPlayUrlFailureKind.PERMISSION_DENIED -> "KUGOU_PLAY_PERMISSION_DENIED"
             kind == KugouPlayUrlFailureKind.PAID_REQUIRED -> "KUGOU_PLAY_PAID_REQUIRED"

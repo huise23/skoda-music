@@ -163,6 +163,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var eqPage: View
+    private lateinit var btnNavModeToggle: Button
+    private lateinit var trackSourceBadge: TextView
+    private lateinit var btnSettingsModeKugou: Button
+    private lateinit var btnSettingsModeEmby: Button
+    private lateinit var sourceModeDescription: TextView
+    private var activeSourceMode: MusicSource = MusicSource.KUGOU
     private lateinit var navHomeButton: ImageButton
     private lateinit var navKugouDailyButton: ImageButton
     private lateinit var navKugouRadioButton: ImageButton
@@ -461,6 +467,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         checkUpdateButton = findViewById(R.id.btn_check_update)
         updateStatusValue = findViewById(R.id.update_status_value)
         buildIdBadge = findViewById(R.id.build_id_badge)
+        btnNavModeToggle = findViewById(R.id.btn_nav_mode_toggle)
+        trackSourceBadge = findViewById(R.id.track_source_badge)
+        btnSettingsModeKugou = findViewById(R.id.btn_settings_mode_kugou)
+        btnSettingsModeEmby = findViewById(R.id.btn_settings_mode_emby)
+        sourceModeDescription = findViewById(R.id.source_mode_description)
         trackValue = findViewById(R.id.track_value)
         trackArtistValue = findViewById(R.id.track_artist_value)
         playbackValue = findViewById(R.id.playback_value)
@@ -783,31 +794,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         playbackSeekBar.max = SEEK_BAR_MAX
         playbackSeekBar.progress = 0
-        playbackSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (!fromUser) {
-                    return
-                }
-                val durationMs = currentSourcePlaybackSnapshot()?.durationMs ?: 0L
-                if (durationMs <= 0L) {
-                    return
-                }
-                pendingSeekPositionMs = ((progress.toLong() * durationMs) / SEEK_BAR_MAX.toLong()).coerceIn(0L, durationMs)
-                playbackProgressValue.text = formatDurationClock(pendingSeekPositionMs.coerceAtLeast(0L))
-                playbackDurationValue.text = formatDurationClock(durationMs)
-            }
+        playbackSeekBar.setOnTouchListener { _, _ -> true }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                isUserSeeking = true
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val targetMs = pendingSeekPositionMs
-                pendingSeekPositionMs = -1L
-                isUserSeeking = false
-                applySeekTarget(targetMs)
-            }
-        })
+        btnNavModeToggle.setOnClickListener {
+            val nextMode = if (activeSourceMode == MusicSource.KUGOU) MusicSource.EMBY else MusicSource.KUGOU
+            applySourceMode(nextMode, userInitiated = true)
+        }
+        btnSettingsModeKugou.setOnClickListener {
+            applySourceMode(MusicSource.KUGOU, userInitiated = true)
+        }
+        btnSettingsModeEmby.setOnClickListener {
+            applySourceMode(MusicSource.EMBY, userInitiated = true)
+        }
 
         prevButton.setOnClickListener {
             performPrevAction(source = PlaybackActions.CMD_SOURCE_UI, allowToast = false)
@@ -1247,7 +1245,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             KugouLoginRecoveryCoordinator.PendingAction.DISCOVER_PAGE -> requestKugouDiscoverTags()
             KugouLoginRecoveryCoordinator.PendingAction.DAILY_RECOMMEND_LIST -> showDailyRecommendList("login_recovery_daily_list")
             KugouLoginRecoveryCoordinator.PendingAction.LIKE_ACTION -> renderLikeStatusPage()
-            KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK -> rebuildTrackLists()
+            KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK -> {
+                rebuildTrackLists()
+                sourcePlaybackSession.currentKugouTrack()?.let { track ->
+                    appendRuntimeLog("kugou auto-resume after qr login track=${track.title}")
+                    playKugouTrack(track)
+                } ?: requestDailyRecommendPlayback("login_recovery_play", force = true)
+            }
             KugouLoginRecoveryCoordinator.PendingAction.HOME_RECOMMEND,
             KugouLoginRecoveryCoordinator.PendingAction.NONE -> requestDailyRecommendPlayback(action.eventValue, force = false)
         }
@@ -1430,7 +1434,51 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         setNavButtonSelected(navLikeStatusButton, selectedPage == PAGE_LIKE_STATUS, android.R.drawable.ic_menu_save)
         setNavButtonSelected(navLibraryButton, selectedPage == PAGE_LIBRARY, android.R.drawable.ic_menu_agenda)
         setNavButtonSelected(navSettingsButton, onSettingsArea, android.R.drawable.ic_menu_manage)
-        navQueueButton.visibility = if (explicitEmbyUserActivation) View.VISIBLE else View.GONE
+
+        val isKugouMode = activeSourceMode == MusicSource.KUGOU
+        navKugouDailyButton.visibility = if (isKugouMode) View.VISIBLE else View.GONE
+        navKugouRadioButton.visibility = if (isKugouMode) View.VISIBLE else View.GONE
+        navKugouDiscoverButton.visibility = if (isKugouMode) View.VISIBLE else View.GONE
+        navLikeStatusButton.visibility = if (isKugouMode) View.VISIBLE else View.GONE
+        navLibraryButton.visibility = if (!isKugouMode) View.VISIBLE else View.GONE
+        navQueueButton.visibility = View.VISIBLE
+    }
+
+    private fun applySourceMode(mode: MusicSource, userInitiated: Boolean = false) {
+        activeSourceMode = mode
+        getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_SOURCE_MODE, mode.name)
+            .apply()
+        if (mode == MusicSource.EMBY) {
+            markExplicitEmbyUserActivation("source_mode_switch")
+        }
+        if (this::btnNavModeToggle.isInitialized) {
+            btnNavModeToggle.text = if (mode == MusicSource.KUGOU) "酷狗" else "Emby"
+        }
+        if (this::sourceModeDescription.isInitialized) {
+            sourceModeDescription.text = if (mode == MusicSource.KUGOU) {
+                getString(R.string.btn_mode_kugou_desc)
+            } else {
+                getString(R.string.btn_mode_emby_desc)
+            }
+        }
+        if (this::btnSettingsModeKugou.isInitialized && this::btnSettingsModeEmby.isInitialized) {
+            btnSettingsModeKugou.setBackgroundResource(
+                if (mode == MusicSource.KUGOU) R.drawable.button_primary else R.drawable.button_secondary
+            )
+            btnSettingsModeEmby.setBackgroundResource(
+                if (mode == MusicSource.EMBY) R.drawable.button_primary else R.drawable.button_secondary
+            )
+        }
+        updateNavigationVisualState()
+        if (userInitiated) {
+            if (mode == MusicSource.EMBY && (selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_SCENE || selectedPage == PAGE_KUGOU_DISCOVER)) {
+                switchPage(PAGE_HOME)
+            } else if (mode == MusicSource.KUGOU && selectedPage == PAGE_LIBRARY) {
+                switchPage(PAGE_HOME)
+            }
+        }
     }
 
     private fun setNavButtonSelected(button: ImageButton, selected: Boolean, iconRes: Int) {
@@ -1982,6 +2030,25 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun handleKugouPlayUrlFailure(result: KugouPlayUrlResult) {
+        val isSessionExpired = result.failureKind == KugouPlayUrlFailureKind.SESSION_REQUIRED ||
+            result.httpCode == 401 ||
+            result.errorCode.contains("SESSION")
+        if (isSessionExpired) {
+            appendRuntimeLog("kugou playback failure: session expired -> auto clear session & show qr dialog")
+            clearKugouSessionState(clearStored = true)
+            requestKugouLogin(
+                reason = "play_session_expired",
+                action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
+            )
+            updateState {
+                it.copy(
+                    playPauseEnabled = false,
+                    feedbackText = getString(R.string.feedback_need_kugou)
+                )
+            }
+            showToast(R.string.toast_kugou_session_expired_scan_qr)
+            return
+        }
         val feedbackRes = when (result.failureKind) {
             KugouPlayUrlFailureKind.VIP_REQUIRED,
             KugouPlayUrlFailureKind.PERMISSION_DENIED,
@@ -5082,6 +5149,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         applySoundEffectConfig("prefs_load")
         persistSoundEffectConfig()
         refreshEqualizerSettingsUi()
+        val savedModeName = prefs.getString(KEY_SOURCE_MODE, MusicSource.KUGOU.name)
+        val mode = runCatching { MusicSource.valueOf(savedModeName.orEmpty()) }.getOrDefault(MusicSource.KUGOU)
+        applySourceMode(mode, userInitiated = false)
     }
 
     private fun persistCredentials(credentials: EmbyCredentials) {
@@ -5204,6 +5274,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
     private fun render(state: UiState) {
         val sourceSnapshot = currentSourcePlaybackSnapshot()
+        if (this::trackSourceBadge.isInitialized) {
+            val isKugou = sourcePlaybackSession.isKugouActive()
+            trackSourceBadge.text = getString(if (isKugou) R.string.source_mode_kugou else R.string.source_mode_emby)
+        }
         embyStatusValue.text = state.embyStatusText
         lrcApiStatusValue.text = state.lrcApiStatusText
         val currentTrack = sourceSnapshot?.title ?: state.currentTrack
@@ -5522,6 +5596,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val KEY_EQ_CUSTOM_LEVELS = "eq_custom_levels"
         const val KEY_SOUND_EFFECT_ENABLED = "sound_effect_enabled"
         const val KEY_SOUND_EFFECT_MODE = "sound_effect_mode"
+        const val KEY_SOURCE_MODE = "source_mode"
         const val USE_SYSTEM_EQ_INHERIT_MODE = false
         // Start playback once playable duration is >=3s and rebuffer with >=1s.
         const val LOAD_CONTROL_MIN_BUFFER_MS = 8_000

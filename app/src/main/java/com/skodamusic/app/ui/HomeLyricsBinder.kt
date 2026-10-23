@@ -33,6 +33,7 @@ class HomeLyricsBinder(
     private var showingQueueTab = true
     private var playing = false
     private var renderGeneration = 0
+    private var lastActiveIndex = -1
 
     private val idleSwitchRunnable = Runnable {
         if (showingQueueTab && playing && lines.isNotEmpty()) {
@@ -68,6 +69,7 @@ class HomeLyricsBinder(
             currentKey = ""
             requestKey = null
             lines = emptyList()
+            lastActiveIndex = -1
             renderEmpty()
             handler.removeCallbacks(idleSwitchRunnable)
             return
@@ -75,6 +77,7 @@ class HomeLyricsBinder(
         val key = buildKey(snapshot)
         if (key != currentKey) {
             currentKey = key
+            lastActiveIndex = -1
             lines = cache[key] ?: listOf(LyricLine(0L, textView.context.getString(R.string.home_lyrics_placeholder)))
             render(positionMs)
             if (snapshot.source == MusicSource.KUGOU) {
@@ -125,6 +128,7 @@ class HomeLyricsBinder(
                 cache[key] = fetched
                 trimCache()
                 lines = fetched
+                lastActiveIndex = -1
                 render(0L)
                 appendRuntimeLog("home lyrics loaded source=kugou lines=${fetched.size}")
             }
@@ -139,8 +143,12 @@ class HomeLyricsBinder(
             renderEmpty()
             return
         }
-        val generation = ++renderGeneration
         val activeIndex = findActiveIndex(positionMs)
+        if (activeIndex == lastActiveIndex && textView.text.isNotEmpty()) {
+            return
+        }
+        lastActiveIndex = activeIndex
+        val generation = ++renderGeneration
         val builder = SpannableStringBuilder()
         var activeStart = -1
         var activeEnd = -1
@@ -159,7 +167,7 @@ class HomeLyricsBinder(
                 end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            builder.setSpan(AbsoluteSizeSpan(if (active) 20 else 19, true), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            builder.setSpan(AbsoluteSizeSpan(if (active) 22 else 17, true), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (active) {
                 builder.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
@@ -173,6 +181,7 @@ class HomeLyricsBinder(
 
     private fun renderEmpty() {
         renderGeneration++
+        lastActiveIndex = -1
         if (this::textView.isInitialized) {
             textView.text = textView.context.getString(R.string.home_lyrics_placeholder)
         }

@@ -549,6 +549,11 @@ class KugouContentBinder(
                 captureContentEvent("kugou_content_load_success", "playlist_songs", itemCount = mapped.size)
                 renderDiscoverPage()
                 setFeedbackText(activity.getString(R.string.feedback_kugou_playlist_songs_success, mapped.size))
+                mapped.firstOrNull()?.let { firstTrack ->
+                    appendRuntimeLog("kugou switch playlist to=${playlist.title} tracks=${mapped.size} start=${firstTrack.title}")
+                    captureContentEvent("kugou_queue_start", "discover_playlist", itemCount = mapped.size)
+                    onPlayQueuedTrack(firstTrack, mapped, "discover_playlist")
+                }
             }
         }
     }

@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-11-02 (v0.2.2)
+- Fixed update 403 rate limits and single-point proxy failure: eliminated forced single-proxy bottleneck (`config-ui.52mn.ru`) that caused update checks and downloads to fail with 403.
+- Expanded download mirrors with direct CDN candidates: `buildMirrorCandidates` now directly connects to common high-speed GitHub release proxies (`ghfast.top`, `gh-proxy.com`, `mirror.ghproxy.com`, `ghproxy.net`, `github.moeyy.xyz`, `gh-proxy.org`), official GitHub URL, and CF worker proxy as fallback.
+- Added multi-endpoint release metadata checks and Atom feed fallback: `fetchLatestRelease` queries `gh-proxy.com`, `gh-proxy.org`, direct GitHub API, and CF proxy in sequence, and automatically falls back to parsing GitHub `releases.atom` when all JSON APIs return 403 or are rate-limited.
+
 ## 2026-11-02 (v0.2.1)
 - Optimized lyrics font size: enlarged unhighlighted lyrics to 19sp (while highlighted lyrics remain prominent at 23sp bold) with 5dp extra line spacing for improved car display readability.
 - Polished Kugou-mode pages: refined headers with subtitle badges for Radio and Discover pages, added ellipsis truncation for card titles in `KugouContentRenderer`, and reworked Favorites (`page_like_status`) to show clean song count badges, artist details, and direct playback on click.

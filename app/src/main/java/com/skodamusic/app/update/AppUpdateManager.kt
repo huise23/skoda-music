@@ -14,6 +14,7 @@ import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 
 class AppUpdateManager(
     context: Context,
@@ -374,8 +375,8 @@ class AppUpdateManager(
     private fun fetchLatestRelease(): ReleaseFetchResult {
         val cacheBuster = System.currentTimeMillis() / 60000L
         val apiUrl = "$GITHUB_API_BASE/repos/$owner/$repo/releases?per_page=8&_ts=$cacheBuster"
-        // Force CF proxy only for metadata check (no direct GitHub fallback).
-        val requestUrls = listOf(buildCfProxyUrl(apiUrl))
+        val requestUrls = buildReleaseApiCandidates(apiUrl)
+        val attemptedUrls = ArrayList<String>()
 
         var lastFailure = ReleaseFetchResult(
             errorCode = "GITHUB_RELEASE_REQUEST_NOT_EXECUTED",
@@ -384,6 +385,7 @@ class AppUpdateManager(
             attemptedUrls = requestUrls
         )
         for (url in requestUrls) {
+            attemptedUrls.add(url)
             val request = Request.Builder()
                 .url(url)
                 .header("Accept", "application/vnd.github+json")
@@ -398,7 +400,7 @@ class AppUpdateManager(
                             message = "github releases http ${response.code()} via ${shortenUrlForLog(url)}",
                             failedStage = "fetch_release_http",
                             failedUrl = url,
-                            attemptedUrls = requestUrls
+                            attemptedUrls = attemptedUrls.toList()
                         )
                     } else {
                         val body = response.body()?.string().orEmpty()
@@ -408,10 +410,17 @@ class AppUpdateManager(
                                 message = "github releases empty body via ${shortenUrlForLog(url)}",
                                 failedStage = "fetch_release_empty_body",
                                 failedUrl = url,
-                                attemptedUrls = requestUrls
+                                attemptedUrls = attemptedUrls.toList()
                             )
                         } else {
-                            return parseReleasePayload(body)
+                            val parsed = parseReleasePayload(body)
+                            if (parsed.releaseInfo != null) {
+                                return parsed
+                            }
+                            lastFailure = parsed.copy(
+                                failedUrl = url,
+                                attemptedUrls = attemptedUrls.toList()
+                            )
                         }
                     }
                 }
@@ -421,11 +430,100 @@ class AppUpdateManager(
                     message = "${e.javaClass.simpleName}: ${e.message.orEmpty()} via ${shortenUrlForLog(url)}",
                     failedStage = "fetch_release_exception",
                     failedUrl = url,
-                    attemptedUrls = requestUrls
+                    attemptedUrls = attemptedUrls.toList()
                 )
             }
         }
-        return lastFailure
+
+        // Fallback to atom feed if all JSON endpoints fail or rate-limit
+        val atomCandidates = buildAtomFeedCandidates()
+        for (atomUrl in atomCandidates) {
+            attemptedUrls.add(atomUrl)
+            val request = Request.Builder()
+                .url(atomUrl)
+                .header("User-Agent", UPDATE_USER_AGENT)
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.code() in 200..299) {
+                        val body = response.body()?.string().orEmpty()
+                        if (body.isNotBlank()) {
+                            val atomParsed = parseAtomFeedPayload(body)
+                            if (atomParsed.releaseInfo != null) {
+                                log("release check resolved via atom feed: ${shortenUrlForLog(atomUrl)} tag=${atomParsed.releaseInfo.tagName}")
+                                return atomParsed
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                log("atom feed fetch failed via ${shortenUrlForLog(atomUrl)}: ${e.message.orEmpty()}")
+            }
+        }
+
+        return lastFailure.copy(attemptedUrls = attemptedUrls.toList())
+    }
+
+    private fun parseAtomFeedPayload(payload: String): ReleaseFetchResult {
+        return try {
+            val entryMatcher = Pattern.compile("<entry>(.*?)</entry>", Pattern.DOTALL).matcher(payload)
+            var hasAnyEntry = false
+            while (entryMatcher.find()) {
+                hasAnyEntry = true
+                val entryContent = entryMatcher.group(1).orEmpty()
+                val titleMatcher = Pattern.compile("<title>([^<]+)</title>").matcher(entryContent)
+                val tag = if (titleMatcher.find()) titleMatcher.group(1)?.trim().orEmpty() else ""
+                if (tag.isBlank()) {
+                    continue
+                }
+                val linkMatcher = Pattern.compile("<link[^>]+href=[\"']([^\"']+)[\"']").matcher(entryContent)
+                val htmlUrl = if (linkMatcher.find()) linkMatcher.group(1)?.trim().orEmpty() else "https://github.com/$owner/$repo/releases/tag/$tag"
+                val updatedMatcher = Pattern.compile("<updated>([^<]+)</updated>").matcher(entryContent)
+                val updated = if (updatedMatcher.find()) updatedMatcher.group(1)?.trim().orEmpty() else ""
+
+                val apkName = "skoda-music-mvp-signed.apk"
+                val apkDownloadUrl = "https://github.com/$owner/$repo/releases/download/$tag/$apkName"
+                val patchName = "skoda-music-mvp-signed.patch"
+                val patchDownloadUrl = "https://github.com/$owner/$repo/releases/download/$tag/$patchName"
+
+                val resolvedVersionCode = resolveRemoteVersionCode(tag, apkName)
+                val resolvedVersionName = resolveRemoteVersionName(tag, tag, apkName)
+
+                val releaseInfo = ReleaseInfo(
+                    tagName = tag,
+                    releaseName = tag,
+                    htmlUrl = htmlUrl,
+                    publishedAt = updated,
+                    versionCode = resolvedVersionCode,
+                    versionName = resolvedVersionName,
+                    asset = ReleaseAsset(
+                        name = apkName,
+                        downloadUrl = apkDownloadUrl,
+                        sizeBytes = -1L,
+                        sha256Digest = ""
+                    ),
+                    patchAsset = ReleaseAsset(
+                        name = patchName,
+                        downloadUrl = patchDownloadUrl,
+                        sizeBytes = -1L,
+                        sha256Digest = ""
+                    )
+                )
+                return ReleaseFetchResult(releaseInfo = releaseInfo)
+            }
+
+            ReleaseFetchResult(
+                errorCode = if (hasAnyEntry) "ATOM_NO_VALID_RELEASE" else "NO_RELEASE_IN_ATOM",
+                message = if (hasAnyEntry) "no valid release tag in atom feed" else "no entry found in atom feed",
+                failedStage = "parse_atom_feed"
+            )
+        } catch (e: Exception) {
+            ReleaseFetchResult(
+                errorCode = "PARSE_ATOM_PAYLOAD",
+                message = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
+                failedStage = "parse_atom_payload"
+            )
+        }
     }
 
     private fun parseReleasePayload(payload: String): ReleaseFetchResult {
@@ -839,19 +937,65 @@ class AppUpdateManager(
         return pct.coerceIn(0, 100)
     }
 
-    private fun buildMirrorCandidates(officialUrl: String): List<String> {
-        val normalized = officialUrl.trim()
+    private fun cleanGithubUrl(raw: String): String {
+        val trimmed = raw.trim()
+        val ghIndex = trimmed.indexOf("https://github.com/")
+        if (ghIndex >= 0) {
+            return trimmed.substring(ghIndex)
+        }
+        val httpGhIndex = trimmed.indexOf("http://github.com/")
+        if (httpGhIndex >= 0) {
+            return "https://" + trimmed.substring(httpGhIndex + 7)
+        }
+        return trimmed
+    }
+
+    private fun cleanGithubApiUrl(raw: String): String {
+        val trimmed = raw.trim()
+        val ghIndex = trimmed.indexOf("https://api.github.com/")
+        if (ghIndex >= 0) {
+            return trimmed.substring(ghIndex)
+        }
+        return trimmed
+    }
+
+    private fun buildReleaseApiCandidates(apiUrl: String): List<String> {
+        val normalized = cleanGithubApiUrl(apiUrl)
         if (normalized.isBlank()) {
             return emptyList()
         }
-        val directCandidates = listOf(
+        return listOf(
+            "https://gh-proxy.com/$normalized",
+            "https://gh-proxy.org/$normalized",
+            normalized,
+            buildCfProxyUrl(normalized)
+        ).filter { it.isNotBlank() }.distinct()
+    }
+
+    private fun buildAtomFeedCandidates(): List<String> {
+        val atomUrl = "https://github.com/$owner/$repo/releases.atom"
+        return listOf(
+            "https://gh-proxy.com/$atomUrl",
+            atomUrl,
+            buildCfProxyUrl(atomUrl)
+        ).filter { it.isNotBlank() }.distinct()
+    }
+
+    private fun buildMirrorCandidates(officialUrl: String): List<String> {
+        val normalized = cleanGithubUrl(officialUrl)
+        if (normalized.isBlank()) {
+            return emptyList()
+        }
+        return listOf(
             "https://ghfast.top/$normalized",
+            "https://gh-proxy.com/$normalized",
             "https://mirror.ghproxy.com/$normalized",
             "https://ghproxy.net/$normalized",
-            normalized
-        ).distinct()
-        // Keep proxy-only policy for environments where direct GitHub TLS is blocked.
-        return directCandidates.map { buildCfProxyUrl(it) }.distinct()
+            "https://github.moeyy.xyz/$normalized",
+            "https://gh-proxy.org/$normalized",
+            normalized,
+            buildCfProxyUrl(normalized)
+        ).filter { it.isNotBlank() }.distinct()
     }
 
     private fun buildCfProxyUrl(rawUrl: String): String {

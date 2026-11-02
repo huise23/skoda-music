@@ -92,6 +92,7 @@ struct DspState {
   bool bypass = false;
   int over_budget_count = 0;
   int safe_over_budget_count = 0;
+  int under_budget_streak = 0;
   int error_count = 0;
   float preamp = 1.0f;
   int filter_count = 0;
@@ -338,12 +339,12 @@ int64_t BudgetUs(const DspState& state, int byte_count) {
                                ? (static_cast<int64_t>(frames) * 1000000LL / state.sample_rate)
                                : 0;
   if (state.tier == kTierQuality) {
-    return std::max<int64_t>(1500, audio_us / 12);
+    return std::max<int64_t>(5000, audio_us / 3);
   }
   if (state.tier == kTierBalanced) {
-    return std::max<int64_t>(1000, audio_us / 16);
+    return std::max<int64_t>(8000, audio_us / 2);
   }
-  return std::max<int64_t>(800, audio_us / 24);
+  return std::max<int64_t>(12000, (audio_us * 3) / 4);
 }
 
 int ProcessBuffer(DspState* state, const uint8_t* in, uint8_t* out, int byte_count) {
@@ -357,27 +358,42 @@ int ProcessBuffer(DspState* state, const uint8_t* in, uint8_t* out, int byte_cou
     return kStatusBypass;
   }
 
-  int offset = 0;
-  while (offset + frame_bytes <= byte_count) {
-    for (int channel = 0; channel < state->channel_count; ++channel) {
-      const int lo = in[offset] & 0xFF;
-      const int hi = static_cast<int8_t>(in[offset + 1]);
-      const int16_t raw = static_cast<int16_t>((hi << 8) | lo);
-      float sample = static_cast<float>(raw) / 32768.0f;
-      sample *= state->preamp;
-      for (int i = 0; i < state->filter_count; ++i) {
-        sample = state->channels[channel].filters[i].Process(sample);
+  const int frames = byte_count / frame_bytes;
+  const auto* pcm_in = reinterpret_cast<const int16_t*>(in);
+  auto* pcm_out = reinterpret_cast<int16_t*>(out);
+  const float in_scale = state->preamp / 32768.0f;
+  const int filter_count = state->filter_count;
+
+  if (state->channel_count == 2) {
+    auto& ch0 = state->channels[0];
+    auto& ch1 = state->channels[1];
+    for (int f = 0; f < frames; ++f) {
+      float s0 = static_cast<float>(pcm_in[f * 2]) * in_scale;
+      float s1 = static_cast<float>(pcm_in[f * 2 + 1]) * in_scale;
+      for (int i = 0; i < filter_count; ++i) {
+        s0 = ch0.filters[i].Process(s0);
+        s1 = ch1.filters[i].Process(s1);
       }
-      sample = FastLimit(sample);
-      const int rendered = static_cast<int>(sample * 32767.0f);
-      const int16_t pcm = ClampPcm16(rendered);
-      out[offset] = static_cast<uint8_t>(pcm & 0xFF);
-      out[offset + 1] = static_cast<uint8_t>((pcm >> 8) & 0xFF);
-      offset += 2;
+      s0 = FastLimit(s0);
+      s1 = FastLimit(s1);
+      pcm_out[f * 2] = ClampPcm16(static_cast<int>(s0 * 32767.0f));
+      pcm_out[f * 2 + 1] = ClampPcm16(static_cast<int>(s1 * 32767.0f));
+    }
+  } else {
+    auto& ch0 = state->channels[0];
+    for (int f = 0; f < frames; ++f) {
+      float s = static_cast<float>(pcm_in[f]) * in_scale;
+      for (int i = 0; i < filter_count; ++i) {
+        s = ch0.filters[i].Process(s);
+      }
+      s = FastLimit(s);
+      pcm_out[f] = ClampPcm16(static_cast<int>(s * 32767.0f));
     }
   }
-  if (offset < byte_count) {
-    CopyBytes(out + offset, in + offset, byte_count - offset);
+
+  const int processed_bytes = frames * frame_bytes;
+  if (processed_bytes < byte_count) {
+    CopyBytes(out + processed_bytes, in + processed_bytes, byte_count - processed_bytes);
   }
   return kStatusOk;
 }
@@ -433,6 +449,7 @@ Java_com_skodamusic_app_audio_dsp_NativeHiFiDspBridge_nativeConfigure(
   state->bypass = false;
   state->over_budget_count = 0;
   state->safe_over_budget_count = 0;
+  state->under_budget_streak = 0;
   state->error_count = 0;
   ResetFilters(state);
   return RebuildFilters(state) ? kStatusOk : kStatusError;
@@ -461,6 +478,7 @@ Java_com_skodamusic_app_audio_dsp_NativeHiFiDspBridge_nativeSetMode(
     state->bypass = false;
     state->over_budget_count = 0;
     state->safe_over_budget_count = 0;
+    state->under_budget_streak = 0;
     state->error_count = 0;
   }
   if (!state->enabled || state->mode == kModeOriginal) {
@@ -477,8 +495,10 @@ Java_com_skodamusic_app_audio_dsp_NativeHiFiDspBridge_nativeFlush(JNIEnv*, jobje
     return kStatusError;
   }
   ResetFilters(state);
+  state->bypass = false;
   state->over_budget_count = 0;
   state->safe_over_budget_count = 0;
+  state->under_budget_streak = 0;
   state->error_count = 0;
   return kStatusOk;
 }
@@ -515,25 +535,44 @@ Java_com_skodamusic_app_audio_dsp_NativeHiFiDspBridge_nativeProcessPcm16(
   bool degraded_now = false;
   const bool over_budget = status == kStatusOk && cost_us > BudgetUs(*state, byte_count);
   if (over_budget) {
+    state->under_budget_streak = 0;
     state->over_budget_count += 1;
-    if (state->tier == kTierQuality && state->over_budget_count >= 4) {
+    if (state->tier == kTierQuality && state->over_budget_count >= 15) {
       state->tier = kTierBalanced;
       degraded_now = true;
       state->over_budget_count = 0;
       RebuildFilters(state);
-    } else if (state->tier == kTierBalanced && state->over_budget_count >= 6) {
+    } else if (state->tier == kTierBalanced && state->over_budget_count >= 20) {
       state->tier = kTierSafe;
       degraded_now = true;
       state->over_budget_count = 0;
       RebuildFilters(state);
     } else if (state->tier == kTierSafe) {
       state->safe_over_budget_count += 1;
-      if (state->safe_over_budget_count >= 8) {
+      if (state->safe_over_budget_count >= 30) {
         state->bypass = true;
       }
     }
-  } else if (state->over_budget_count > 0) {
-    state->over_budget_count -= 1;
+  } else {
+    if (state->over_budget_count > 0) {
+      state->over_budget_count -= 1;
+    }
+    if (state->safe_over_budget_count > 0) {
+      state->safe_over_budget_count -= 1;
+    }
+    state->under_budget_streak += 1;
+    if (state->tier == kTierSafe && state->under_budget_streak >= 60) {
+      state->tier = kTierBalanced;
+      state->under_budget_streak = 0;
+      state->safe_over_budget_count = 0;
+      state->bypass = false;
+      RebuildFilters(state);
+    } else if (state->tier == kTierBalanced && state->under_budget_streak >= 60) {
+      state->tier = kTierQuality;
+      state->under_budget_streak = 0;
+      state->over_budget_count = 0;
+      RebuildFilters(state);
+    }
   }
 
   int flags = FlagsForStatus(status, state, over_budget, degraded_now);

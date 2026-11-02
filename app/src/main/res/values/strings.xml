@@ -291,9 +291,11 @@
     <string name="kugou_playlist_songs_title">歌单歌曲</string>
     <string name="kugou_login_required_state">登录酷狗后可加载内容</string>
     <string name="kugou_discover_category_state">分类来自酷狗标签接口</string>
-    <string name="like_status_title">点赞和入库状态</string>
-    <string name="like_status_blocked_state">Emby 入库等待能力确认</string>
-    <string name="like_status_empty">暂无点赞记录</string>
+    <string name="like_status_title">我喜欢的音乐</string>
+    <string name="like_status_blocked_state">已收藏歌曲列表</string>
+    <string name="like_status_empty">暂无喜欢的歌曲</string>
+    <string name="like_status_badge_placeholder">暂无收藏</string>
+    <string name="like_status_count_format">共 %1$d 首</string>
     <string name="label_queue">播放队列</string>
     <string name="action_recommend_queue">推荐 20 首</string>
     <string name="action_clear_queue">清空队列</string>

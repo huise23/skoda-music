@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-11-02 (v0.2.1)
+- Optimized lyrics font size: enlarged unhighlighted lyrics to 19sp (while highlighted lyrics remain prominent at 23sp bold) with 5dp extra line spacing for improved car display readability.
+- Polished Kugou-mode pages: refined headers with subtitle badges for Radio and Discover pages, added ellipsis truncation for card titles in `KugouContentRenderer`, and reworked Favorites (`page_like_status`) to show clean song count badges, artist details, and direct playback on click.
+- Resolved Hi-Fi DSP play button red fail-open issue: refactored `native_hifi_dsp.cpp` to direct 16-bit PCM word processing and unrolled stereo loop, aligned timeout budget to realistic real-time levels, and added automatic recovery (`under_budget_streak`) and flush resets.
+- Separated Settings page by active mode: dynamically shows Kugou or Emby settings according to the current mode toggle, and relocated version badge to the bottom-left corner formatted as `v0.2.x`.
+
+
 ## 2026-10-08
 - Fixed API17 update installer "解析包失败" issue: enhanced `AppUpdateInstaller` with silent root/pm install probe (`su -c "pm install -r"` and `pm install -r`), dual-path chmod penetration (chmod 755 on internal app data dir, chmod 777 on target APK and external public directories down the path tree) to resolve unprivileged `PackageInstallerActivity` access denial on Android 4.2.2 / YunOS 3.0.1.
 - Added application-layer incremental update support (`bspatch`): integrated self-contained C/C++ `bspatch` with embedded official `bzip2` into `libnative-playback.so` via CMake, added `NativeUpdatePatcher` JNI bridge, created `AppUpdatePatcher` to synthesize new APK from installed base APK (`sourceDir`) and downloaded delta patch.

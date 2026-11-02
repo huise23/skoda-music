@@ -167,7 +167,7 @@ class HomeLyricsBinder(
                 end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            builder.setSpan(AbsoluteSizeSpan(if (active) 22 else 17, true), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            builder.setSpan(AbsoluteSizeSpan(if (active) 23 else 19, true), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (active) {
                 builder.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
@@ -207,7 +207,7 @@ class HomeLyricsBinder(
             val endLine = layout.getLineForOffset((safeEnd - 1).coerceAtLeast(0))
             val lyricTop = layout.getLineTop(startLine)
             val lyricBottom = layout.getLineBottom(endLine)
-            val lineHeight = (lyricBottom - lyricTop).coerceAtLeast(dpToPx(20))
+            val lineHeight = (lyricBottom - lyricTop).coerceAtLeast(dpToPx(24))
             val verticalPadding = (viewportHeight / 2 - lineHeight / 2).coerceAtLeast(0)
             if (textView.paddingTop != verticalPadding || textView.paddingBottom != verticalPadding) {
                 textView.setPadding(textView.paddingLeft, verticalPadding, textView.paddingRight, verticalPadding)

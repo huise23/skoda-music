@@ -1,6 +1,8 @@
 package com.skodamusic.app.ui
 
 import android.content.Context
+import android.graphics.Typeface
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
@@ -246,7 +248,7 @@ class KugouContentRenderer(
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dpToPx(92)
+            minimumHeight = dpToPx(88)
             setBackgroundResource(if (active) R.drawable.row_recommend_active else R.drawable.row_recommend_idle)
             setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
             setOnClickListener { onClick() }
@@ -254,22 +256,26 @@ class KugouContentRenderer(
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(context.resources.getColor(R.color.surface_field))
             }
-            addView(image, LinearLayout.LayoutParams(dpToPx(72), dpToPx(72)))
+            addView(image, LinearLayout.LayoutParams(dpToPx(68), dpToPx(68)))
             thumbnailLoader?.load(image, coverUrl, android.R.drawable.ic_menu_gallery)
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dpToPx(10), 0, 0, 0)
+                setPadding(dpToPx(12), 0, 0, 0)
                 addView(TextView(context).apply {
                     text = title
                     setTextColor(context.resources.getColor(R.color.text_primary))
                     textSize = 16f
-                    maxLines = 2
+                    typeface = Typeface.DEFAULT_BOLD
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                 })
                 addView(TextView(context).apply {
                     text = subtitle
                     setTextColor(context.resources.getColor(R.color.text_secondary))
                     textSize = 13f
-                    maxLines = 2
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(0, dpToPx(4), 0, 0)
                 })
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }

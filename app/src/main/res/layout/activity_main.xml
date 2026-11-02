@@ -529,7 +529,7 @@
                                     android:layout_height="wrap_content"
                                     android:fontFamily="sans-serif"
                                     android:gravity="center_horizontal"
-                                    android:lineSpacingExtra="3dp"
+                                    android:lineSpacingExtra="5dp"
                                     android:text="@string/home_lyrics_placeholder"
                                     android:textColor="@color/text_secondary"
                                     android:textSize="19sp" />
@@ -603,30 +603,48 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/panel_card"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:padding="16dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-medium"
-                        android:text="@string/kugou_radio_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="24sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:id="@+id/kugou_radio_status_value"
-                        android:text="@string/kugou_login_required_state"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="18sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/kugou_radio_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <Space
+                            android:layout_width="12dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/kugou_radio_status_value"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/panel_eq_state_badge"
+                            android:fontFamily="sans-serif"
+                            android:maxLines="1"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="4dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="4dp"
+                            android:text="@string/kugou_login_required_state"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/kugou_radio_list"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="14dp"
                         android:orientation="vertical" />
                 </LinearLayout>
             </LinearLayout>
@@ -702,26 +720,45 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/panel_card"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:padding="16dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-medium"
-                        android:text="@string/kugou_discover_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="24sp"
-                        android:visibility="gone" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:id="@+id/kugou_discover_status_value"
-                        android:text="@string/kugou_discover_category_state"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="18sp"
-                        android:visibility="gone" />
+                        <TextView
+                            android:id="@+id/kugou_discover_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/kugou_discover_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:visibility="visible" />
+
+                        <Space
+                            android:layout_width="12dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/kugou_discover_status_value"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/panel_eq_state_badge"
+                            android:fontFamily="sans-serif"
+                            android:maxLines="1"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="4dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="4dp"
+                            android:text="@string/kugou_discover_category_state"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp"
+                            android:visibility="visible" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/kugou_discover_tag_list"
@@ -829,29 +866,48 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/panel_card"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:padding="16dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-medium"
-                        android:text="@string/like_status_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="24sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/like_status_blocked_state"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="18sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="@string/like_status_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <Space
+                            android:layout_width="12dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/like_status_badge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/panel_eq_state_badge"
+                            android:fontFamily="sans-serif"
+                            android:maxLines="1"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="4dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="4dp"
+                            android:text="@string/like_status_badge_placeholder"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/like_status_list"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="14dp"
                         android:orientation="vertical" />
                 </LinearLayout>
             </LinearLayout>
@@ -1562,18 +1618,18 @@
         android:id="@+id/build_id_badge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_marginLeft="14dp"
-        android:layout_marginTop="14dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginLeft="8dp"
+        android:layout_marginBottom="8dp"
         android:background="@drawable/field_surface"
         android:fontFamily="monospace"
-        android:paddingLeft="14dp"
-        android:paddingTop="8dp"
-        android:paddingRight="14dp"
-        android:paddingBottom="8dp"
+        android:paddingLeft="8dp"
+        android:paddingTop="3dp"
+        android:paddingRight="8dp"
+        android:paddingBottom="3dp"
         android:text="@string/build_id_placeholder"
         android:textColor="@color/text_secondary"
-        android:textSize="20sp"
+        android:textSize="12sp"
         android:textStyle="bold"
         android:visibility="gone" />
 

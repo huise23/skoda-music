@@ -236,7 +236,7 @@ class HiFiAudioProcessor(
 
     private fun prepareNativeInput(input: ByteBuffer, inputStart: Int, byteCount: Int): ByteBuffer {
         if (input.isDirect) {
-            return input.slice()
+            return if (inputStart == 0 && input.remaining() == byteCount) input else input.slice()
         }
         val scratch = ensureDirectInput(byteCount)
         val source = input.duplicate()
@@ -250,7 +250,7 @@ class HiFiAudioProcessor(
 
     private fun prepareNativeOutput(output: ByteBuffer, byteCount: Int): ByteBuffer {
         if (output.isDirect) {
-            return output.slice()
+            return if (output.position() == 0) output else output.slice()
         }
         val scratch = ensureDirectOutput(byteCount)
         scratch.clear()

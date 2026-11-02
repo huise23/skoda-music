@@ -60,6 +60,7 @@ import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourceRadio
 import com.skodamusic.app.model.SourceTrack
 import com.skodamusic.app.model.TrackCodec
@@ -131,6 +132,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var kugouDiscoverTagList: LinearLayout
     private lateinit var kugouDiscoverPlaylistList: LinearLayout
     private lateinit var likeStatusList: LinearLayout
+    private lateinit var likeStatusBadge: TextView
     private lateinit var downloadCacheSizeValue: TextView
     private lateinit var clearDownloadCacheButton: Button
     private lateinit var checkUpdateButton: Button
@@ -168,6 +170,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var btnSettingsModeKugou: Button
     private lateinit var btnSettingsModeEmby: Button
     private lateinit var sourceModeDescription: TextView
+    private lateinit var panelKugouSettings: View
+    private lateinit var panelEmbySettings: View
     private var activeSourceMode: MusicSource = MusicSource.KUGOU
     private lateinit var navHomeButton: ImageButton
     private lateinit var navKugouDailyButton: ImageButton
@@ -462,6 +466,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouAuthConfigBinder.bindViews()
         bindKugouContentViews()
         likeStatusList = findViewById(R.id.like_status_list)
+        likeStatusBadge = findViewById(R.id.like_status_badge)
         downloadCacheSizeValue = findViewById(R.id.download_cache_size_value)
         clearDownloadCacheButton = findViewById(R.id.btn_clear_download_cache)
         checkUpdateButton = findViewById(R.id.btn_check_update)
@@ -472,6 +477,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         btnSettingsModeKugou = findViewById(R.id.btn_settings_mode_kugou)
         btnSettingsModeEmby = findViewById(R.id.btn_settings_mode_emby)
         sourceModeDescription = findViewById(R.id.source_mode_description)
+        panelKugouSettings = findViewById(R.id.panel_kugou_settings)
+        panelEmbySettings = findViewById(R.id.panel_emby_settings)
         trackValue = findViewById(R.id.track_value)
         trackArtistValue = findViewById(R.id.track_artist_value)
         playbackValue = findViewById(R.id.playback_value)
@@ -1471,6 +1478,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 if (mode == MusicSource.EMBY) R.drawable.button_primary else R.drawable.button_secondary
             )
         }
+        if (this::panelKugouSettings.isInitialized && this::panelEmbySettings.isInitialized) {
+            panelKugouSettings.visibility = if (mode == MusicSource.KUGOU) View.VISIBLE else View.GONE
+            panelEmbySettings.visibility = if (mode == MusicSource.EMBY) View.VISIBLE else View.GONE
+        }
         updateNavigationVisualState()
         if (userInitiated) {
             if (mode == MusicSource.EMBY && (selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_SCENE || selectedPage == PAGE_KUGOU_DISCOVER)) {
@@ -2271,28 +2282,43 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         likeStatusList.removeAllViews()
         val items = likeStatusStore.load()
+        if (this::likeStatusBadge.isInitialized) {
+            likeStatusBadge.text = if (items.isEmpty()) {
+                getString(R.string.like_status_badge_placeholder)
+            } else {
+                getString(R.string.like_status_count_format, items.size)
+            }
+        }
         if (items.isEmpty()) {
             likeStatusList.addView(sourceRowRenderer.buildEmptyRow(getString(R.string.like_status_empty)))
             return
         }
         items.forEachIndexed { index, item ->
-            val subtitle = buildString {
-                append(item.source.name)
-                append(" · ")
-                append(item.artist.ifBlank { getString(R.string.track_artist_server) })
-                append(" · ")
-                append(item.remoteStatus)
-                append(" · ")
-                append(item.ingestStatus)
-                if (item.failureReason.isNotBlank()) {
-                    append(" · ")
-                    append(item.failureReason)
-                }
-            }
-            val row = sourceRowRenderer.buildSourceRow(
-                titleText = item.title,
+            val subtitle = item.artist.ifBlank { getString(R.string.track_artist_server) }
+            val ref = SourcePlaybackRef(
+                source = item.source,
+                primaryId = item.sourceTrackId.ifBlank { item.hash },
+                hash = item.hash
+            )
+            val track = SourceTrack(
+                source = item.source,
+                sourceTrackId = item.sourceTrackId.ifBlank { item.hash },
+                title = item.title,
+                artist = item.artist,
+                playbackRef = ref
+            )
+            val row = sourceRowRenderer.buildKugouTrackRow(
+                track = track,
                 subtitleText = subtitle,
-                active = false
+                active = false,
+                onClick = {
+                    if (item.source == MusicSource.KUGOU) {
+                        playKugouTrack(track)
+                    }
+                },
+                onLike = {
+                    requestLikeTrack(track)
+                }
             )
             sourceRowRenderer.addRow(likeStatusList, row, index)
         }
@@ -5484,6 +5510,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun resolveBuildVersionTag(): String {
         return try {
             val info = packageManager.getPackageInfo(packageName, 0)
+            val versionName = info.versionName?.takeIf { it.isNotBlank() }
             val versionCode = if (Build.VERSION.SDK_INT >= 28) {
                 val field = info.javaClass.getField("longVersionCode")
                 field.getLong(info)
@@ -5491,7 +5518,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 @Suppress("DEPRECATION")
                 info.versionCode.toLong()
             }
-            "#$versionCode"
+            if (versionName != null) "v$versionName" else "#$versionCode"
         } catch (_: Exception) {
             "#?"
         }

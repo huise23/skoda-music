@@ -29,6 +29,14 @@ target_include_directories(native-playback PRIVATE
     ${REPO_ROOT}
 )
 
+target_compile_options(native-playback PRIVATE
+    -O3
+    -ffast-math
+    -funroll-loops
+    $<$<STREQUAL:${ANDROID_ABI},armeabi-v7a>:-mfpu=neon>
+    $<$<STREQUAL:${ANDROID_ABI},armeabi-v7a>:-mfloat-abi=softfp>
+)
+
 find_library(log-lib log)
 
 target_link_libraries(native-playback

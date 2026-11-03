@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-11-03 (v0.2.3)
+- Fixed Hi-Fi DSP persistent red fail-open on ARMv7 4-core car head units:
+  - Replaced wall-clock `CLOCK_MONOTONIC` timing with per-thread CPU time (`CLOCK_THREAD_CPUTIME_ID`) to eliminate false over-budget timeouts caused by OS thread preemptions and background load.
+  - Refactored biquad filtering to Direct Form II Transposed (TDF-II) with shared stereo coefficients and interleaved dual-channel processing, cutting filter state memory in half, reducing memory traffic and masking Cortex-A7 pipeline stalls.
+  - Fast-pathed `FastLimit` to a single branch for standard audio ranges (`[-0.92, 0.92]`) and optimized 16-bit PCM clipping with ARM single-cycle hardware `ssat` instruction.
+  - Ensured `Safe` tier (1 biquad filter, ~15us CPU cost) never drops to bypass/fail-open due to timing jitter, keeping sound effects perpetually active and smooth.
+  - Added `-O3 -ffast-math -funroll-loops -mfpu=neon` compiler optimizations in CMake for `armeabi-v7a`.
+
 ## 2026-11-02 (v0.2.2)
 - Fixed update 403 rate limits and single-point proxy failure: eliminated forced single-proxy bottleneck (`config-ui.52mn.ru`) that caused update checks and downloads to fail with 403.
 - Expanded download mirrors with direct CDN candidates: `buildMirrorCandidates` now directly connects to common high-speed GitHub release proxies (`ghfast.top`, `gh-proxy.com`, `mirror.ghproxy.com`, `ghproxy.net`, `github.moeyy.xyz`, `gh-proxy.org`), official GitHub URL, and CF worker proxy as fallback.

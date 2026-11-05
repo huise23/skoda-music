@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../..)
 
 add_library(native-playback SHARED
-    native_hifi_dsp.cpp
     native_playback_bridge.cpp
     native_update_patcher.cpp
     bspatch/bspatch.c

@@ -1480,6 +1480,28 @@
                         android:text="@string/update_status_not_checked"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
+
+                    <Button
+                        android:id="@+id/btn_system_factory_restore"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/button_secondary"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/action_system_factory_restore"
+                        android:textAllCaps="false"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/system_restore_note_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="sans-serif"
+                        android:text="@string/system_factory_restore_note"
+                        android:textColor="@color/text_muted"
+                        android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>

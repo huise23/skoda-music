@@ -33,8 +33,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.audio.EqualizerManager
-import com.skodamusic.app.audio.dsp.HiFiDspController
-import com.skodamusic.app.audio.dsp.HiFiDspMode
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
@@ -60,6 +58,7 @@ import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.system.SystemRestoreManager
 import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourceRadio
 import com.skodamusic.app.model.SourceTrack
@@ -307,7 +306,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var thumbnailLoader: RemoteThumbnailLoader
     private lateinit var kugouSceneBinder: KugouSceneBinder
     private lateinit var equalizerManager: EqualizerManager
-    private lateinit var hiFiDspController: HiFiDspController
     private lateinit var runtimeLogBinder: RuntimeLogBinder
     private lateinit var equalizerPageBinder: EqualizerPageBinder
     private var postHogSessionId: String = ""
@@ -316,8 +314,10 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var systemEqSessionId: Int = -1
     private var lastSystemEqUnavailableToastAtMs: Long = 0L
     private var systemEqFallbackHintShown: Boolean = false
-    private var soundEffectEnabled: Boolean = false
-    private var soundEffectMode: HiFiDspMode = HiFiDspMode.FIDELITY
+    private var eqEnabled: Boolean = false
+    private var eqPresetIndex: Int = 0
+    private var eqMode: EqualizerManager.EqMode = EqualizerManager.EqMode.PRESET
+    private var eqCustomBandLevels: MutableList<Int> = mutableListOf(0, 0, 0, 0, 0)
 
     private val kugouWebApiClient: KugouWebApiClient
         get() = kugouAuthConfigBinder.webApiClient
@@ -339,10 +339,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         runtimeLogBinder = RuntimeLogBinder(this, LOG_TAG) { resId -> showToast(resId) }
         equalizerPageBinder = EqualizerPageBinder(
             activity = this,
-            onToggleEnabled = { isChecked -> handleSoundToggle(isChecked) },
+            onToggleEnabled = { isChecked -> handleEqualizerToggle(isChecked) },
             onOpenPage = { switchPage(PAGE_EQ) },
             onBack = { switchPage(PAGE_SETTINGS) },
-            onModeSelected = { mode -> applySoundModeSelection(mode) }
+            onPresetSelected = { index -> applyPresetSelection(index) },
+            onBandLevelChanged = { bandIndex, levelMb -> applyBandLevelChange(bandIndex, levelMb) },
+            onOpenCarSystemSoundSetting = { openCarSystemSoundSettings() }
         )
         playbackResumeStore = PlaybackResumeStore(applicationContext)
         playbackStateStore = PlaybackStateStore(applicationContext)
@@ -422,7 +424,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             keyRecommendCacheJson = KEY_RECOMMEND_CACHE_JSON
         )
         embyApi = EmbyApi { message -> appendRuntimeLog(message) }
-        hiFiDspController = HiFiDspController { message -> appendRuntimeLog(message) }
         equalizerManager = EqualizerManager { message -> appendRuntimeLog(message) }
         equalizerManager.updateConfig(
             enabled = false,
@@ -770,7 +771,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         prevButton.contentDescription = getString(R.string.action_prev)
         playPauseButton.setImageResource(android.R.drawable.ic_media_play)
         playPauseButton.contentDescription = getString(R.string.action_play)
-        refreshDspPlayButtonIndicator()
+        refreshPlayPauseButtonBackground()
         nextButton.setImageResource(android.R.drawable.ic_media_next)
         nextButton.contentDescription = getString(R.string.action_next)
         prevButton.setColorFilter(resources.getColor(R.color.white))
@@ -911,6 +912,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         checkUpdateButton.setOnClickListener {
             appUpdateCoordinator.onCheckButtonClicked()
+        }
+
+        val factoryRestoreButton = findViewById<Button>(R.id.btn_system_factory_restore)
+        factoryRestoreButton?.setOnClickListener {
+            promptFactoryRestore()
         }
     }
 
@@ -2722,21 +2728,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
-    private fun refreshDspPlayButtonIndicator() {
-        if (!this::playPauseButton.isInitialized || !this::hiFiDspController.isInitialized) {
+    private fun refreshPlayPauseButtonBackground() {
+        if (!this::playPauseButton.isInitialized) {
             return
         }
-        val state = hiFiDspController.runtimeSnapshot()
-        val status = state.status
-        val stateKey = "${state.status}:${state.mode.code}:${state.tier}:${state.flags}:${state.reason}"
-        if (stateKey == lastPlayButtonDspStateKey) {
-            return
-        }
-        lastPlayButtonDspStateKey = stateKey
-        appendRuntimeLog(
-            "hifi-dsp indicator status=${state.status.name} mode=${state.mode.code} tier=${state.tier} flags=${state.flags} reason=${state.reason}"
-        )
-        playPauseButton.background = buildPlayPauseButtonBackground(resolveDspIndicatorStrokeColor(status))
+        playPauseButton.background = buildPlayPauseButtonBackground(Color.parseColor("#38BDF8"))
     }
 
     private fun buildPlayPauseButtonBackground(strokeColor: Int): StateListDrawable {
@@ -2770,16 +2766,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private fun resolveDspIndicatorStrokeColor(status: HiFiDspController.RuntimeStatus): Int {
-        return when (status) {
-            HiFiDspController.RuntimeStatus.ACTIVE -> Color.parseColor("#78F09A")
-            HiFiDspController.RuntimeStatus.DEGRADED -> Color.parseColor("#FFE17A")
-            HiFiDspController.RuntimeStatus.FAIL_OPEN -> Color.parseColor("#FF6B6B")
-            HiFiDspController.RuntimeStatus.UNKNOWN,
-            HiFiDspController.RuntimeStatus.DISABLED -> Color.parseColor("#AEB7C2")
-        }
-    }
-
     private fun startUiProgressTicker() {
         uiProgressHandler.removeCallbacks(uiProgressTicker)
         uiProgressHandler.post(uiProgressTicker)
@@ -2793,7 +2779,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (!this::playbackProgressValue.isInitialized || !this::playbackDurationValue.isInitialized || !this::downloadProgressValue.isInitialized || !this::playbackSeekBar.isInitialized) {
             return
         }
-        refreshDspPlayButtonIndicator()
         val snapshot = currentSourcePlaybackSnapshot()
         if (snapshot == null) {
             playbackProgressValue.text = formatDurationClock(-1L)
@@ -2889,11 +2874,14 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             lastObservedAudioSessionId = sessionId
             appendRuntimeLog("audio session observed id=$sessionId source=$source")
         }
-        applySoundEffectConfig("session:$source")
+        if (this::equalizerManager.isInitialized) {
+            equalizerManager.onSessionChanged(sessionId, source)
+            refreshEqualizerSettingsUi()
+        }
     }
 
     private fun openSystemEqualizerSessionIfPossible(sessionId: Int, source: String) {
-        if (!USE_SYSTEM_EQ_INHERIT_MODE || soundEffectEnabled || sessionId <= 0) {
+        if (!USE_SYSTEM_EQ_INHERIT_MODE || eqEnabled || sessionId <= 0) {
             return
         }
         if (systemEqSessionId == sessionId) {
@@ -4491,7 +4479,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val created = ExoPlaybackEngine(
             context = this,
             dataSourceFactory = defaultDataSourceFactory,
-            hiFiDspController = hiFiDspController,
             log = { message -> appendRuntimeLog(message) },
             minBufferMs = LOAD_CONTROL_MIN_BUFFER_MS,
             maxBufferMs = LOAD_CONTROL_MAX_BUFFER_MS,
@@ -4509,10 +4496,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         closeSystemEqualizerSession("main_activity_release_player")
         if (this::equalizerManager.isInitialized) {
             equalizerManager.onPlayerReleased(source = "main_activity_release_player")
-        }
-        if (this::hiFiDspController.isInitialized) {
-            hiFiDspController.resetRuntimeState(source = "main_activity_release_player")
-            refreshDspPlayButtonIndicator()
         }
     }
 
@@ -5159,21 +5142,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         embyUsernameInput.setText(prefs.getString(KEY_USERNAME, "").orEmpty())
         embyPasswordInput.setText(prefs.getString(KEY_PASSWORD, "").orEmpty())
         lrcApiBaseUrlInput.setText(prefs.getString(KEY_LRCAPI_BASE_URL, "").orEmpty())
-        val hasNewSoundConfig = prefs.contains(KEY_SOUND_EFFECT_ENABLED) || prefs.contains(KEY_SOUND_EFFECT_MODE)
-        soundEffectEnabled = if (hasNewSoundConfig) {
-            prefs.getBoolean(KEY_SOUND_EFFECT_ENABLED, false)
-        } else {
-            prefs.getBoolean(KEY_EQ_ENABLED, false)
+        eqEnabled = prefs.getBoolean(KEY_EQ_ENABLED, false)
+        eqPresetIndex = prefs.getInt(KEY_EQ_PRESET_INDEX, 0)
+        val savedMode = prefs.getString(KEY_EQ_MODE, EqualizerManager.EqMode.PRESET.name)
+        eqMode = runCatching { EqualizerManager.EqMode.valueOf(savedMode.orEmpty()) }
+            .getOrDefault(EqualizerManager.EqMode.PRESET)
+        val customLevelsRaw = prefs.getString(KEY_EQ_CUSTOM_LEVELS, "")
+        if (!customLevelsRaw.isNullOrBlank()) {
+            val parsed = customLevelsRaw.split(",").mapNotNull { it.trim().toIntOrNull() }
+            if (parsed.isNotEmpty()) {
+                eqCustomBandLevels = parsed.toMutableList()
+            }
         }
-        soundEffectMode = HiFiDspMode.fromCode(
-            raw = prefs.getString(KEY_SOUND_EFFECT_MODE, null),
-            fallback = HiFiDspMode.FIDELITY
-        )
-        if (soundEffectEnabled && soundEffectMode == HiFiDspMode.ORIGINAL) {
-            soundEffectMode = HiFiDspMode.FIDELITY
+        while (eqCustomBandLevels.size < 5) {
+            eqCustomBandLevels.add(0)
         }
-        applySoundEffectConfig("prefs_load")
-        persistSoundEffectConfig()
+        applyEqualizerConfig("prefs_load")
+        persistEqualizerConfig()
         refreshEqualizerSettingsUi()
         val savedModeName = prefs.getString(KEY_SOURCE_MODE, MusicSource.KUGOU.name)
         val mode = runCatching { MusicSource.valueOf(savedModeName.orEmpty()) }.getOrDefault(MusicSource.KUGOU)
@@ -5197,91 +5182,186 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             .apply()
     }
 
-    private fun persistSoundEffectConfig() {
+    private fun persistEqualizerConfig() {
         getSharedPreferences(PREFS_EMBY, MODE_PRIVATE)
             .edit()
-            .putBoolean(KEY_SOUND_EFFECT_ENABLED, soundEffectEnabled)
-            .putString(KEY_SOUND_EFFECT_MODE, soundEffectMode.code)
+            .putBoolean(KEY_EQ_ENABLED, eqEnabled)
+            .putInt(KEY_EQ_PRESET_INDEX, eqPresetIndex.coerceAtLeast(0))
+            .putString(KEY_EQ_MODE, eqMode.name)
+            .putString(KEY_EQ_CUSTOM_LEVELS, eqCustomBandLevels.joinToString(","))
             .apply()
     }
 
-    private fun applySoundEffectConfig(source: String) {
-        if (!this::hiFiDspController.isInitialized) {
+    private fun applyEqualizerConfig(source: String) {
+        if (!this::equalizerManager.isInitialized) {
             return
         }
-        val dspEnabled = soundEffectEnabled && soundEffectMode != HiFiDspMode.ORIGINAL
-        hiFiDspController.update(
-            enabled = dspEnabled,
-            mode = soundEffectMode,
+        equalizerManager.updateConfig(
+            enabled = eqEnabled,
+            presetIndex = eqPresetIndex,
+            mode = eqMode,
+            customBandLevels = eqCustomBandLevels.toList(),
             source = source
         )
-        refreshDspPlayButtonIndicator()
     }
 
-    private fun handleSoundToggle(isChecked: Boolean) {
-        if (soundEffectEnabled == isChecked) {
+    private fun handleEqualizerToggle(isChecked: Boolean) {
+        if (eqEnabled == isChecked) {
             return
         }
-        if (isChecked) {
-            soundEffectEnabled = true
-            if (soundEffectMode == HiFiDspMode.ORIGINAL) {
-                soundEffectMode = HiFiDspMode.FIDELITY
-            }
-        } else {
-            soundEffectEnabled = false
-        }
-        applySoundEffectConfig("ui_toggle")
-        persistSoundEffectConfig()
+        eqEnabled = isChecked
+        applyEqualizerConfig("ui_toggle")
+        persistEqualizerConfig()
         refreshEqualizerSettingsUi()
         updateState {
             it.copy(
                 feedbackText = getString(
-                    if (isChecked) R.string.feedback_sound_enabled else R.string.feedback_sound_disabled
+                    if (isChecked) R.string.feedback_eq_enabled else R.string.feedback_eq_disabled
                 )
             )
         }
-        showToast(if (isChecked) R.string.toast_sound_enabled else R.string.toast_sound_disabled)
+        showToast(if (isChecked) R.string.toast_eq_enabled else R.string.toast_eq_disabled)
+    }
+
+    private fun applyPresetSelection(presetIndex: Int) {
+        eqPresetIndex = presetIndex.coerceAtLeast(0)
+        eqMode = EqualizerManager.EqMode.PRESET
+        if (!eqEnabled) {
+            eqEnabled = true
+        }
+        applyEqualizerConfig("ui_preset")
+        persistEqualizerConfig()
+        refreshEqualizerSettingsUi()
+        val capabilities = if (this::equalizerManager.isInitialized) {
+            equalizerManager.capabilitiesSnapshot()
+        } else {
+            EqualizerManager.EqCapabilities(emptyList(), emptyList())
+        }
+        val presetName = equalizerPageBinder.resolvePresetDisplayNames(capabilities.presetNames)
+            .getOrNull(eqPresetIndex) ?: getString(R.string.eq_preset_default_name)
+        updateState {
+            it.copy(feedbackText = getString(R.string.feedback_eq_preset_changed, presetName))
+        }
+        showToastMessage(getString(R.string.feedback_eq_preset_changed, presetName))
+    }
+
+    private fun applyBandLevelChange(bandIndex: Int, levelMillibel: Int) {
+        while (eqCustomBandLevels.size <= bandIndex) {
+            eqCustomBandLevels.add(0)
+        }
+        eqCustomBandLevels[bandIndex] = levelMillibel
+        eqMode = EqualizerManager.EqMode.CUSTOM
+        if (!eqEnabled) {
+            eqEnabled = true
+        }
+        applyEqualizerConfig("ui_band_slider")
+        persistEqualizerConfig()
+        refreshEqualizerSettingsUi()
     }
 
     private fun refreshEqualizerSettingsUi() {
         if (!this::equalizerPageBinder.isInitialized) {
             return
         }
+        val capabilities = if (this::equalizerManager.isInitialized) {
+            equalizerManager.capabilitiesSnapshot()
+        } else {
+            EqualizerManager.EqCapabilities(emptyList(), emptyList())
+        }
+        val presetNames = equalizerPageBinder.resolvePresetDisplayNames(capabilities.presetNames)
+        val activePresetName = presetNames.getOrNull(eqPresetIndex) ?: getString(R.string.eq_preset_default_name)
+
         equalizerPageBinder.renderSettings(
-            enabled = soundEffectEnabled,
-            mode = soundEffectMode,
+            enabled = eqEnabled,
+            presetName = activePresetName,
+            mode = eqMode,
             isPageVisible = selectedPage == PAGE_EQ
         )
+        if (selectedPage == PAGE_EQ) {
+            renderEqualizerFullscreenPage()
+        }
     }
 
     private fun renderEqualizerFullscreenPage() {
         if (!this::equalizerPageBinder.isInitialized) {
             return
         }
+        val capabilities = if (this::equalizerManager.isInitialized) {
+            equalizerManager.capabilitiesSnapshot()
+        } else {
+            EqualizerManager.EqCapabilities(emptyList(), emptyList())
+        }
         equalizerPageBinder.renderFullscreenPage(
-            enabled = soundEffectEnabled,
-            mode = soundEffectMode
+            enabled = eqEnabled,
+            eqMode = eqMode,
+            presetIndex = eqPresetIndex,
+            customBandLevels = eqCustomBandLevels,
+            capabilities = capabilities
         )
     }
 
-    private fun applySoundModeSelection(mode: HiFiDspMode) {
-        soundEffectMode = mode
-        soundEffectEnabled = mode != HiFiDspMode.ORIGINAL
-        applySoundEffectConfig("sound_page_mode")
-        persistSoundEffectConfig()
-        refreshEqualizerSettingsUi()
-        renderEqualizerFullscreenPage()
-        updateState {
-            it.copy(feedbackText = getString(R.string.feedback_sound_mode_changed, resolveSoundModeName(mode)))
+    private fun openCarSystemSoundSettings() {
+        val candidates = listOf(
+            Intent().setClassName("com.yecon.sound.setting", "com.yecon.sound.setting.AudioSetting"),
+            Intent().setClassName("com.carocean.carsetting", "com.carocean.carsetting.sound.EQActivity"),
+            Intent().setClassName("com.carocean.carsetting", "com.carocean.carsetting.sound.SoundActivity"),
+            Intent(android.provider.Settings.ACTION_SOUND_SETTINGS)
+        )
+        for (intent in candidates) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val resolvable = packageManager.resolveActivity(intent, 0) != null
+            if (resolvable) {
+                val started = runCatching {
+                    startActivity(intent)
+                    true
+                }.getOrDefault(false)
+                if (started) {
+                    appendRuntimeLog("opened car sound setting with intent=$intent")
+                    showToastMessage("已打开原车音效调节")
+                    return
+                }
+            }
         }
-        showToastMessage(getString(R.string.toast_sound_mode_changed, resolveSoundModeName(mode)))
+        showToastMessage("当前车机未开放独立原车音效应用")
     }
 
-    private fun resolveSoundModeName(mode: HiFiDspMode): String {
-        return if (this::equalizerPageBinder.isInitialized) {
-            equalizerPageBinder.resolveSoundModeName(mode)
-        } else {
-            getString(R.string.sound_mode_fidelity)
+    private fun promptFactoryRestore() {
+        appendRuntimeLog("promptFactoryRestore requested")
+        backgroundExecutor.execute {
+            val status = SystemRestoreManager.checkStatus()
+            runOnUiThread {
+                if (!status.isRootAvailable) {
+                    Toast.makeText(this, R.string.factory_restore_no_root, Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.dialog_factory_restore_title)
+                    .setMessage(R.string.dialog_factory_restore_message)
+                    .setNegativeButton(R.string.dialog_factory_restore_cancel, null)
+                    .setPositiveButton(R.string.dialog_factory_restore_confirm) { _, _ ->
+                        performFactoryRestore()
+                    }
+                    .show()
+            }
+        }
+    }
+
+    private fun performFactoryRestore() {
+        Toast.makeText(this, R.string.factory_restore_in_progress, Toast.LENGTH_LONG).show()
+        appendRuntimeLog("performFactoryRestore starting execution")
+        backgroundExecutor.execute {
+            val result = SystemRestoreManager.executeRestoreAndReboot { msg ->
+                appendRuntimeLog("factoryRestore: $msg")
+            }
+            if (result is SystemRestoreManager.RestoreResult.Failure) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.factory_restore_failed, result.reason),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         }
     }
 

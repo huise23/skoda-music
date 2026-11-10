@@ -1502,6 +1502,28 @@
                         android:text="@string/system_factory_restore_note"
                         android:textColor="@color/text_muted"
                         android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btn_trigger_system_firmware_upgrade"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/button_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/action_system_firmware_upgrade"
+                        android:textAllCaps="false"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/system_upgrade_note_value"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="sans-serif"
+                        android:text="提示：直接向硬件底层写入升级模式并触发刷机，解决U盘插入未自动刷机问题"
+                        android:textColor="@color/text_muted"
+                        android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>

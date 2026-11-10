@@ -59,6 +59,7 @@ import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
 import com.skodamusic.app.system.SystemRestoreManager
+import com.skodamusic.app.system.SystemUpgradeManager
 import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourceRadio
 import com.skodamusic.app.model.SourceTrack
@@ -917,6 +918,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val factoryRestoreButton = findViewById<Button>(R.id.btn_system_factory_restore)
         factoryRestoreButton?.setOnClickListener {
             promptFactoryRestore()
+        }
+
+        val firmwareUpgradeButton = findViewById<Button>(R.id.btn_trigger_system_firmware_upgrade)
+        firmwareUpgradeButton?.setOnClickListener {
+            promptSystemFirmwareUpgrade()
         }
     }
 
@@ -5360,6 +5366,77 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         getString(R.string.factory_restore_failed, result.reason),
                         Toast.LENGTH_LONG
                     ).show()
+                }
+            }
+        }
+    }
+
+    private fun promptSystemFirmwareUpgrade() {
+        appendRuntimeLog("promptSystemFirmwareUpgrade requested")
+        backgroundExecutor.execute {
+            val inspection = SystemUpgradeManager.inspectFirmware()
+            runOnUiThread {
+                val sb = StringBuilder()
+                sb.append("【U盘挂载检测】：\n")
+                if (inspection.isUsbMounted) {
+                    sb.append("• 已检测到挂载目录: ${inspection.mountedPaths.joinToString(", ")}\n")
+                } else {
+                    sb.append("• 警告：未检测到任何 U 盘挂载设备！请确保已插入车机主 USB 口。\n")
+                }
+
+                sb.append("\n【固件文件检测】：\n")
+                if (inspection.firmwarePath != null) {
+                    sb.append("• 固件路径: ${inspection.firmwarePath}\n")
+                }
+                sb.append("• yc8317.img (扳机文件): ${if (inspection.hasTriggerFile) "✓ 已就绪" else "✗ 未检测到"}\n")
+                sb.append("• system.img.ext4 (系统镜像): ${if (inspection.hasSystemImg) "✓ 已就绪" else "✗ 未检测到"}\n")
+                sb.append("• u-boot.bin (引导文件): ${if (inspection.hasUboot) "✓ 已就绪" else "✗ 未检测到"}\n")
+
+                sb.append("\n【原理与提示】：\n")
+                sb.append("点击确认后，应用将直接向底层硬件 METAZONE 写入升级模式标志 (UpdateMode=1)，绕过车机开机防误刷状态锁。\n")
+                if (!inspection.isComplete) {
+                    sb.append("\n⚠️ 提示：固件文件不完整或未平铺在 U 盘根目录！若继续，U-Boot 重启后可能无法找到固件。建议先检查 U 盘。")
+                }
+
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.dialog_system_upgrade_title)
+                    .setMessage(sb.toString())
+                    .setNegativeButton(R.string.dialog_system_upgrade_cancel, null)
+                    .setPositiveButton(R.string.dialog_system_upgrade_confirm) { _, _ ->
+                        performSystemFirmwareUpgrade()
+                    }
+                    .show()
+            }
+        }
+    }
+
+    private fun performSystemFirmwareUpgrade() {
+        Toast.makeText(this, R.string.toast_system_upgrade_starting, Toast.LENGTH_LONG).show()
+        appendRuntimeLog("performSystemFirmwareUpgrade executing")
+        backgroundExecutor.execute {
+            val result = SystemUpgradeManager.triggerUpgrade(this) { msg ->
+                appendRuntimeLog(msg)
+            }
+            runOnUiThread {
+                when (result) {
+                    is SystemUpgradeManager.UpgradeTriggerResult.Rebooting -> {
+                        Toast.makeText(this, "正在重启进入底层刷机界面，请勿断电...", Toast.LENGTH_LONG).show()
+                    }
+                    is SystemUpgradeManager.UpgradeTriggerResult.ManualRebootRequired -> {
+                        AlertDialog.Builder(this)
+                            .setTitle(R.string.dialog_system_upgrade_manual_title)
+                            .setMessage(result.message)
+                            .setPositiveButton(R.string.dialog_system_upgrade_manual_btn, null)
+                            .setCancelable(false)
+                            .show()
+                    }
+                    is SystemUpgradeManager.UpgradeTriggerResult.Failure -> {
+                        AlertDialog.Builder(this)
+                            .setTitle("升级标志写入失败")
+                            .setMessage(result.error)
+                            .setPositiveButton("确定", null)
+                            .show()
+                    }
                 }
             }
         }

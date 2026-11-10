@@ -372,4 +372,11 @@
     <string name="factory_restore_no_root">当前未检测到 Root 权限或已是原厂状态，无需恢复</string>
     <string name="factory_restore_in_progress">正在还原系统并重启车机，请勿断电…</string>
     <string name="factory_restore_failed">恢复执行失败：%1$s</string>
+    <string name="action_system_firmware_upgrade">底层系统固件升级 (从U盘刷机)</string>
+    <string name="dialog_system_upgrade_title">从 U 盘写入升级模式</string>
+    <string name="dialog_system_upgrade_confirm">写入升级标志并重启</string>
+    <string name="dialog_system_upgrade_cancel">取消</string>
+    <string name="dialog_system_upgrade_manual_title">升级标志写入成功</string>
+    <string name="dialog_system_upgrade_manual_btn">知道了，去按RST</string>
+    <string name="toast_system_upgrade_starting">升级标志已写入，正在尝试重启车机…</string>
 </resources>

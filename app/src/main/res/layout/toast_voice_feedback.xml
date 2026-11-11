@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/hud_voice_card"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/toast_voice_icon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🎙️"
+        android:textSize="26sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/toast_voice_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:text="方向盘语音键已触发"
+            android:textColor="#FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/toast_voice_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif"
+            android:maxLines="2"
+            android:text="正在呼叫手机语音助手 (192.168.43.1)..."
+            android:textColor="#C5D0DC"
+            android:textSize="14sp" />
+    </LinearLayout>
+</LinearLayout>

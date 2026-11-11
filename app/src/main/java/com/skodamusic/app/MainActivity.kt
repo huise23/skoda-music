@@ -98,6 +98,7 @@ import com.skodamusic.app.ui.RemoteThumbnailLoader
 import com.skodamusic.app.ui.RuntimeLogBinder
 import com.skodamusic.app.ui.SourceRowRenderer
 import com.skodamusic.app.ui.SystemDebloatPageBinder
+import com.skodamusic.app.ui.CarVoiceAndAmapPageBinder
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.skodamusic.app.update.AppUpdateCoordinator
@@ -171,6 +172,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var eqPage: View
     private lateinit var debloatPage: View
     private lateinit var systemDebloatPageBinder: SystemDebloatPageBinder
+    private lateinit var carVoiceAndAmapPageBinder: CarVoiceAndAmapPageBinder
     private lateinit var btnNavModeToggle: Button
     private lateinit var trackSourceBadge: TextView
     private lateinit var btnSettingsModeKugou: Button
@@ -548,6 +550,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         findViewById<Button>(R.id.btn_open_system_debloat)?.setOnClickListener {
             switchPage(PAGE_DEBLOAT)
         }
+        carVoiceAndAmapPageBinder = CarVoiceAndAmapPageBinder(
+            activity = this,
+            log = { msg -> appendRuntimeLog(msg) }
+        )
+        carVoiceAndAmapPageBinder.bindViews(
+            tvGateway = findViewById(R.id.car_voice_gateway_value),
+            switchBeep = findViewById(R.id.switch_voice_beep),
+            switchToast = findViewById(R.id.switch_voice_toast),
+            btnFallbackPlayPause = findViewById(R.id.btn_voice_fallback_play_pause),
+            btnFallbackNext = findViewById(R.id.btn_voice_fallback_next),
+            btnFallbackNone = findViewById(R.id.btn_voice_fallback_none),
+            tvRecentLog = findViewById(R.id.car_voice_recent_log),
+            btnTestVoiceKey = findViewById(R.id.btn_test_voice_key),
+            btnPingPhone = findViewById(R.id.btn_ping_phone_agent),
+            tvAmapStatus = findViewById(R.id.amap65_status_value),
+            progressBarAmap = findViewById(R.id.amap65_progress_bar),
+            tvProgressAmap = findViewById(R.id.amap65_progress_text),
+            btnAmapDownload = findViewById(R.id.btn_amap65_download_install),
+            btnAmapScan = findViewById(R.id.btn_amap65_scan_local),
+            btnAmapLaunch = findViewById(R.id.btn_amap65_launch)
+        )
         navHomeButton = findViewById(R.id.nav_home)
         navKugouDailyButton = findViewById(R.id.nav_kugou_daily)
         navKugouRadioButton = findViewById(R.id.nav_kugou_radio)
@@ -716,6 +739,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         if (this::homeLyricsBinder.isInitialized) {
             homeLyricsBinder.destroy()
+        }
+        if (this::carVoiceAndAmapPageBinder.isInitialized) {
+            carVoiceAndAmapPageBinder.unbind()
         }
         PlaybackControlBus.detach(this)
         maybePersistPlaybackResumeState(force = true)
@@ -1285,6 +1311,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             refreshEqualizerSettingsUi()
             refreshDownloadCacheInfoUi()
             refreshKugouLoginUi()
+            if (this::carVoiceAndAmapPageBinder.isInitialized) {
+                carVoiceAndAmapPageBinder.refreshAll()
+            }
         } else if (selectedPage == PAGE_EQ) {
             refreshEqualizerSettingsUi()
             renderEqualizerFullscreenPage()

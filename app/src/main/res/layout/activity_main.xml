@@ -1525,6 +1525,270 @@
                         android:textColor="@color/text_muted"
                         android:textSize="14sp" />
 
+                    <!-- 方向盘语音按键与手机互联 (CarBridge) 设置卡片 -->
+                    <LinearLayout
+                        android:id="@+id/panel_car_voice_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/panel_card"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="方向盘语音按键与手机互联"
+                            android:textColor="@color/brand_primary"
+                            android:textSize="18sp" />
+
+                        <TextView
+                            android:id="@+id/car_voice_gateway_value"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="热点网关: 192.168.43.1:8999"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="15sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="按键蜂鸣声音反馈"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp" />
+
+                            <androidx.appcompat.widget.SwitchCompat
+                                android:id="@+id/switch_voice_beep"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="屏幕高可见度悬浮反馈"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp" />
+
+                            <androidx.appcompat.widget.SwitchCompat
+                                android:id="@+id/switch_voice_toast"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="手机未连接时的语音键动作 (兼作多功能键):"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_voice_fallback_play_pause"
+                                android:layout_width="0dp"
+                                android:layout_height="42dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_primary"
+                                android:text="播放/暂停"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+
+                            <Space
+                                android:layout_width="8dp"
+                                android:layout_height="1dp" />
+
+                            <Button
+                                android:id="@+id/btn_voice_fallback_next"
+                                android:layout_width="0dp"
+                                android:layout_height="42dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_secondary"
+                                android:text="下一曲"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+
+                            <Space
+                                android:layout_width="8dp"
+                                android:layout_height="1dp" />
+
+                            <Button
+                                android:id="@+id/btn_voice_fallback_none"
+                                android:layout_width="0dp"
+                                android:layout_height="42dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_secondary"
+                                android:text="无动作"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/car_voice_recent_log"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:background="@drawable/field_surface"
+                            android:fontFamily="monospace"
+                            android:padding="8dp"
+                            android:text="最近触发: 暂无触发记录 (按下方向盘语音键即可实时显示)"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_test_voice_key"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_secondary"
+                                android:text="模拟测试语音按键"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp" />
+
+                            <Space
+                                android:layout_width="10dp"
+                                android:layout_height="1dp" />
+
+                            <Button
+                                android:id="@+id/btn_ping_phone_agent"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_secondary"
+                                android:text="测试手机连通性"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- 高德地图车机版 6.5 (红绿灯倒计时版) 专区卡片 -->
+                    <LinearLayout
+                        android:id="@+id/panel_amap65_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/panel_card"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="高德地图车机版 6.5 (红绿灯倒计时版)"
+                            android:textColor="@color/brand_primary"
+                            android:textSize="18sp" />
+
+                        <TextView
+                            android:id="@+id/amap65_status_value"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="当前状态: 检测中..."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="特性：官方 6.5.0 绝版，适配 Android 4.0+ (minSdk 14)，支持路线红绿灯读秒、车道级引导，专为 1GB 内存优化"
+                            android:textColor="@color/text_muted"
+                            android:textSize="13sp" />
+
+                        <ProgressBar
+                            android:id="@+id/amap65_progress_bar"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="match_parent"
+                            android:layout_height="12dp"
+                            android:layout_marginTop="8dp"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/amap65_progress_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textColor="@color/brand_primary"
+                            android:textSize="13sp"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_amap65_download_install"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1.2"
+                                android:background="@drawable/button_primary"
+                                android:text="官方直链下载并安装"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+
+                            <Space
+                                android:layout_width="8dp"
+                                android:layout_height="1dp" />
+
+                            <Button
+                                android:id="@+id/btn_amap65_scan_local"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/button_secondary"
+                                android:text="从U盘/本地安装"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+
+                            <Space
+                                android:layout_width="8dp"
+                                android:layout_height="1dp" />
+
+                            <Button
+                                android:id="@+id/btn_amap65_launch"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="0.8"
+                                android:background="@drawable/button_secondary"
+                                android:text="启动高德"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
                     <Button
                         android:id="@+id/btn_system_factory_restore"
                         android:layout_width="match_parent"

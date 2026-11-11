@@ -15,6 +15,18 @@ class MediaButtonReceiver : BroadcastReceiver() {
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) {
             return
         }
+
+        // Intercept hardware voice / search buttons if routed via MEDIA_BUTTON
+        if (event.keyCode == KeyEvent.KEYCODE_VOICE_ASSIST ||
+            event.keyCode == KeyEvent.KEYCODE_SEARCH ||
+            event.keyCode == KeyEvent.KEYCODE_ASSIST) {
+            com.skodamusic.app.bridge.CarVoiceFeedbackManager.onVoiceTriggered(context, "MediaButton(${event.keyCode})")
+            if (isOrderedBroadcast) {
+                abortBroadcast()
+            }
+            return
+        }
+
         val action = when (event.keyCode) {
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> PlaybackActions.ACTION_CMD_PREV
             KeyEvent.KEYCODE_MEDIA_NEXT -> PlaybackActions.ACTION_CMD_NEXT

@@ -68,8 +68,19 @@
             android:exported="true">
             <intent-filter android:priority="1000">
                 <action android:name="com.yecon.action.VOICE_START" />
+                <action android:name="com.yecon.action.VOICE_STOP" />
+                <action android:name="com.yecon.action.ISSSR_KEY" />
+                <action android:name="com.yecon.action.KEY_DOWN" />
                 <action android:name="com.jsbd.vr.start.action" />
+                <action android:name="com.jsbd.vr.start" />
+                <action android:name="com.jsbd.vr.service.action" />
+                <action android:name="com.jsbd.vr.startservice.action" />
                 <action android:name="android.intent.action.VOICE_COMMAND" />
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <action android:name="android.speech.action.WEB_SEARCH" />
+                <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
+                <action android:name="android.intent.action.SEARCH_LONG_PRESS" />
+                <action android:name="com.skodamusic.app.action.TEST_VOICE_TRIGGER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>

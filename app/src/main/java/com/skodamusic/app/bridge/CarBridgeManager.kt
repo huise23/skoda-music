@@ -78,7 +78,10 @@ object CarBridgeManager {
      * Notify phone (Yiyu App) to wake up and start listening to user's voice command.
      * Called when steering-wheel voice key or UI voice button is pressed.
      */
-    fun notifyVoiceTriggered(context: Context) {
+    fun notifyVoiceTriggered(
+        context: Context,
+        onResult: ((success: Boolean, statusCode: Int, targetIp: String, errorMsg: String?) -> Unit)? = null
+    ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dynamicGateway = resolveHotspotGatewayIp(context)
         val phoneIp = dynamicGateway
@@ -99,8 +102,50 @@ object CarBridgeManager {
                 }
                 val code = conn.responseCode
                 Log.i(TAG, "Notified phone agent at $targetUrl (dynamic=$dynamicGateway), response code: $code")
+                onResult?.invoke(code in 200..299, code, phoneIp, null)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to wake phone agent at $phoneIp:$phonePort: ${e.message}")
+                onResult?.invoke(false, -1, phoneIp, e.message ?: "连接失败")
+            } finally {
+                conn?.disconnect()
+            }
+        }
+    }
+
+    /**
+     * Pings the phone Yiyu agent to test connectivity.
+     */
+    fun pingPhone(
+        context: Context,
+        callback: (success: Boolean, message: String) -> Unit
+    ) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dynamicGateway = resolveHotspotGatewayIp(context)
+        val phoneIp = dynamicGateway
+            ?: prefs.getString(KEY_PHONE_IP, DEFAULT_PHONE_IP)
+            ?: DEFAULT_PHONE_IP
+        val phonePort = prefs.getInt(KEY_PHONE_PORT, DEFAULT_PHONE_PORT)
+
+        executor.execute {
+            var conn: HttpURLConnection? = null
+            try {
+                val targetUrl = "http://$phoneIp:$phonePort/api/ping"
+                val url = URL(targetUrl)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 2500
+                    readTimeout = 2500
+                    useCaches = false
+                }
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                    callback(true, "连通成功 (HTTP $code)\n目标: $phoneIp:$phonePort\n返回: $responseText")
+                } else {
+                    callback(false, "手机端服务返回异常 (HTTP $code)\n目标: $phoneIp:$phonePort")
+                }
+            } catch (e: Exception) {
+                callback(false, "连通失败 ($phoneIp:$phonePort):\n${e.javaClass.simpleName}: ${e.message ?: "连接超时"}")
             } finally {
                 conn?.disconnect()
             }

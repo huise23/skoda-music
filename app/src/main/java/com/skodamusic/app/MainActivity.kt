@@ -95,6 +95,7 @@ import com.skodamusic.app.ui.KugouSceneBinder
 import com.skodamusic.app.ui.RemoteThumbnailLoader
 import com.skodamusic.app.ui.RuntimeLogBinder
 import com.skodamusic.app.ui.SourceRowRenderer
+import com.skodamusic.app.ui.SystemDebloatPageBinder
 import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.skodamusic.app.update.AppUpdateCoordinator
@@ -166,6 +167,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private lateinit var testEmbyButton: Button
     private lateinit var testLrcApiButton: Button
     private lateinit var eqPage: View
+    private lateinit var debloatPage: View
+    private lateinit var systemDebloatPageBinder: SystemDebloatPageBinder
     private lateinit var btnNavModeToggle: Button
     private lateinit var trackSourceBadge: TextView
     private lateinit var btnSettingsModeKugou: Button
@@ -525,6 +528,23 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             presetsContainer = findViewById(R.id.eq_presets_container),
             backButton = findViewById(R.id.btn_eq_back)
         )
+        debloatPage = findViewById(R.id.page_debloat)
+        systemDebloatPageBinder = SystemDebloatPageBinder(
+            activity = this,
+            backgroundExecutor = backgroundExecutor,
+            onBack = { switchPage(PAGE_SETTINGS) }
+        )
+        systemDebloatPageBinder.bindViews(
+            pageContainer = debloatPage,
+            backButton = findViewById(R.id.btn_debloat_back),
+            summaryBadge = findViewById(R.id.debloat_summary_badge),
+            btnDisableAllDead = findViewById(R.id.btn_debloat_disable_dead),
+            btnEnableAll = findViewById(R.id.btn_debloat_restore_all),
+            listContainer = findViewById(R.id.debloat_list_container)
+        )
+        findViewById<Button>(R.id.btn_open_system_debloat)?.setOnClickListener {
+            switchPage(PAGE_DEBLOAT)
+        }
         navHomeButton = findViewById(R.id.nav_home)
         navKugouDailyButton = findViewById(R.id.nav_kugou_daily)
         navKugouRadioButton = findViewById(R.id.nav_kugou_radio)
@@ -1217,6 +1237,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         pageLibrary.visibility = if (selectedPage == PAGE_LIBRARY) View.VISIBLE else View.GONE
         pageSettings.visibility = if (selectedPage == PAGE_SETTINGS) View.VISIBLE else View.GONE
         eqPage.visibility = if (selectedPage == PAGE_EQ) View.VISIBLE else View.GONE
+        debloatPage.visibility = if (selectedPage == PAGE_DEBLOAT) View.VISIBLE else View.GONE
         updateNavigationVisualState()
         if (selectedPage == PAGE_QUEUE) {
             rebuildTrackLists()
@@ -1237,6 +1258,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         } else if (selectedPage == PAGE_EQ) {
             refreshEqualizerSettingsUi()
             renderEqualizerFullscreenPage()
+        } else if (selectedPage == PAGE_DEBLOAT) {
+            systemDebloatPageBinder.loadAndRender()
         }
         if (selectedPage == PAGE_HOME || selectedPage == PAGE_KUGOU_RADIO || selectedPage == PAGE_KUGOU_SCENE || selectedPage == PAGE_KUGOU_DISCOVER) {
             refreshKugouLoginUi()
@@ -1449,7 +1472,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun updateNavigationVisualState() {
-        val onSettingsArea = selectedPage == PAGE_SETTINGS || selectedPage == PAGE_EQ
+        val onSettingsArea = selectedPage == PAGE_SETTINGS || selectedPage == PAGE_EQ || selectedPage == PAGE_DEBLOAT
         setNavButtonSelected(navHomeButton, selectedPage == PAGE_HOME, android.R.drawable.ic_menu_view)
         setNavButtonSelected(navKugouDailyButton, false, android.R.drawable.ic_menu_today)
         setNavButtonSelected(navKugouRadioButton, selectedPage == PAGE_KUGOU_RADIO, android.R.drawable.ic_menu_upload)
@@ -5673,7 +5696,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     override fun onBackPressed() {
-        if (selectedPage == PAGE_EQ) {
+        if (selectedPage == PAGE_EQ || selectedPage == PAGE_DEBLOAT) {
             switchPage(PAGE_SETTINGS)
             return
         }
@@ -5839,6 +5862,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         const val PAGE_SETTINGS = 6
         const val PAGE_EQ = 7
         const val PAGE_LIBRARY = 8
+        const val PAGE_DEBLOAT = 9
         const val DEFAULT_HOME_QUEUE_SIZE = 20
         const val LIBRARY_PAGE_SIZE = 40
         const val LYRICS_CACHE_MAX_TRACKS = 32

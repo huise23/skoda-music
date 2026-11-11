@@ -148,7 +148,7 @@ class OverlayController(
         pill.visibility = if (isCollapsed) View.VISIBLE else View.GONE
 
         root.addView(dock, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
-        root.addView(pill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(pill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
 
         rootView = root
         dockView = dock
@@ -176,11 +176,33 @@ class OverlayController(
         val contentRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), 0, dp(6), 0)
+            setPadding(dp(8), 0, dp(6), 0)
         }
         container.addView(contentRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)))
 
-        // Left clickable info section (Cover/Icon + Title + Single-line Lyric)
+        // Leftmost: Manual collapse button ("贴边 ▾") on driver's side
+        val collapseBtn = TextView(context).apply {
+            text = "贴边 ▾"
+            setTextColor(Color.parseColor("#94A3B8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            gravity = Gravity.CENTER
+            setPadding(dp(7), dp(4), dp(7), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#263342"))
+                cornerRadius = dp(4).toFloat()
+            }
+            setOnClickListener { setCollapsed(true) }
+        }
+        val collapseParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            leftMargin = dp(2)
+            rightMargin = dp(8)
+        }
+        contentRow.addView(collapseBtn, collapseParams)
+
+        // Center-left clickable info section (Cover/Icon + Title + Single-line Lyric)
         val leftSection = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -241,31 +263,14 @@ class OverlayController(
         rightRow.addView(playBtn)
         rightRow.addView(nextBtn)
 
-        // Manual collapse button ("贴边 ▾")
-        val collapseBtn = TextView(context).apply {
-            text = "贴边 ▾"
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            gravity = Gravity.CENTER
-            setPadding(dp(6), dp(4), dp(6), dp(4))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#263342"))
-                cornerRadius = dp(4).toFloat()
-            }
-            setOnClickListener { setCollapsed(true) }
-        }
-        val collapseParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            leftMargin = dp(4)
-            rightMargin = dp(4)
-        }
-        rightRow.addView(collapseBtn, collapseParams)
-
         // Close button (X)
         val closeBtn = createTopCloseButton {
             hide()
             listener.onDismissByUser()
         }
-        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(26), dp(26)))
+        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(26), dp(26)).apply {
+            leftMargin = dp(4)
+        })
 
         titleView = title
         lyricView = lyric
@@ -381,7 +386,7 @@ class OverlayController(
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.BOTTOM or Gravity.END
+                gravity = Gravity.BOTTOM or Gravity.START
                 x = dp(8)
                 y = prefs.getInt(KEY_PILL_Y, dp(12)).coerceAtLeast(0)
             }

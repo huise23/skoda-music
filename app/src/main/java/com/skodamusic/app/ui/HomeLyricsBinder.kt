@@ -95,6 +95,17 @@ class HomeLyricsBinder(
         render(positionMs)
     }
 
+    fun getCurrentLyricLine(positionMs: Long): String {
+        if (lines.isEmpty()) return ""
+        val index = findActiveIndex(positionMs)
+        val line = lines.getOrNull(index) ?: return ""
+        val text = line.text.trim()
+        if (this::textView.isInitialized && text == textView.context.getString(R.string.home_lyrics_placeholder)) {
+            return ""
+        }
+        return text
+    }
+
     fun destroy() {
         handler.removeCallbacks(idleSwitchRunnable)
     }

@@ -73,13 +73,15 @@ class PlaybackService : Service(), OverlayController.Listener {
             }
             PlaybackActions.ACTION_STATE_UPDATE -> {
                 val title = intent.getStringExtra(PlaybackActions.EXTRA_TRACK_TITLE).orEmpty()
+                val lyric = intent.getStringExtra(PlaybackActions.EXTRA_CURRENT_LYRIC).orEmpty()
                 snapshot = PlaybackStateStore.Snapshot(
                     trackTitle = title,
                     trackId = intent.getStringExtra(PlaybackActions.EXTRA_TRACK_ID).orEmpty(),
                     isPlaying = intent.getBooleanExtra(PlaybackActions.EXTRA_IS_PLAYING, false),
                     hasActiveTrack = intent.getBooleanExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, false),
                     positionMs = intent.getLongExtra(PlaybackActions.EXTRA_POSITION_MS, 0L).coerceAtLeast(0L),
-                    durationMs = intent.getLongExtra(PlaybackActions.EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
+                    durationMs = intent.getLongExtra(PlaybackActions.EXTRA_DURATION_MS, 0L).coerceAtLeast(0L),
+                    currentLyric = lyric
                 )
                 stateStore.saveSnapshot(snapshot)
                 updatePresentation()
@@ -148,6 +150,8 @@ class PlaybackService : Service(), OverlayController.Listener {
         }
         if (!overlayController.show(snapshot)) {
             overlayController.hide()
+        } else {
+            overlayController.update(snapshot)
         }
     }
 

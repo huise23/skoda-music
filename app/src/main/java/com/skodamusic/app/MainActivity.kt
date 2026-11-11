@@ -1,5 +1,6 @@
 package com.skodamusic.app
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -33,6 +34,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.skodamusic.app.audio.EqualizerManager
+import com.skodamusic.app.bridge.BootCompletedReceiver
 import com.skodamusic.app.core.concurrent.AppBackgroundExecutor
 import com.skodamusic.app.core.network.WifiNetworkGate
 import com.skodamusic.app.data.EmbySessionCache
@@ -281,6 +283,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var lastReportedServiceHasTrack: Boolean = false
     private var lastReportedServicePositionMs: Long = -1L
     private var lastReportedServiceDurationMs: Long = -1L
+    private var lastReportedServiceLyric: String = ""
     private var lastReportedServiceAtMs: Long = 0L
     private var resumeRestoreAttempted: Boolean = false
     private var lastResumePersistTrackId: String = ""
@@ -650,6 +653,33 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 { maybeAutoRefreshQueueRecommendations("app-startup") },
                 APP_STARTUP_QUEUE_REFRESH_DELAY_MS
             )
+            val isBootStart = intent?.getBooleanExtra(EXTRA_BOOT_START, false) == true
+            if (isBootStart) {
+                appendRuntimeLog("app started via boot wakeup intent")
+                val bootPrefs = getSharedPreferences(BootCompletedReceiver.PREFS_BOOT, Context.MODE_PRIVATE)
+                val mode = bootPrefs.getString(BootCompletedReceiver.KEY_BOOT_START_MODE, BootCompletedReceiver.BOOT_MODE_DOCK)
+                if (mode == BootCompletedReceiver.BOOT_MODE_DOCK) {
+                    uiProgressHandler.postDelayed({
+                        appendRuntimeLog("boot auto-start: moving task to back to show dock overlay")
+                        runCatching { moveTaskToBack(true) }
+                    }, 800L)
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val isBootStart = intent?.getBooleanExtra(EXTRA_BOOT_START, false) == true
+        if (isBootStart) {
+            val bootPrefs = getSharedPreferences(BootCompletedReceiver.PREFS_BOOT, Context.MODE_PRIVATE)
+            val mode = bootPrefs.getString(BootCompletedReceiver.KEY_BOOT_START_MODE, BootCompletedReceiver.BOOT_MODE_DOCK)
+            if (mode == BootCompletedReceiver.BOOT_MODE_DOCK) {
+                uiProgressHandler.postDelayed({
+                    runCatching { moveTaskToBack(true) }
+                }, 500L)
+            }
         }
     }
 
@@ -2895,6 +2925,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
         maybePersistPlaybackResumeState(positionMs = positionMs)
         maybeSyncServiceCommandTrace()
+        reportPlaybackStateToService()
 
     }
 
@@ -5579,8 +5610,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             durationMs == lastReportedServiceDurationMs
         val positionDeltaMs = abs(positionMs - lastReportedServicePositionMs)
         val elapsedMs = nowMs - lastReportedServiceAtMs
+        val currentLyric = if (this::homeLyricsBinder.isInitialized) {
+            homeLyricsBinder.getCurrentLyricLine(positionMs)
+        } else ""
+        val lyricChanged = currentLyric != lastReportedServiceLyric
         val shouldSend = force ||
             !baseUnchanged ||
+            lyricChanged ||
             positionDeltaMs >= SERVICE_REPORT_POSITION_DELTA_MS ||
             (isPlaying && elapsedMs >= SERVICE_REPORT_HEARTBEAT_MS)
         if (!shouldSend) {
@@ -5592,6 +5628,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lastReportedServiceIsPlaying = isPlaying
         lastReportedServicePositionMs = positionMs
         lastReportedServiceDurationMs = durationMs
+        lastReportedServiceLyric = currentLyric
         lastReportedServiceAtMs = nowMs
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
@@ -5600,6 +5637,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             putExtra(PlaybackActions.EXTRA_IS_PLAYING, isPlaying)
             putExtra(PlaybackActions.EXTRA_POSITION_MS, positionMs)
             putExtra(PlaybackActions.EXTRA_DURATION_MS, durationMs)
+            putExtra(PlaybackActions.EXTRA_CURRENT_LYRIC, currentLyric)
         }
     }
 
@@ -5802,7 +5840,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
     }
 
-    private companion object {
+    companion object {
+        const val EXTRA_BOOT_START = "extra_boot_start"
         const val LOG_TAG = "SkodaMusicEmby"
         const val PREFS_EMBY = "emby_credentials"
         const val KEY_BASE_URL = "base_url"

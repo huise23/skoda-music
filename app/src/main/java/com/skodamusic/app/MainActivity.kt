@@ -2112,44 +2112,27 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     }
 
     private fun handleKugouPlayUrlFailure(result: KugouPlayUrlResult) {
-        val isSessionExpired = result.failureKind == KugouPlayUrlFailureKind.SESSION_REQUIRED ||
-            result.httpCode == 401 ||
-            result.errorCode.contains("SESSION")
-        if (isSessionExpired) {
-            appendRuntimeLog("kugou playback failure: session expired -> auto clear session & show qr dialog")
-            clearKugouSessionState(clearStored = true)
-            requestKugouLogin(
-                reason = "play_session_expired",
-                action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
-            )
-            updateState {
-                it.copy(
-                    playPauseEnabled = false,
-                    feedbackText = getString(R.string.feedback_need_kugou)
-                )
-            }
-            showToast(R.string.toast_kugou_session_expired_scan_qr)
-            return
-        }
-        val feedbackRes = when (result.failureKind) {
-            KugouPlayUrlFailureKind.VIP_REQUIRED,
-            KugouPlayUrlFailureKind.PERMISSION_DENIED,
-            KugouPlayUrlFailureKind.PAID_REQUIRED -> R.string.feedback_kugou_play_permission_denied
-            KugouPlayUrlFailureKind.TRIAL_UNAVAILABLE -> R.string.feedback_kugou_play_trial_unavailable
-            else -> R.string.feedback_kugou_play_url_failed
-        }
-        val toastRes = when (result.failureKind) {
-            KugouPlayUrlFailureKind.VIP_REQUIRED,
-            KugouPlayUrlFailureKind.PERMISSION_DENIED,
-            KugouPlayUrlFailureKind.PAID_REQUIRED -> R.string.toast_kugou_play_permission_denied
-            else -> R.string.toast_kugou_play_failed
-        }
+        appendRuntimeLog("kugou playback failure: ${result.failureKind} errCode=${result.errCode} httpCode=${result.httpCode} -> auto clear session & show qr dialog")
+        clearKugouSessionState(clearStored = true)
+        requestKugouLogin(
+            reason = "play_failed_auto_reauth",
+            action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
+        )
         updateState {
             it.copy(
                 playPauseEnabled = false,
-                feedbackText = getString(feedbackRes)
+                feedbackText = "播放鉴权失效，已自动退出并生成新登录二维码"
             )
         }
+        val detailReason = when (result.failureKind) {
+            KugouPlayUrlFailureKind.VIP_REQUIRED,
+            KugouPlayUrlFailureKind.PERMISSION_DENIED,
+            KugouPlayUrlFailureKind.PAID_REQUIRED -> "VIP或歌曲权限失效"
+            KugouPlayUrlFailureKind.TRIAL_UNAVAILABLE -> "试听权限不可用"
+            else -> "鉴权失效"
+        }
+        showToastMessage("播放失败($detailReason)：已自动退出并生成新二维码，请扫码")
+
         val errorCode = result.errorCode.ifBlank { "KUGOU_DIRECT_PLAY_URL_FAILED" }
         PostHogTracker.capture(
             context = applicationContext,
@@ -2167,15 +2150,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             ),
             priority = PostHogTracker.Priority.HIGH
         )
-        if (
-            result.failureKind == KugouPlayUrlFailureKind.VIP_REQUIRED ||
-            result.failureKind == KugouPlayUrlFailureKind.PERMISSION_DENIED ||
-            result.failureKind == KugouPlayUrlFailureKind.PAID_REQUIRED
-        ) {
-            triggerKugouDailyVip(reason = "play_url_permission_failure")
-            skipBlockedKugouTrack("play_url_permission")
-        }
-        showToast(toastRes)
     }
 
     private fun skipBlockedKugouTrack(reason: String): Boolean {
@@ -2287,15 +2261,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                             priority = PostHogTracker.Priority.HIGH
                         )
                         runOnUiThread {
+                            clearKugouSessionState(clearStored = true)
+                            requestKugouLogin(
+                                reason = "player_error_auto_reauth",
+                                action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
+                            )
                             updateState {
                                 it.copy(
                                     isPlaying = false,
                                     playbackStatusRes = R.string.status_paused,
                                     playPauseLabelRes = R.string.action_play,
-                                    playPauseEnabled = true,
-                                    feedbackText = getString(R.string.feedback_kugou_play_failed)
+                                    playPauseEnabled = false,
+                                    feedbackText = "酷狗播放异常，已退出并生成新登录二维码"
                                 )
                             }
+                            showToastMessage("酷狗播放失败：已自动退出并生成新登录二维码，请扫码")
                         }
                     }
 
@@ -2316,15 +2296,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         } catch (e: Exception) {
             appendRuntimeLog("kugou playback exception type=${e.javaClass.simpleName} msg=${e.message}")
             releasePlayer()
+            clearKugouSessionState(clearStored = true)
+            requestKugouLogin(
+                reason = "player_exception_auto_reauth",
+                action = KugouLoginRecoveryCoordinator.PendingAction.PLAY_TRACK
+            )
             updateState {
                 it.copy(
                     isPlaying = false,
                     playbackStatusRes = R.string.status_paused,
                     playPauseLabelRes = R.string.action_play,
-                    playPauseEnabled = true,
-                    feedbackText = getString(R.string.feedback_kugou_play_failed)
+                    playPauseEnabled = false,
+                    feedbackText = "酷狗播放异常，已退出并生成新登录二维码"
                 )
             }
+            showToastMessage("酷狗播放失败：已自动退出并生成新登录二维码，请扫码")
         }
     }
 

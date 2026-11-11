@@ -240,7 +240,7 @@ class SystemDebloatPageBinder(
         Toast.makeText(activity, "正在${actionText} ${app.displayName}…", Toast.LENGTH_SHORT).show()
 
         backgroundExecutor.execute {
-            val result = SystemDebloatManager.setAppEnabled(app.packageName, targetEnable)
+            val result = SystemDebloatManager.setAppEnabled(app, targetEnable)
             activity.runOnUiThread {
                 if (result.first) {
                     app.isDisabled = !targetEnable

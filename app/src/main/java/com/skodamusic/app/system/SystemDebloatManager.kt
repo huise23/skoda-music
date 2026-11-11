@@ -2,6 +2,7 @@ package com.skodamusic.app.system
 
 import android.content.Context
 import android.content.pm.PackageManager
+import java.io.File
 
 object SystemDebloatManager {
 
@@ -52,11 +53,20 @@ object SystemDebloatManager {
             category = Category.DEAD_CLOUD
         ),
         AppInfo(
+            id = "zebra_account",
+            displayName = "斑马车机账号",
+            apkFileName = "ZebraAccount.apk",
+            packageName = "com.zebra.account",
+            sizeMb = 6.52f,
+            description = "斑马车机账号与云端通行证体系，已废弃",
+            category = Category.DEAD_CLOUD
+        ),
+        AppInfo(
             id = "ali_account",
             displayName = "阿里车机账号",
-            apkFileName = "Account.apk",
+            apkFileName = "account.apk",
             packageName = "com.yunos.account",
-            sizeMb = 4.48f,
+            sizeMb = 3.89f,
             description = "车机淘宝与云OS账号服务，已废弃",
             category = Category.DEAD_CLOUD
         ),
@@ -133,12 +143,12 @@ object SystemDebloatManager {
             category = Category.DEAD_CLOUD
         ),
         AppInfo(
-            id = "taobao_statistic",
-            displayName = "淘宝行为统计",
-            apkFileName = "SI20160408_TAMain4Aliyunos-1.1.14.i.apk",
-            packageName = "com.taobao.statistic",
-            sizeMb = 0.22f,
-            description = "后台埋点上传组件，空耗网络与唤醒",
+            id = "http_dns",
+            displayName = "阿里HttpDNS",
+            apkFileName = "HttpDNS.apk",
+            packageName = "com.aliyun.httpdns",
+            sizeMb = 0.20f,
+            description = "阿里早期域名解析服务，已失效",
             category = Category.DEAD_CLOUD
         ),
         AppInfo(
@@ -148,6 +158,15 @@ object SystemDebloatManager {
             packageName = "com.aliyun.ams.tyid",
             sizeMb = 0.14f,
             description = "阿里TYID设备鉴权，已无云端支撑",
+            category = Category.DEAD_CLOUD
+        ),
+        AppInfo(
+            id = "ali_uuid",
+            displayName = "阿里UUID注册",
+            apkFileName = "ali-uuidreg.apk",
+            packageName = "com.aliyun.uuid",
+            sizeMb = 0.10f,
+            description = "设备唯一号云端注册组件，服务器已停运",
             category = Category.DEAD_CLOUD
         ),
 
@@ -171,39 +190,12 @@ object SystemDebloatManager {
             category = Category.RECOMMENDED
         ),
         AppInfo(
-            id = "svw_portal",
-            displayName = "上汽大众车主门户",
-            apkFileName = "SVW.apk",
-            packageName = "com.svw.car.dvr",
-            sizeMb = 22.2f,
-            description = "原厂大众斯柯达门户，服务已全部废弃",
-            category = Category.RECOMMENDED
-        ),
-        AppInfo(
-            id = "jiuyin_assistant",
-            displayName = "久音车机助手",
-            apkFileName = "ccJiuYinCheJi.apk",
-            packageName = "com.jiuyin.car.dvr",
-            sizeMb = 22.2f,
-            description = "早期全家桶组件，占用22MB",
-            category = Category.RECOMMENDED
-        ),
-        AppInfo(
             id = "kaola_fm",
             displayName = "考拉FM车机版",
             apkFileName = "kaolafm_carauto-banma-release.apk",
             packageName = "com.edog.car",
             sizeMb = 19.7f,
             description = "考拉FM官方服务早已终止停运",
-            category = Category.RECOMMENDED
-        ),
-        AppInfo(
-            id = "kuwo_music",
-            displayName = "酷我音乐2019版",
-            apkFileName = "kwplay_cr_4.0.3.4_shangqi_Sikeda_banma_2019-11-20.apk",
-            packageName = "cn.kuwo.kwmusiccar",
-            sizeMb = 12.7f,
-            description = "2019年原厂定制酷我，已被本项目替代",
             category = Category.RECOMMENDED
         ),
         AppInfo(
@@ -233,10 +225,14 @@ object SystemDebloatManager {
     fun refreshAppStates(context: Context, apps: List<AppInfo>) {
         val pm = context.packageManager
         val disabledPackages = getDisabledPackageListFromSystem()
+        val allSysFiles = getSystemAppFileNames()
 
         for (app in apps) {
             val pkgName = app.packageName
-            val isPkgInstalled = isPackageInstalled(pm, pkgName)
+            val apkName = app.apkFileName
+
+            // Multi-tier install check: PM + filesystem check
+            val isPkgInstalled = isPackageInstalled(pm, pkgName, apkName, allSysFiles)
             app.isInstalled = isPkgInstalled
 
             if (!isPkgInstalled) {
@@ -244,23 +240,71 @@ object SystemDebloatManager {
                 continue
             }
 
-            // Check if disabled via PackageManager or pm list
-            val isPmDisabled = try {
-                val state = pm.getApplicationEnabledSetting(pkgName)
-                state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
-                        state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
-            } catch (_: Exception) {
-                false
-            }
-
-            app.isDisabled = isPmDisabled || disabledPackages.contains(pkgName)
+            // Multi-tier disabled check: .disabled/.bak file + PM setting + pm list -d
+            app.isDisabled = isAppDisabled(pm, pkgName, apkName, disabledPackages, allSysFiles)
         }
     }
 
-    private fun isPackageInstalled(pm: PackageManager, packageName: String): Boolean {
+    private fun getSystemAppFileNames(): Set<String> {
         return try {
-            pm.getPackageInfo(packageName, 0)
+            val dir = File("/system/app")
+            if (dir.exists() && dir.isDirectory) {
+                dir.list()?.map { it.lowercase() }?.toSet() ?: emptySet()
+            } else {
+                emptySet()
+            }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun isPackageInstalled(
+        pm: PackageManager,
+        packageName: String,
+        apkFileName: String,
+        sysFilesLower: Set<String>
+    ): Boolean {
+        // 1. Filesystem existence check (handles /system/app directly)
+        val apkLower = apkFileName.lowercase()
+        if (sysFilesLower.contains(apkLower) ||
+            sysFilesLower.contains("$apkLower.disabled") ||
+            sysFilesLower.contains("$apkLower.bak")
+        ) {
+            return true
+        }
+
+        // 2. PackageManager check (with GET_UNINSTALLED_PACKAGES flag)
+        return try {
+            pm.getPackageInfo(packageName, PackageManager.GET_UNINSTALLED_PACKAGES)
             true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun isAppDisabled(
+        pm: PackageManager,
+        packageName: String,
+        apkFileName: String,
+        disabledPackages: Set<String>,
+        sysFilesLower: Set<String>
+    ): Boolean {
+        // 1. File-level freeze check
+        val apkLower = apkFileName.lowercase()
+        if (sysFilesLower.contains("$apkLower.disabled") || sysFilesLower.contains("$apkLower.bak")) {
+            return true
+        }
+
+        // 2. PM disabled packages list
+        if (disabledPackages.contains(packageName)) {
+            return true
+        }
+
+        // 3. PM component enabled setting
+        return try {
+            val state = pm.getApplicationEnabledSetting(packageName)
+            state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
         } catch (_: Exception) {
             false
         }
@@ -280,18 +324,94 @@ object SystemDebloatManager {
         }
     }
 
-    fun setAppEnabled(packageName: String, enable: Boolean): Pair<Boolean, String> {
-        val action = if (enable) "enable" else "disable"
-        return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm $action $packageName"))
-            val out = proc.inputStream.bufferedReader().use { it.readText() }.trim()
-            val err = proc.errorStream.bufferedReader().use { it.readText() }.trim()
-            proc.waitFor()
-            val msg = if (out.isNotEmpty()) out else err
-            val success = msg.contains("new state") || msg.contains("enabled") || msg.contains("disabled")
-            Pair(success, msg.ifEmpty { "执行完成" })
-        } catch (e: Exception) {
-            Pair(false, "执行异常: ${e.message}")
+    fun setAppEnabled(app: AppInfo, enable: Boolean): Pair<Boolean, String> {
+        return setAppEnabled(app.packageName, app.apkFileName, enable)
+    }
+
+    fun setAppEnabled(packageName: String, apkFileName: String, enable: Boolean): Pair<Boolean, String> {
+        var anySuccess = false
+        val logs = mutableListOf<String>()
+
+        if (!enable) {
+            // --- 停用流程 ---
+            // 1. 尝试 pm disable 和 pm disable-user
+            runCatching {
+                val proc = Runtime.getRuntime().exec(
+                    arrayOf("su", "-c", "pm disable $packageName; pm disable-user $packageName")
+                )
+                val out = proc.inputStream.bufferedReader().use { it.readText() }.trim()
+                val exit = proc.waitFor()
+                if (exit == 0 || out.contains("new state") || out.contains("disabled")) {
+                    anySuccess = true
+                    logs.add("pm已停用")
+                }
+            }
+
+            // 2. 文件级重命名冻结 (mount rw -> rename .disabled -> mount ro)
+            val candidates = listOf(
+                File("/system/app/$apkFileName"),
+                File("/system/app/${apkFileName.lowercase()}"),
+                File("/system/app/${apkFileName.replaceFirstChar { it.uppercase() }}")
+            )
+            val foundApk = candidates.firstOrNull { it.exists() }
+            if (foundApk != null) {
+                val realName = foundApk.name
+                val remountCmd = "mount -o remount,rw /system && mv /system/app/$realName /system/app/$realName.disabled && mount -o remount,ro /system"
+                runCatching {
+                    val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", remountCmd))
+                    proc.waitFor()
+                    if (File("/system/app/$realName.disabled").exists() || !File("/system/app/$realName").exists()) {
+                        anySuccess = true
+                        logs.add("文件已冻结(.disabled)")
+                    }
+                }
+            }
+
+            // 3. 强制终止后台残留进程
+            runCatching {
+                Runtime.getRuntime().exec(
+                    arrayOf("su", "-c", "am force-stop $packageName; pkill -f $packageName")
+                ).waitFor()
+            }
+        } else {
+            // --- 恢复流程 ---
+            // 1. 文件级解冻恢复
+            val disabledCandidates = listOf(
+                File("/system/app/$apkFileName.disabled"),
+                File("/system/app/$apkFileName.bak"),
+                File("/system/app/${apkFileName.lowercase()}.disabled"),
+                File("/system/app/${apkFileName.lowercase()}.bak")
+            )
+            val foundFrozen = disabledCandidates.firstOrNull { it.exists() }
+            if (foundFrozen != null) {
+                val targetName = foundFrozen.name.removeSuffix(".disabled").removeSuffix(".bak")
+                val remountCmd = "mount -o remount,rw /system && mv ${foundFrozen.absolutePath} /system/app/$targetName && chmod 644 /system/app/$targetName && mount -o remount,ro /system"
+                runCatching {
+                    val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", remountCmd))
+                    proc.waitFor()
+                    if (File("/system/app/$targetName").exists()) {
+                        anySuccess = true
+                        logs.add("文件已恢复(.apk)")
+                    }
+                }
+            }
+
+            // 2. pm enable
+            runCatching {
+                val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm enable $packageName"))
+                val out = proc.inputStream.bufferedReader().use { it.readText() }.trim()
+                val exit = proc.waitFor()
+                if (exit == 0 || out.contains("new state") || out.contains("enabled")) {
+                    anySuccess = true
+                    logs.add("pm已启用")
+                }
+            }
+        }
+
+        return if (anySuccess) {
+            Pair(true, "操作成功: ${logs.joinToString(", ")}")
+        } else {
+            Pair(false, "Root 冻结命令未返回成功状态，请检查 su 授权与系统分区读写状态")
         }
     }
 
@@ -299,7 +419,7 @@ object SystemDebloatManager {
         var count = 0
         val deadCloudApps = apps.filter { it.category == Category.DEAD_CLOUD && it.isInstalled && !it.isDisabled }
         for (app in deadCloudApps) {
-            val res = setAppEnabled(app.packageName, false)
+            val res = setAppEnabled(app, false)
             if (res.first) {
                 app.isDisabled = true
                 count++
@@ -312,7 +432,7 @@ object SystemDebloatManager {
         var count = 0
         val disabledApps = apps.filter { it.isInstalled && it.isDisabled }
         for (app in disabledApps) {
-            val res = setAppEnabled(app.packageName, true)
+            val res = setAppEnabled(app, true)
             if (res.first) {
                 app.isDisabled = false
                 count++

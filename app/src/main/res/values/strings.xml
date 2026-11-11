@@ -379,4 +379,7 @@
     <string name="dialog_system_upgrade_manual_title">升级标志写入成功</string>
     <string name="dialog_system_upgrade_manual_btn">知道了，去按RST</string>
     <string name="toast_system_upgrade_starting">升级标志已写入，正在尝试重启车机…</string>
+    <string name="action_inspect_root_status">检测系统 Root 与语音状态</string>
+    <string name="system_root_status_note">提示：实时验证 su 提权 (uid=0)、/system 挂载读写能力与原厂语音停用状态</string>
+    <string name="dialog_root_inspection_title">系统 Root 与语音状态报告</string>
 </resources>

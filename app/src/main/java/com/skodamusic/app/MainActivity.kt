@@ -58,6 +58,7 @@ import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.system.SystemDiagnosticManager
 import com.skodamusic.app.system.SystemRestoreManager
 import com.skodamusic.app.system.SystemUpgradeManager
 import com.skodamusic.app.model.SourcePlaybackRef
@@ -913,6 +914,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
 
         checkUpdateButton.setOnClickListener {
             appUpdateCoordinator.onCheckButtonClicked()
+        }
+
+        val inspectRootButton = findViewById<Button>(R.id.btn_inspect_root_status)
+        inspectRootButton?.setOnClickListener {
+            promptRootInspection()
         }
 
         val factoryRestoreButton = findViewById<Button>(R.id.btn_system_factory_restore)
@@ -5329,6 +5335,22 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             }
         }
         showToastMessage("当前车机未开放独立原车音效应用")
+    }
+
+    private fun promptRootInspection() {
+        appendRuntimeLog("promptRootInspection requested")
+        showToastMessage("正在检测系统 Root 状态与底层提权权限…")
+        backgroundExecutor.execute {
+            val result = SystemDiagnosticManager.inspectRoot()
+            val summary = SystemDiagnosticManager.buildInspectionSummary(result)
+            runOnUiThread {
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.dialog_root_inspection_title)
+                    .setMessage(summary)
+                    .setPositiveButton("确定", null)
+                    .show()
+            }
+        }
     }
 
     private fun promptFactoryRestore() {

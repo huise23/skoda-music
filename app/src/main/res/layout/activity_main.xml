@@ -1564,6 +1564,35 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/tv_speech_adapt_status"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="按键驱动 (SpeechAdapt): 正在检测..."
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp" />
+
+                            <Button
+                                android:id="@+id/btn_restore_speech_adapt"
+                                android:layout_width="wrap_content"
+                                android:layout_height="32dp"
+                                android:background="@drawable/button_primary"
+                                android:paddingLeft="10dp"
+                                android:paddingRight="10dp"
+                                android:text="一键解冻按键驱动"
+                                android:textColor="@color/text_primary"
+                                android:textSize="12sp"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
                             android:layout_marginTop="10dp"
                             android:gravity="center_vertical"
                             android:orientation="horizontal">

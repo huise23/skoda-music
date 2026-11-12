@@ -145,6 +145,9 @@ class CarBridgeServer(
             path.startsWith("/api/navi") && method == "POST" -> {
                 handleNavi(body)
             }
+            path.startsWith("/api/voice/feedback") && method == "POST" -> {
+                handleVoiceFeedback(body)
+            }
             else -> {
                 404 to JSONObject().apply {
                     put("error", "Not Found")
@@ -163,6 +166,7 @@ class CarBridgeServer(
 
         val action = json.optString("action").uppercase()
         val keyword = json.optString("keyword").trim()
+        val rawUserText = json.optString("userText").trim()
 
         return when (action) {
             "PLAY" -> {
@@ -170,6 +174,7 @@ class CarBridgeServer(
                     PlaybackActions.ACTION_CMD_PLAY,
                     source = "yiyu_voice"
                 )
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "继续播放", replyText = "继续播放音乐", autoDismissMs = 4000L)
                 200 to JSONObject().apply { put("handled", res.handled); put("detail", res.detail) }
             }
             "PAUSE" -> {
@@ -177,6 +182,7 @@ class CarBridgeServer(
                     PlaybackActions.ACTION_CMD_PAUSE,
                     source = "yiyu_voice"
                 )
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "暂停播放", replyText = "已暂停播放", autoDismissMs = 4000L)
                 200 to JSONObject().apply { put("handled", res.handled); put("detail", res.detail) }
             }
             "PLAY_PAUSE" -> {
@@ -184,6 +190,7 @@ class CarBridgeServer(
                     PlaybackActions.ACTION_CMD_PLAY_PAUSE,
                     source = "yiyu_voice"
                 )
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "播放/暂停", replyText = "切换播放状态", autoDismissMs = 4000L)
                 200 to JSONObject().apply { put("handled", res.handled); put("detail", res.detail) }
             }
             "NEXT" -> {
@@ -191,6 +198,7 @@ class CarBridgeServer(
                     PlaybackActions.ACTION_CMD_NEXT,
                     source = "yiyu_voice"
                 )
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "下一首", replyText = "正在切歌", autoDismissMs = 4000L)
                 200 to JSONObject().apply { put("handled", res.handled); put("detail", res.detail) }
             }
             "PREV" -> {
@@ -198,6 +206,7 @@ class CarBridgeServer(
                     PlaybackActions.ACTION_CMD_PREV,
                     source = "yiyu_voice"
                 )
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "上一首", replyText = "正在切换上一曲", autoDismissMs = 4000L)
                 200 to JSONObject().apply { put("handled", res.handled); put("detail", res.detail) }
             }
             "SEARCH_PLAY" -> {
@@ -210,6 +219,12 @@ class CarBridgeServer(
                         setPackage(context.packageName)
                     }
                     context.sendBroadcast(searchIntent)
+                    CarVoiceTopHud.showVoiceContent(
+                        context,
+                        userText = if (rawUserText.isNotEmpty()) rawUserText else "播放 $keyword",
+                        replyText = "正在为您搜索播放",
+                        autoDismissMs = 6000L
+                    )
                     Log.i(TAG, "Dispatched SEARCH_PLAY broadcast for keyword: $keyword")
                     200 to JSONObject().apply {
                         put("handled", true)
@@ -233,14 +248,28 @@ class CarBridgeServer(
 
         val type = json.optString("type", "DEST").uppercase()
         val dest = json.optString("dest").ifEmpty { json.optString("keyword") }.trim()
+        val rawUserText = json.optString("userText").trim()
 
         val success = when (type) {
-            "HOME" -> AmapAutoBridge.navigateSpecialDest(context, "HOME")
-            "CORP", "WORK" -> AmapAutoBridge.navigateSpecialDest(context, "CORP")
-            "EXIT" -> AmapAutoBridge.exitNavi(context)
-            "NEARBY" -> AmapAutoBridge.searchNearby(context, dest)
+            "HOME" -> {
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "回家", replyText = "正在规划回家路线", autoDismissMs = 6000L)
+                AmapAutoBridge.navigateSpecialDest(context, "HOME")
+            }
+            "CORP", "WORK" -> {
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "去公司", replyText = "正在规划去公司路线", autoDismissMs = 6000L)
+                AmapAutoBridge.navigateSpecialDest(context, "CORP")
+            }
+            "EXIT" -> {
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "退出导航", replyText = "已退出导航", autoDismissMs = 4000L)
+                AmapAutoBridge.exitNavi(context)
+            }
+            "NEARBY" -> {
+                CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "搜索附近 $dest", replyText = "正在搜索周边", autoDismissMs = 6000L)
+                AmapAutoBridge.searchNearby(context, dest)
+            }
             else -> {
                 if (dest.isNotEmpty()) {
+                    CarVoiceTopHud.showVoiceContent(context, userText = if (rawUserText.isNotEmpty()) rawUserText else "导航到 $dest", replyText = "正在规划路线", autoDismissMs = 6000L)
                     AmapAutoBridge.startNavi(context, dest)
                 } else {
                     false
@@ -252,6 +281,32 @@ class CarBridgeServer(
             put("handled", success)
             put("type", type)
             put("dest", dest)
+        }
+    }
+
+    private fun handleVoiceFeedback(body: String): Pair<Int, JSONObject> {
+        val json = try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            return 400 to JSONObject().apply { put("error", "Invalid JSON") }
+        }
+
+        val userText = json.optString("userText").trim()
+        val replyText = json.optString("replyText").trim().ifEmpty { null }
+
+        if (userText.isNotEmpty()) {
+            CarVoiceTopHud.showVoiceContent(
+                context = context,
+                userText = userText,
+                replyText = replyText,
+                autoDismissMs = if (replyText != null) 7000L else 5000L
+            )
+        }
+
+        return 200 to JSONObject().apply {
+            put("handled", true)
+            put("userText", userText)
+            put("replyText", replyText)
         }
     }
 

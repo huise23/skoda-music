@@ -15,6 +15,7 @@ import com.skodamusic.app.R
 import com.skodamusic.app.bridge.Amap65Manager
 import com.skodamusic.app.bridge.CarBridgeHeartbeatManager
 import com.skodamusic.app.bridge.CarBridgeManager
+import com.skodamusic.app.bridge.CarVoiceDriverHelper
 import com.skodamusic.app.bridge.CarVoiceFeedbackManager
 import java.io.File
 
@@ -31,6 +32,8 @@ class CarVoiceAndAmapPageBinder(
 
     private lateinit var tvGateway: TextView
     private lateinit var tvChannelStatus: TextView
+    private lateinit var tvSpeechAdaptStatus: TextView
+    private lateinit var btnRestoreSpeechAdapt: Button
     private lateinit var switchBeep: SwitchCompat
     private lateinit var switchToast: SwitchCompat
     private lateinit var btnFallbackPlayPause: Button
@@ -58,6 +61,8 @@ class CarVoiceAndAmapPageBinder(
     fun bindViews(
         tvGateway: TextView,
         tvChannelStatus: TextView,
+        tvSpeechAdaptStatus: TextView,
+        btnRestoreSpeechAdapt: Button,
         switchBeep: SwitchCompat,
         switchToast: SwitchCompat,
         btnFallbackPlayPause: Button,
@@ -75,6 +80,8 @@ class CarVoiceAndAmapPageBinder(
     ) {
         this.tvGateway = tvGateway
         this.tvChannelStatus = tvChannelStatus
+        this.tvSpeechAdaptStatus = tvSpeechAdaptStatus
+        this.btnRestoreSpeechAdapt = btnRestoreSpeechAdapt
         this.switchBeep = switchBeep
         this.switchToast = switchToast
         this.btnFallbackPlayPause = btnFallbackPlayPause
@@ -153,6 +160,24 @@ class CarVoiceAndAmapPageBinder(
             }
         }
 
+        btnRestoreSpeechAdapt.setOnClickListener {
+            btnRestoreSpeechAdapt.isEnabled = false
+            btnRestoreSpeechAdapt.text = "正在解冻..."
+            Thread {
+                val (ok, msg) = CarVoiceDriverHelper.restoreDriver()
+                mainHandler.post {
+                    btnRestoreSpeechAdapt.isEnabled = true
+                    btnRestoreSpeechAdapt.text = "一键解冻按键驱动"
+                    refreshSpeechAdaptStatus()
+                    AlertDialog.Builder(activity)
+                        .setTitle(if (ok) "驱动恢复完成" else "恢复失败")
+                        .setMessage(msg)
+                        .setPositiveButton("确定", null)
+                        .show()
+                }
+            }.start()
+        }
+
         btnAmapDownload.setOnClickListener {
             promptDownloadAmap()
         }
@@ -197,6 +222,8 @@ class CarVoiceAndAmapPageBinder(
         val statusText = if (dynamicGateway != null) "已连热点网关: $phoneIp:8999" else "静态配置网关: $phoneIp:8999 (未连热点)"
         tvGateway.text = statusText
 
+        refreshSpeechAdaptStatus()
+
         switchBeep.isChecked = CarVoiceFeedbackManager.isBeepEnabled(activity)
         switchToast.isChecked = CarVoiceFeedbackManager.isToastEnabled(activity)
 
@@ -213,6 +240,19 @@ class CarVoiceAndAmapPageBinder(
             tvRecentLog.text = sb.toString()
         } else {
             tvRecentLog.text = "最近触发: 暂无触发记录 (按下方向盘语音键即可实时记录)"
+        }
+    }
+
+    private fun refreshSpeechAdaptStatus() {
+        val status = CarVoiceDriverHelper.checkStatus(activity)
+        if (status.isReady) {
+            tvSpeechAdaptStatus.text = "按键驱动: 🟢 ${status.detail}"
+            tvSpeechAdaptStatus.setTextColor(Color.parseColor("#00D26A"))
+            btnRestoreSpeechAdapt.visibility = View.GONE
+        } else {
+            tvSpeechAdaptStatus.text = "按键驱动: 🔴 ${status.detail}"
+            tvSpeechAdaptStatus.setTextColor(Color.parseColor("#FF5252"))
+            btnRestoreSpeechAdapt.visibility = if (status.needsRestore) View.VISIBLE else View.GONE
         }
     }
 

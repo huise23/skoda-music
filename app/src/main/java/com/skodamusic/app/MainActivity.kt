@@ -557,6 +557,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         carVoiceAndAmapPageBinder.bindViews(
             tvGateway = findViewById(R.id.car_voice_gateway_value),
             tvChannelStatus = findViewById(R.id.car_voice_channel_status),
+            tvSpeechAdaptStatus = findViewById(R.id.tv_speech_adapt_status),
+            btnRestoreSpeechAdapt = findViewById(R.id.btn_restore_speech_adapt),
             switchBeep = findViewById(R.id.switch_voice_beep),
             switchToast = findViewById(R.id.switch_voice_toast),
             btnFallbackPlayPause = findViewById(R.id.btn_voice_fallback_play_pause),

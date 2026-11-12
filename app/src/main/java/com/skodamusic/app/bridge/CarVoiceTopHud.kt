@@ -120,6 +120,26 @@ object CarVoiceTopHud {
         show(context, icon = "⚠️", text = text, autoDismissMs = autoDismissMs)
     }
 
+    /**
+     * Displays user's recognized speech and assistant's reply in the global top banner.
+     * E.g.: 🗣️ “播放周杰伦晴天” -> 正在搜索播放
+     */
+    fun showVoiceContent(
+        context: Context,
+        userText: String,
+        replyText: String? = null,
+        autoDismissMs: Long = 6500L
+    ) {
+        val cleanUser = userText.trim().removeSurrounding("“", "”").removeSurrounding("\"", "\"")
+        val content = if (replyText.isNullOrBlank()) {
+            "“$cleanUser”"
+        } else {
+            val cleanReply = replyText.trim().removeSurrounding("“", "”").removeSurrounding("\"", "\"")
+            "“$cleanUser” -> $cleanReply"
+        }
+        show(context, icon = "🗣️", text = content, autoDismissMs = autoDismissMs)
+    }
+
     @Synchronized
     fun hide() {
         mainHandler.post {

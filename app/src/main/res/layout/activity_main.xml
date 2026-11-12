@@ -1727,6 +1727,53 @@
                                 android:textColor="@color/text_primary"
                                 android:textSize="15sp" />
                         </LinearLayout>
+
+                        <!-- Wi-Fi 射频共存与热点搜网自愈 -->
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="14dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#263342" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="蓝牙连上后自动自愈 Wi-Fi 搜网"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp" />
+
+                            <androidx.appcompat.widget.SwitchCompat
+                                android:id="@+id/switch_wifi_auto_reconnect"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <Button
+                            android:id="@+id/btn_reset_wifi_coexistence"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:layout_marginTop="10dp"
+                            android:background="@drawable/button_secondary"
+                            android:text="一键重置 Wi-Fi 射频 / 重新搜热点"
+                            android:textColor="@color/brand_primary"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/wifi_coexistence_status"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="状态: 针对车机 2.4G 蓝牙/Wi-Fi 共存死锁，先连蓝牙后起热点可一键瞬间激活驱动"
+                            android:textColor="@color/text_muted"
+                            android:textSize="13sp" />
                     </LinearLayout>
 
                     <!-- 高德地图车机版 6.6.0 (红绿灯倒计时增强版) 专区卡片 -->

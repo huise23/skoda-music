@@ -26,18 +26,30 @@ class BootCompletedReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON",
+            "autochips.intent.action.QB_POWERON",
+            "autochips.intent.action.QB_PREPOWERON",
             "autochips.intent.action.RESUME_APPS",
             "autochips.intent.action.QB_SERVICE",
             "com.autochips.quickboot.poweron",
             "com.autochips.action.RESUME_APPS",
+            "com.autochips.intent.action.QB_POWERON",
             "com.yecon.action.ACC_ON",
-            "com.yecon.action.RESUME_APPS"
+            "com.yecon.action.RESUME_APPS",
+            "com.yecon.action.YECON_BOOT_COMPLETED",
+            "com.yunos.action.accstat",
+            Intent.ACTION_USER_PRESENT,
+            Intent.ACTION_SCREEN_ON
         )
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         Log.i(TAG, "Received broadcast action: $action")
+
+        if (action == "com.yunos.action.accstat" && intent.getIntExtra("state", -1) == 0) {
+            Log.i(TAG, "accstat is 0 (ACC OFF / sleep), ignoring")
+            return
+        }
 
         if (BOOT_ACTIONS.contains(action)) {
             val prefs = context.getSharedPreferences(PREFS_BOOT, Context.MODE_PRIVATE)
@@ -59,8 +71,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
                 context.startService(serviceIntent)
                 Log.i(TAG, "Successfully started PlaybackService on boot")
 
-                // 2. Start CarBridgeServer
+                // 2. Start CarBridgeServer & Wi-Fi auto-reconnect check
                 CarBridgeManager.start(context)
+                com.skodamusic.app.net.CarWifiAutoReconnectManager.onWakeup(context)
 
                 // 3. Launch MainActivity with EXTRA_BOOT_START
                 val activityIntent = Intent(context, MainActivity::class.java).apply {

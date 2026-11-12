@@ -48,6 +48,7 @@ class OverlayController(
     private var dockView: View? = null
     private var pillView: View? = null
     private var titleView: TextView? = null
+    private var artistView: TextView? = null
     private var lyricView: TextView? = null
     private var progressBar: ProgressBar? = null
     private var playPauseButton: ImageButton? = null
@@ -87,6 +88,7 @@ class OverlayController(
 
     fun update(snapshot: PlaybackStateStore.Snapshot) {
         titleView?.text = if (snapshot.trackTitle.isNotBlank()) snapshot.trackTitle else "未加载曲目"
+        artistView?.text = if (snapshot.artist.isNotBlank()) snapshot.artist else "车载高保真"
         lyricView?.text = when {
             snapshot.currentLyric.isNotBlank() -> snapshot.currentLyric
             snapshot.trackTitle.isNotBlank() -> "Skoda Music 随车播控"
@@ -203,47 +205,57 @@ class OverlayController(
         }
         contentRow.addView(collapseBtn, collapseParams)
 
-        // Center-left clickable info section (Cover/Icon + Title + Single-line Lyric)
+        // Left section: Track title & Artist (musicIcon removed)
         val leftSection = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnClickListener { listener.onTrackTitleClicked() }
         }
-        contentRow.addView(leftSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-
-        val musicIcon = ImageView(context).apply {
-            setImageResource(android.R.drawable.ic_media_play)
-            setColorFilter(Color.parseColor("#38BDF8"))
-        }
-        leftSection.addView(musicIcon, LinearLayout.LayoutParams(dp(28), dp(28)))
-
-        val textCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(10), 0)
-        }
-        leftSection.addView(textCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        contentRow.addView(leftSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f))
 
         val title = TextView(context).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "未加载曲目"
         }
-        textCol.addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        leftSection.addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        val artist = TextView(context).apply {
+            setTextColor(Color.parseColor("#94A3B8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            text = "车载高保真"
+        }
+        leftSection.addView(artist, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(2)
+        })
+
+        // Center section: Floating lyric placed in the middle
+        val centerLyricSection = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(6), 0, dp(6), 0)
+            isClickable = true
+            setOnClickListener { listener.onTrackTitleClicked() }
+        }
+        contentRow.addView(centerLyricSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.8f))
 
         val lyric = TextView(context).apply {
             setTextColor(Color.parseColor("#4ADE80"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setTypeface(Typeface.DEFAULT_BOLD)
+            gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "Skoda Music 随车播控"
         }
-        textCol.addView(lyric, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        centerLyricSection.addView(lyric, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         // Right controls (Prev, Play/Pause, Next, Close) - 2x enlarged
         val rightRow = LinearLayout(context).apply {
@@ -275,6 +287,7 @@ class OverlayController(
         })
 
         titleView = title
+        artistView = artist
         lyricView = lyric
         progressBar = progress
         playPauseButton = playBtn

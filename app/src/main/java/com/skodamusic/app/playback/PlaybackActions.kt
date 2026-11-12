@@ -21,6 +21,7 @@ object PlaybackActions {
     const val CMD_SOURCE_HARDWARE_KEY = "hardware_key"
 
     const val EXTRA_TRACK_TITLE = "extra_track_title"
+    const val EXTRA_ARTIST = "extra_artist"
     const val EXTRA_TRACK_ID = "extra_track_id"
     const val EXTRA_IS_PLAYING = "extra_is_playing"
     const val EXTRA_HAS_ACTIVE_TRACK = "extra_has_active_track"

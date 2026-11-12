@@ -4,7 +4,10 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
@@ -31,6 +34,20 @@ class PlaybackService : Service(), OverlayController.Listener {
         positionMs = 0L,
         durationMs = 0L
     )
+
+    private val carWakeupReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            Log.i(LOG_TAG, "Car wakeup broadcast received in PlaybackService: $action")
+            if (action == "com.yunos.action.accstat" && intent.getIntExtra("state", -1) == 0) {
+                return
+            }
+            stateStore.setOverlayDismissedByUser(false)
+            updatePresentation()
+            com.skodamusic.app.bridge.CarBridgeManager.start(applicationContext)
+            com.skodamusic.app.net.CarWifiAutoReconnectManager.onWakeup(applicationContext)
+        }
+    }
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
@@ -54,6 +71,20 @@ class PlaybackService : Service(), OverlayController.Listener {
         startForeground(NOTIFICATION_ID, buildNotification())
         com.skodamusic.app.bridge.CarBridgeManager.start(applicationContext)
         com.skodamusic.app.bridge.CarBridgeHeartbeatManager.start(applicationContext)
+
+        val wakeupFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction("autochips.intent.action.QB_POWERON")
+            addAction("autochips.intent.action.QB_PREPOWERON")
+            addAction("com.autochips.quickboot.poweron")
+            addAction("com.yecon.action.ACC_ON")
+            addAction("com.yecon.action.RESUME_APPS")
+            addAction("com.yecon.action.YECON_BOOT_COMPLETED")
+            addAction("com.yunos.action.accstat")
+        }
+        registerReceiver(carWakeupReceiver, wakeupFilter)
+        com.skodamusic.app.net.CarWifiAutoReconnectManager.init(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,6 +106,7 @@ class PlaybackService : Service(), OverlayController.Listener {
             PlaybackActions.ACTION_STATE_UPDATE -> {
                 val title = intent.getStringExtra(PlaybackActions.EXTRA_TRACK_TITLE).orEmpty()
                 val lyric = intent.getStringExtra(PlaybackActions.EXTRA_CURRENT_LYRIC).orEmpty()
+                val artist = intent.getStringExtra(PlaybackActions.EXTRA_ARTIST).orEmpty()
                 snapshot = PlaybackStateStore.Snapshot(
                     trackTitle = title,
                     trackId = intent.getStringExtra(PlaybackActions.EXTRA_TRACK_ID).orEmpty(),
@@ -82,7 +114,8 @@ class PlaybackService : Service(), OverlayController.Listener {
                     hasActiveTrack = intent.getBooleanExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, false),
                     positionMs = intent.getLongExtra(PlaybackActions.EXTRA_POSITION_MS, 0L).coerceAtLeast(0L),
                     durationMs = intent.getLongExtra(PlaybackActions.EXTRA_DURATION_MS, 0L).coerceAtLeast(0L),
-                    currentLyric = lyric
+                    currentLyric = lyric,
+                    artist = artist
                 )
                 stateStore.saveSnapshot(snapshot)
                 updatePresentation()
@@ -110,6 +143,8 @@ class PlaybackService : Service(), OverlayController.Listener {
         abandonAudioFocusIfHeld()
         overlayController.hide()
         remoteControlBridge.release()
+        runCatching { unregisterReceiver(carWakeupReceiver) }
+        com.skodamusic.app.net.CarWifiAutoReconnectManager.release()
         com.skodamusic.app.bridge.CarBridgeHeartbeatManager.stop()
         com.skodamusic.app.bridge.CarBridgeManager.stop()
         super.onDestroy()

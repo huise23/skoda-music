@@ -17,6 +17,7 @@ import com.skodamusic.app.bridge.CarBridgeHeartbeatManager
 import com.skodamusic.app.bridge.CarBridgeManager
 import com.skodamusic.app.bridge.CarVoiceDriverHelper
 import com.skodamusic.app.bridge.CarVoiceFeedbackManager
+import com.skodamusic.app.net.CarWifiAutoReconnectManager
 import java.io.File
 
 /**
@@ -42,6 +43,10 @@ class CarVoiceAndAmapPageBinder(
     private lateinit var tvRecentLog: TextView
     private lateinit var btnTestVoiceKey: Button
     private lateinit var btnPingPhone: Button
+
+    private var switchWifiAutoReconnect: SwitchCompat? = null
+    private var btnResetWifiCoexistence: Button? = null
+    private var tvWifiCoexistenceStatus: TextView? = null
 
     private lateinit var tvAmapStatus: TextView
     private lateinit var progressBarAmap: ProgressBar
@@ -71,6 +76,9 @@ class CarVoiceAndAmapPageBinder(
         tvRecentLog: TextView,
         btnTestVoiceKey: Button,
         btnPingPhone: Button,
+        switchWifiAutoReconnect: SwitchCompat? = null,
+        btnResetWifiCoexistence: Button? = null,
+        tvWifiCoexistenceStatus: TextView? = null,
         tvAmapStatus: TextView,
         progressBarAmap: ProgressBar,
         tvProgressAmap: TextView,
@@ -90,6 +98,10 @@ class CarVoiceAndAmapPageBinder(
         this.tvRecentLog = tvRecentLog
         this.btnTestVoiceKey = btnTestVoiceKey
         this.btnPingPhone = btnPingPhone
+
+        this.switchWifiAutoReconnect = switchWifiAutoReconnect
+        this.btnResetWifiCoexistence = btnResetWifiCoexistence
+        this.tvWifiCoexistenceStatus = tvWifiCoexistenceStatus
 
         this.tvAmapStatus = tvAmapStatus
         this.progressBarAmap = progressBarAmap
@@ -193,12 +205,39 @@ class CarVoiceAndAmapPageBinder(
                 Toast.makeText(activity, "高德车机版尚未安装，请点击下载或扫描安装", Toast.LENGTH_LONG).show()
             }
         }
+
+        switchWifiAutoReconnect?.isChecked = CarWifiAutoReconnectManager.isAutoReconnectEnabled(activity)
+        switchWifiAutoReconnect?.setOnCheckedChangeListener { _, isChecked ->
+            CarWifiAutoReconnectManager.setAutoReconnectEnabled(activity, isChecked)
+            log("Wi-Fi auto reconnect enabled: $isChecked")
+        }
+
+        btnResetWifiCoexistence?.setOnClickListener {
+            tvWifiCoexistenceStatus?.text = "状态: 正在复位车机 Wi-Fi 芯片射频并主动搜网..."
+            Toast.makeText(activity, "正在重置车机 Wi-Fi 射频并重新搜网...", Toast.LENGTH_SHORT).show()
+            btnResetWifiCoexistence?.isEnabled = false
+            CarWifiAutoReconnectManager.manualResetWifi(activity) { success ->
+                btnResetWifiCoexistence?.isEnabled = true
+                if (success) {
+                    tvWifiCoexistenceStatus?.text = "状态: 🟢 Wi-Fi 射频已复位，正在发起热点重连！"
+                    Toast.makeText(activity, "车机 Wi-Fi 已复位，正在发起热点重连！", Toast.LENGTH_LONG).show()
+                } else {
+                    tvWifiCoexistenceStatus?.text = "状态: ⚠️ 复位完成，请检查手机热点是否开启"
+                }
+            }
+        }
     }
 
     fun refreshAll() {
         refreshVoiceSection()
         refreshAmapSection()
         updateChannelStatusUi(CarBridgeHeartbeatManager.getState())
+        val isConnected = CarWifiAutoReconnectManager.isWifiConnected(activity)
+        tvWifiCoexistenceStatus?.text = if (isConnected) {
+            "状态: 🟢 Wi-Fi 已连接正常 (2.4G 射频工作良好)"
+        } else {
+            "状态: ⚪ Wi-Fi 未连接，若先连蓝牙后起热点搜不到，可点击上方按钮一键复位"
+        }
     }
 
     private fun updateChannelStatusUi(state: CarBridgeHeartbeatManager.HeartbeatState) {

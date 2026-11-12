@@ -134,9 +134,11 @@ class CarBridgeServer(
                     put("status", "ok")
                     put("isPlaying", snapshot.isPlaying)
                     put("trackTitle", snapshot.trackTitle)
+                    put("artist", snapshot.artist)
                     put("trackId", snapshot.trackId)
                     put("positionMs", snapshot.positionMs)
                     put("durationMs", snapshot.durationMs)
+                    put("currentLyric", snapshot.currentLyric)
                 }
             }
             path.startsWith("/api/music/control") && method == "POST" -> {

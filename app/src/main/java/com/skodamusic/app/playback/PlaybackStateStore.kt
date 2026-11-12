@@ -10,7 +10,8 @@ class PlaybackStateStore(context: Context) {
         val hasActiveTrack: Boolean,
         val positionMs: Long,
         val durationMs: Long,
-        val currentLyric: String = ""
+        val currentLyric: String = "",
+        val artist: String = ""
     )
 
     data class CommandTrace(
@@ -32,6 +33,7 @@ class PlaybackStateStore(context: Context) {
             .putLong(KEY_POSITION_MS, snapshot.positionMs.coerceAtLeast(0L))
             .putLong(KEY_DURATION_MS, snapshot.durationMs.coerceAtLeast(0L))
             .putString(KEY_CURRENT_LYRIC, snapshot.currentLyric)
+            .putString(KEY_ARTIST, snapshot.artist)
             .putLong(KEY_UPDATED_AT_MS, System.currentTimeMillis())
             .apply()
     }
@@ -44,7 +46,8 @@ class PlaybackStateStore(context: Context) {
             hasActiveTrack = prefs.getBoolean(KEY_HAS_ACTIVE_TRACK, false),
             positionMs = prefs.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
             durationMs = prefs.getLong(KEY_DURATION_MS, 0L).coerceAtLeast(0L),
-            currentLyric = prefs.getString(KEY_CURRENT_LYRIC, "").orEmpty()
+            currentLyric = prefs.getString(KEY_CURRENT_LYRIC, "").orEmpty(),
+            artist = prefs.getString(KEY_ARTIST, "").orEmpty()
         )
     }
 
@@ -85,6 +88,7 @@ class PlaybackStateStore(context: Context) {
         const val KEY_POSITION_MS = "position_ms"
         const val KEY_DURATION_MS = "duration_ms"
         const val KEY_CURRENT_LYRIC = "current_lyric"
+        const val KEY_ARTIST = "artist"
         const val KEY_UPDATED_AT_MS = "updated_at_ms"
         const val KEY_OVERLAY_DISMISSED_BY_USER = "overlay_dismissed_by_user"
         const val KEY_LAST_CMD_ACTION = "last_cmd_action"

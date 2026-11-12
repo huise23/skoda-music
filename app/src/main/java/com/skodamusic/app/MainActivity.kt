@@ -281,6 +281,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     @Volatile private var downloadControllerStop = false
     private var lastReportedServiceTrackId: String = ""
     private var lastReportedServiceTrackTitle: String = ""
+    private var lastReportedServiceArtist: String = ""
     private var lastReportedServiceIsPlaying: Boolean = false
     private var lastReportedServiceHasTrack: Boolean = false
     private var lastReportedServicePositionMs: Long = -1L
@@ -567,6 +568,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             tvRecentLog = findViewById(R.id.car_voice_recent_log),
             btnTestVoiceKey = findViewById(R.id.btn_test_voice_key),
             btnPingPhone = findViewById(R.id.btn_ping_phone_agent),
+            switchWifiAutoReconnect = findViewById(R.id.switch_wifi_auto_reconnect),
+            btnResetWifiCoexistence = findViewById(R.id.btn_reset_wifi_coexistence),
+            tvWifiCoexistenceStatus = findViewById(R.id.wifi_coexistence_status),
             tvAmapStatus = findViewById(R.id.amap65_status_value),
             progressBarAmap = findViewById(R.id.amap65_progress_bar),
             tvProgressAmap = findViewById(R.id.amap65_progress_text),
@@ -2906,16 +2910,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             playbackSeekBar.progress = seekProgress
         }
         homeLyricsBinder.renderPosition(positionMs)
+        maybePersistPlaybackResumeState(positionMs = positionMs)
+        maybeSyncServiceCommandTrace()
+        reportPlaybackStateToService()
 
         if (snapshot.source == MusicSource.KUGOU) {
             downloadProgressValue.text = getString(R.string.download_progress_placeholder)
-            maybeSyncServiceCommandTrace()
             return
         }
 
         val track = loadedTracks.getOrNull(currentTrackIndex) ?: run {
             downloadProgressValue.text = getString(R.string.download_progress_placeholder)
-            maybeSyncServiceCommandTrace()
             return
         }
         val state = getOrCreateTrackDownloadState(track)
@@ -2941,10 +2946,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             playableText,
             durationText
         )
-        maybePersistPlaybackResumeState(positionMs = positionMs)
-        maybeSyncServiceCommandTrace()
-        reportPlaybackStateToService()
-
     }
 
     private fun observePlaybackAudioSession(source: String) {
@@ -5613,6 +5614,9 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private fun reportPlaybackStateToService(force: Boolean = false) {
         val snapshot = currentSourcePlaybackSnapshot()
         val trackTitle = snapshot?.title ?: uiState.currentTrack
+        val artist = snapshot?.artist?.takeIf { it.isNotBlank() }
+            ?: previewArtistOverride
+            ?: ""
         val hasTrack = snapshot?.hasTrack == true
         val trackId = snapshot?.trackId.orEmpty()
         val isPlaying = uiState.isPlaying && hasTrack
@@ -5623,6 +5627,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val nowMs = SystemClock.elapsedRealtime()
         val baseUnchanged = trackId == lastReportedServiceTrackId &&
             trackTitle == lastReportedServiceTrackTitle &&
+            artist == lastReportedServiceArtist &&
             hasTrack == lastReportedServiceHasTrack &&
             isPlaying == lastReportedServiceIsPlaying &&
             durationMs == lastReportedServiceDurationMs
@@ -5642,6 +5647,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         lastReportedServiceTrackId = trackId
         lastReportedServiceTrackTitle = trackTitle
+        lastReportedServiceArtist = artist
         lastReportedServiceHasTrack = hasTrack
         lastReportedServiceIsPlaying = isPlaying
         lastReportedServicePositionMs = positionMs
@@ -5650,6 +5656,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lastReportedServiceAtMs = nowMs
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
+            putExtra(PlaybackActions.EXTRA_ARTIST, artist)
             putExtra(PlaybackActions.EXTRA_TRACK_ID, trackId)
             putExtra(PlaybackActions.EXTRA_HAS_ACTIVE_TRACK, hasTrack)
             putExtra(PlaybackActions.EXTRA_IS_PLAYING, isPlaying)

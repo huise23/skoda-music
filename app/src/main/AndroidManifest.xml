@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <application
         android:name="androidx.multidex.MultiDexApplication"
@@ -53,12 +55,19 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="autochips.intent.action.QB_POWERON" />
+                <action android:name="autochips.intent.action.QB_PREPOWERON" />
                 <action android:name="autochips.intent.action.RESUME_APPS" />
                 <action android:name="autochips.intent.action.QB_SERVICE" />
                 <action android:name="com.autochips.quickboot.poweron" />
                 <action android:name="com.autochips.action.RESUME_APPS" />
+                <action android:name="com.autochips.intent.action.QB_POWERON" />
                 <action android:name="com.yecon.action.ACC_ON" />
                 <action android:name="com.yecon.action.RESUME_APPS" />
+                <action android:name="com.yecon.action.YECON_BOOT_COMPLETED" />
+                <action android:name="com.yunos.action.accstat" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.SCREEN_ON" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>

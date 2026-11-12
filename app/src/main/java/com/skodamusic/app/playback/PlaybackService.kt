@@ -53,6 +53,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         ensureNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         com.skodamusic.app.bridge.CarBridgeManager.start(applicationContext)
+        com.skodamusic.app.bridge.CarBridgeHeartbeatManager.start(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,6 +110,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         abandonAudioFocusIfHeld()
         overlayController.hide()
         remoteControlBridge.release()
+        com.skodamusic.app.bridge.CarBridgeHeartbeatManager.stop()
         com.skodamusic.app.bridge.CarBridgeManager.stop()
         super.onDestroy()
     }

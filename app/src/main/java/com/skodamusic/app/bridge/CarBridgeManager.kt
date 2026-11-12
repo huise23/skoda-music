@@ -129,7 +129,7 @@ object CarBridgeManager {
         executor.execute {
             var conn: HttpURLConnection? = null
             try {
-                val targetUrl = "http://$phoneIp:$phonePort/api/ping"
+                val targetUrl = "http://$phoneIp:$phonePort/api/agent/ping"
                 val url = URL(targetUrl)
                 conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"

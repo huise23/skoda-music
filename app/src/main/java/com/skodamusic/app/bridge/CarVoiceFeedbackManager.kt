@@ -186,8 +186,10 @@ object CarVoiceFeedbackManager {
         // 1. Instant auditory tone (driver hears instant response within milliseconds)
         playTone(context, ToneGenerator.TONE_PROP_BEEP, 120)
 
-        // 2. Ensure CarBridge server is up
+        // 2. Ensure CarBridge server is up and heartbeat keep-alive is active
         CarBridgeManager.start(context)
+        CarBridgeHeartbeatManager.start(context)
+        CarBridgeHeartbeatManager.pingNow(context)
 
         // 3. Resolve phone IP and display visual HUD
         val phoneIp = CarBridgeManager.getPhoneIp(context)
@@ -199,6 +201,9 @@ object CarVoiceFeedbackManager {
             isSuccess = null
         )
         addHistoryEvent(context, event)
+
+        // Global top floating HUD (OEM-style floating top banner)
+        CarVoiceTopHud.showListening(context, "正在倾听，请对手机说话...")
 
         showVoiceToast(
             context = context,
@@ -221,6 +226,8 @@ object CarVoiceFeedbackManager {
                     saveHistory(context)
                     notifyListeners()
 
+                    CarVoiceTopHud.showSuccess(context, "手机端易语助手已就绪，请对手机说话", autoDismissMs = 6000L)
+
                     showVoiceToast(
                         context = context,
                         title = "✅ 手机语音助手已唤醒",
@@ -242,6 +249,13 @@ object CarVoiceFeedbackManager {
                     }
                     saveHistory(context)
                     notifyListeners()
+
+                    val fallbackHint = if (fallbackExecuted.isNotEmpty()) "，已自动：$fallbackExecuted" else ""
+                    CarVoiceTopHud.showError(
+                        context,
+                        "手机未连接 ($phoneIp)$fallbackHint",
+                        autoDismissMs = 4500L
+                    )
 
                     sendRuntimeBroadcast(context, "[VoiceKey] 手机未响应 ($failReason), 兜底: $fallback")
                 }

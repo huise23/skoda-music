@@ -556,6 +556,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         )
         carVoiceAndAmapPageBinder.bindViews(
             tvGateway = findViewById(R.id.car_voice_gateway_value),
+            tvChannelStatus = findViewById(R.id.car_voice_channel_status),
             switchBeep = findViewById(R.id.switch_voice_beep),
             switchToast = findViewById(R.id.switch_voice_toast),
             btnFallbackPlayPause = findViewById(R.id.btn_voice_fallback_play_pause),
@@ -5740,6 +5741,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         PlaybackActions.ACTION_CMD_PAUSE,
                         source = PlaybackActions.CMD_SOURCE_HARDWARE_KEY,
                         allowToast = false
+                    )
+                    return true
+                }
+                KeyEvent.KEYCODE_VOICE_ASSIST,
+                KeyEvent.KEYCODE_SEARCH,
+                KeyEvent.KEYCODE_ASSIST,
+                KeyEvent.KEYCODE_HEADSETHOOK,
+                231 -> {
+                    com.skodamusic.app.bridge.CarVoiceFeedbackManager.onVoiceTriggered(
+                        this,
+                        "HardwareKey(${event.keyCode})"
                     )
                     return true
                 }

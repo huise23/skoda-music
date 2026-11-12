@@ -1552,6 +1552,15 @@
                             android:textColor="@color/text_secondary"
                             android:textSize="15sp" />
 
+                        <TextView
+                            android:id="@+id/car_voice_channel_status"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="车载通道: 🟢 正在检测通道保活..."
+                            android:textColor="#00D26A"
+                            android:textSize="14sp" />
+
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -1691,7 +1700,7 @@
                         </LinearLayout>
                     </LinearLayout>
 
-                    <!-- 高德地图车机版 6.5 (红绿灯倒计时版) 专区卡片 -->
+                    <!-- 高德地图车机版 6.6.0 (红绿灯倒计时增强版) 专区卡片 -->
                     <LinearLayout
                         android:id="@+id/panel_amap65_card"
                         android:layout_width="match_parent"
@@ -1705,7 +1714,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:fontFamily="sans-serif-medium"
-                            android:text="高德地图车机版 6.5 (红绿灯倒计时版)"
+                            android:text="高德地图车机版 6.6.0 (红绿灯倒计时增强版)"
                             android:textColor="@color/brand_primary"
                             android:textSize="18sp" />
 
@@ -1722,7 +1731,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="特性：官方 6.5.0 绝版，适配 Android 4.0+ (minSdk 14)，支持路线红绿灯读秒、车道级引导，专为 1GB 内存优化"
+                            android:text="特性：官方 6.6.0 稳定版，适配 Android 4.0+ (minSdk 14)，强化实时红绿灯倒计时推演、车道级引导，专为 1GB 内存优化"
                             android:textColor="@color/text_muted"
                             android:textSize="13sp" />
 

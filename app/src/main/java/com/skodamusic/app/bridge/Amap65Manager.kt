@@ -11,26 +11,25 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
  * Manager for downloading, checking and installing AutoNavi Car Edition (Amap Auto)
- * Version 6.5.0 (Auto_V6.5.0.601571_release.apk).
+ * Version 6.6.0 (Auto_V6.6.0.602552_release_signed.apk).
  *
  * This version is verified to run on Android 4.0+ (minSdkVersion=14), features
- * real-time traffic light countdown, lane guidance, and stable performance on 1GB RAM.
+ * enhanced real-time traffic light countdown, lane guidance, and optimized stability for 1GB RAM.
  * Fully compatible with Android API 17 (Jelly Bean 4.2.2).
  */
 object Amap65Manager {
-    private const val TAG = "Amap65Manager"
+    private const val TAG = "AmapAutoManager"
 
     const val PACKAGE_NAME = "com.autonavi.amapauto"
-    const val TARGET_VERSION_NAME = "6.5.0.601571"
-    const val OFFICIAL_DOWNLOAD_URL = "https://mapdownload.autonavi.com/apps/auto/manual/V650/Auto_V6.5.0.601571_release.apk"
-    const val EXPECTED_SIZE_BYTES = 85584233L
-    const val EXPECTED_MD5 = "8b42504707d33e0104e16d1a0f1a2149"
+    const val TARGET_VERSION_NAME = "6.6.0.602552"
+    const val OFFICIAL_DOWNLOAD_URL = "https://mapdownload.autonavi.com/apps/auto/manual/V660/Auto_V6.6.0.602552_release_signed.apk"
+    const val EXPECTED_SIZE_BYTES = 85429137L
+    const val TARGET_APK_FILENAME = "Auto_V6.6.0.602552_release_signed.apk"
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
@@ -78,7 +77,7 @@ object Amap65Manager {
     }
 
     /**
-     * Scans internal and USB external storage paths for existing Gaode 6.5 APK.
+     * Scans internal and USB external storage paths for existing Gaode 6.6 or 6.5 APK.
      */
     fun findLocalApk(context: Context): File? {
         val candidateDirs = listOfNotNull(
@@ -97,14 +96,19 @@ object Amap65Manager {
 
         for (dir in candidateDirs) {
             if (!dir.exists() || !dir.isDirectory) continue
-            val directFile = File(dir, "Auto_V6.5.0.601571_release.apk")
-            if (directFile.exists() && directFile.length() > 50_000_000L) {
-                return directFile
+            val direct66 = File(dir, TARGET_APK_FILENAME)
+            if (direct66.exists() && direct66.length() > 50_000_000L) {
+                return direct66
+            }
+            val direct65 = File(dir, "Auto_V6.5.0.601571_release.apk")
+            if (direct65.exists() && direct65.length() > 50_000_000L) {
+                return direct65
             }
             // Search other matching apk files
             val matches = dir.listFiles { f ->
                 f.isFile && f.name.endsWith(".apk", ignoreCase = true) &&
-                        (f.name.contains("Auto_V6.5", ignoreCase = true) ||
+                        (f.name.contains("Auto_V6.6", ignoreCase = true) ||
+                                f.name.contains("Auto_V6.5", ignoreCase = true) ||
                                 (f.name.contains("amap", ignoreCase = true) && f.length() > 70_000_000L))
             }
             if (!matches.isNullOrEmpty()) {
@@ -149,7 +153,7 @@ object Amap65Manager {
     }
 
     /**
-     * Downloads Gaode Auto 6.5 directly from AutoNavi official server and installs via Root.
+     * Downloads Gaode Auto 6.6.0 directly from AutoNavi official server and installs via Root.
      */
     fun downloadAndInstall(
         context: Context,
@@ -157,8 +161,8 @@ object Amap65Manager {
         onComplete: (success: Boolean, message: String) -> Unit
     ) {
         val targetDir = context.externalCacheDir ?: context.cacheDir
-        val targetFile = File(targetDir, "Auto_V6.5.0.601571_release.apk")
-        val tmpFile = File(targetDir, "Auto_V6.5.0.601571_release.apk.tmp")
+        val targetFile = File(targetDir, TARGET_APK_FILENAME)
+        val tmpFile = File(targetDir, "$TARGET_APK_FILENAME.tmp")
 
         executor.execute {
             // 1. Check if targetFile is already valid

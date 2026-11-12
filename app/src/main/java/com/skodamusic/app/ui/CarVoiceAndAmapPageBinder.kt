@@ -13,13 +13,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import com.skodamusic.app.R
 import com.skodamusic.app.bridge.Amap65Manager
+import com.skodamusic.app.bridge.CarBridgeHeartbeatManager
 import com.skodamusic.app.bridge.CarBridgeManager
 import com.skodamusic.app.bridge.CarVoiceFeedbackManager
 import java.io.File
 
 /**
- * UI Binder for Steering Wheel Voice & CarBridge settings as well as
- * AutoNavi (Amap Auto) 6.5 installation and management.
+ * UI Binder for Steering Wheel Voice, CarBridge keep-alive channel settings, as well as
+ * AutoNavi (Amap Auto) 6.6.0 installation and management.
  * Fully compatible with Android API 17 (Jelly Bean 4.2.2).
  */
 class CarVoiceAndAmapPageBinder(
@@ -29,6 +30,7 @@ class CarVoiceAndAmapPageBinder(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private lateinit var tvGateway: TextView
+    private lateinit var tvChannelStatus: TextView
     private lateinit var switchBeep: SwitchCompat
     private lateinit var switchToast: SwitchCompat
     private lateinit var btnFallbackPlayPause: Button
@@ -49,8 +51,13 @@ class CarVoiceAndAmapPageBinder(
         mainHandler.post { refreshVoiceSection() }
     }
 
+    private val heartbeatListener: (CarBridgeHeartbeatManager.HeartbeatState) -> Unit = { state ->
+        mainHandler.post { updateChannelStatusUi(state) }
+    }
+
     fun bindViews(
         tvGateway: TextView,
+        tvChannelStatus: TextView,
         switchBeep: SwitchCompat,
         switchToast: SwitchCompat,
         btnFallbackPlayPause: Button,
@@ -67,6 +74,7 @@ class CarVoiceAndAmapPageBinder(
         btnAmapLaunch: Button
     ) {
         this.tvGateway = tvGateway
+        this.tvChannelStatus = tvChannelStatus
         this.switchBeep = switchBeep
         this.switchToast = switchToast
         this.btnFallbackPlayPause = btnFallbackPlayPause
@@ -87,10 +95,12 @@ class CarVoiceAndAmapPageBinder(
         initListeners()
         refreshAll()
         CarVoiceFeedbackManager.addListener(voiceListener)
+        CarBridgeHeartbeatManager.addListener(heartbeatListener)
     }
 
     fun unbind() {
         CarVoiceFeedbackManager.removeListener(voiceListener)
+        CarBridgeHeartbeatManager.removeListener(heartbeatListener)
     }
 
     private fun initListeners() {
@@ -144,11 +154,11 @@ class CarVoiceAndAmapPageBinder(
         }
 
         btnAmapDownload.setOnClickListener {
-            promptDownloadAmap65()
+            promptDownloadAmap()
         }
 
         btnAmapScan.setOnClickListener {
-            scanLocalAmap65()
+            scanLocalAmap()
         }
 
         btnAmapLaunch.setOnClickListener {
@@ -163,6 +173,22 @@ class CarVoiceAndAmapPageBinder(
     fun refreshAll() {
         refreshVoiceSection()
         refreshAmapSection()
+        updateChannelStatusUi(CarBridgeHeartbeatManager.getState())
+    }
+
+    private fun updateChannelStatusUi(state: CarBridgeHeartbeatManager.HeartbeatState) {
+        if (state.isConnected) {
+            tvChannelStatus.text = "车载通道: 🟢 在线保活中 (延迟 ${state.latencyMs}ms | 目标: ${state.phoneIp}:8999 | 心跳: ${state.pingCount}次)"
+            tvChannelStatus.setTextColor(Color.parseColor("#00D26A"))
+        } else {
+            val hint = if (state.consecutiveFailures > 0) {
+                "连接异常 (连续超时 ${state.consecutiveFailures} 次: ${state.lastError ?: "网络无响应"})"
+            } else {
+                "未连通 (热点未开启或手机易语未运行)"
+            }
+            tvChannelStatus.text = "车载通道: 🔴 $hint"
+            tvChannelStatus.setTextColor(Color.parseColor("#FF5252"))
+        }
     }
 
     private fun refreshVoiceSection() {
@@ -212,24 +238,24 @@ class CarVoiceAndAmapPageBinder(
             tvAmapStatus.text = "当前状态: 已安装 v$installedVersion"
             tvAmapStatus.setTextColor(Color.parseColor("#00D26A"))
             btnAmapLaunch.visibility = View.VISIBLE
-            btnAmapDownload.text = "覆盖重装 6.5 绝版"
+            btnAmapDownload.text = "覆盖重装 6.6.0"
         } else {
-            tvAmapStatus.text = "当前状态: 未安装 (推荐安装 6.5 红绿灯倒计时版)"
+            tvAmapStatus.text = "当前状态: 未安装 (推荐安装 6.6.0 红绿灯倒计时增强版)"
             tvAmapStatus.setTextColor(Color.parseColor("#FFAB00"))
             btnAmapLaunch.visibility = View.GONE
             btnAmapDownload.text = "官方直链下载并安装"
         }
     }
 
-    private fun promptDownloadAmap65() {
+    private fun promptDownloadAmap() {
         AlertDialog.Builder(activity)
-            .setTitle("下载安装高德地图车机版 6.5")
+            .setTitle("下载安装高德地图车机版 6.6.0")
             .setMessage(
                 "安装包信息：\n" +
-                "• 版本号：Auto_V6.5.0.601571_release (官方原版)\n" +
-                "• 核心功能：红绿灯倒计时读秒、车道级引导\n" +
+                "• 版本号：Auto_V6.6.0.602552_release_signed (官方原版)\n" +
+                "• 核心功能：实时红绿灯倒计时推演、车道级引导、路口覆盖率增强\n" +
                 "• 系统适配：Android 4.0+ (minSdk 14)，专为 1GB 内存优化\n" +
-                "• 大小：约 81.6 MB\n\n" +
+                "• 大小：约 85.4 MB\n\n" +
                 "下载完成后将直接通过 Root 静默安装，确定开始下载吗？"
             )
             .setPositiveButton("开始下载") { _, _ ->
@@ -276,7 +302,7 @@ class CarVoiceAndAmapPageBinder(
         )
     }
 
-    private fun scanLocalAmap65() {
+    private fun scanLocalAmap() {
         val localApk = Amap65Manager.findLocalApk(activity)
         if (localApk != null) {
             val sizeMb = String.format(java.util.Locale.US, "%.1f", localApk.length() / (1024f * 1024f))
@@ -306,7 +332,7 @@ class CarVoiceAndAmapPageBinder(
         } else {
             Toast.makeText(
                 activity,
-                "未在内部存储或 U 盘发现高德 6.5 安装包，请插入 U 盘或点击官方下载",
+                "未在内部存储或 U 盘发现高德安装包，请插入 U 盘或点击官方下载",
                 Toast.LENGTH_LONG
             ).show()
         }

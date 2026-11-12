@@ -84,6 +84,43 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
+        <service
+            android:name=".bridge.CarVoiceService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="com.jsbd.vr.start.action" />
+                <action android:name="com.jsbd.vr.start" />
+                <action android:name="com.jsbd.vr.service.action" />
+                <action android:name="com.jsbd.vr.startservice.action" />
+                <action android:name="com.yecon.action.VOICE_START" />
+                <action android:name="com.yecon.action.VOICE_STOP" />
+                <action android:name="com.yecon.action.ISSSR_KEY" />
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <action android:name="android.speech.action.WEB_SEARCH" />
+                <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+        <activity
+            android:name=".bridge.CarVoiceActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true">
+            <intent-filter android:priority="1000">
+                <action android:name="com.jsbd.vr.start.action" />
+                <action android:name="com.jsbd.vr.start" />
+                <action android:name="com.yecon.action.VOICE_START" />
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <action android:name="android.speech.action.WEB_SEARCH" />
+                <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

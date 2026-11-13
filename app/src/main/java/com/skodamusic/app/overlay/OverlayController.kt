@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
@@ -160,39 +162,48 @@ class OverlayController(
     private fun buildDockView(): View {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#EE101720"))
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // Top accent progress line (6dp)
+        // Top accent progress line (4dp)
         val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = PROGRESS_MAX
             progress = 0
-            val progressDrawable = GradientDrawable().apply {
+            val bgDrawable = GradientDrawable().apply {
+                setColor(Color.parseColor("#44000000"))
+            }
+            val fgDrawable = GradientDrawable().apply {
                 setColor(Color.parseColor("#10B981"))
             }
-            setProgressDrawable(progressDrawable)
+            val clipFg = ClipDrawable(fgDrawable, Gravity.START, ClipDrawable.HORIZONTAL)
+            val progressLayer = LayerDrawable(arrayOf(bgDrawable, clipFg)).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
+            progressDrawable = progressLayer
         }
-        container.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(6)))
+        container.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)))
 
-        // Dock content row (124dp height - 1.5x enlarged for in-car visibility)
+        // Dock content row (106dp height - 1.25x scaled for in-car legibility)
         val contentRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, dp(12), 0)
         }
-        container.addView(contentRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(124)))
+        container.addView(contentRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(106)))
 
-        // Leftmost: Manual collapse button ("贴边 ▾") on driver's side (enlarged)
+        // Leftmost: Manual collapse button ("收起 ▾") on driver's side
         val collapseBtn = TextView(context).apply {
-            text = "贴边 ▾"
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            text = "收起 ▾"
+            setTextColor(Color.parseColor("#E2E8F0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
             setTypeface(Typeface.DEFAULT_BOLD)
             gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#263342"))
-                cornerRadius = dp(10).toFloat()
+                setColor(Color.parseColor("#991E293B"))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.parseColor("#475569"))
             }
             setOnClickListener { setCollapsed(true) }
         }
@@ -201,7 +212,7 @@ class OverlayController(
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             leftMargin = dp(4)
-            rightMargin = dp(14)
+            rightMargin = dp(12)
         }
         contentRow.addView(collapseBtn, collapseParams)
 
@@ -209,7 +220,7 @@ class OverlayController(
         val leftSection = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(10), 0)
+            setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnClickListener { listener.onTrackTitleClicked() }
         }
@@ -217,23 +228,25 @@ class OverlayController(
 
         val title = TextView(context).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "未加载曲目"
+            setShadowLayer(5f, 0f, 2f, Color.BLACK)
         }
         leftSection.addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         val artist = TextView(context).apply {
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "车载高保真"
+            setShadowLayer(4f, 0f, 1f, Color.BLACK)
         }
         leftSection.addView(artist, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(4)
+            topMargin = dp(3)
         })
 
         // Center section: Floating lyric placed in the middle
@@ -248,29 +261,30 @@ class OverlayController(
 
         val lyric = TextView(context).apply {
             setTextColor(Color.parseColor("#4ADE80"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
             setTypeface(Typeface.DEFAULT_BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "Skoda Music 随车播控"
+            setShadowLayer(5f, 0f, 2f, Color.BLACK)
         }
         centerLyricSection.addView(lyric, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        // Right controls (Prev, Play/Pause, Next, Close) - 1.5x enlarged
+        // Right controls (Prev, Play/Pause, Next, Close) - 1.25x scaled
         val rightRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
         contentRow.addView(rightRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT))
 
-        val prevBtn = createControlButton(android.R.drawable.ic_media_previous, dp(84), dp(84)) {
+        val prevBtn = createControlButton(android.R.drawable.ic_media_previous, dp(70), dp(70)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PREV)
         }
-        val playBtn = createControlButton(android.R.drawable.ic_media_play, dp(96), dp(96)) {
+        val playBtn = createControlButton(android.R.drawable.ic_media_play, dp(80), dp(80)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE)
         }
-        val nextBtn = createControlButton(android.R.drawable.ic_media_next, dp(84), dp(84)) {
+        val nextBtn = createControlButton(android.R.drawable.ic_media_next, dp(70), dp(70)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_NEXT)
         }
         rightRow.addView(prevBtn)
@@ -282,8 +296,8 @@ class OverlayController(
             hide()
             listener.onDismissByUser()
         }
-        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(56), dp(56)).apply {
-            leftMargin = dp(12)
+        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+            leftMargin = dp(10)
         })
 
         titleView = title
@@ -299,10 +313,10 @@ class OverlayController(
         val pill = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(18), dp(10), dp(18), dp(10))
+            setPadding(dp(16), dp(10), dp(16), dp(10))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F0101720"))
-                cornerRadius = dp(38).toFloat()
+                setColor(Color.parseColor("#E6101720"))
+                cornerRadius = dp(33).toFloat()
                 setStroke(dp(2), Color.parseColor("#38BDF8"))
             }
         }
@@ -310,9 +324,10 @@ class OverlayController(
         val pillText = TextView(context).apply {
             text = "🎵 展开 ▴"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
             setTypeface(Typeface.DEFAULT_BOLD)
             gravity = Gravity.CENTER
+            setShadowLayer(4f, 0f, 1f, Color.BLACK)
         }
         pill.addView(pillText)
 
@@ -368,7 +383,10 @@ class OverlayController(
     private fun createControlButton(iconRes: Int, width: Int, height: Int, onClick: () -> Unit): ImageButton {
         return ImageButton(context).apply {
             setImageResource(iconRes)
-            setBackgroundColor(Color.TRANSPARENT)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#44000000"))
+            }
             scaleType = ImageView.ScaleType.FIT_CENTER
             setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(width, height)
@@ -380,11 +398,14 @@ class OverlayController(
         return ImageButton(context).apply {
             setImageResource(R.drawable.ic_overlay_close)
             setColorFilter(Color.WHITE)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#44000000"))
+            }
             scaleType = ImageView.ScaleType.FIT_CENTER
             setPadding(dp(10), dp(10), dp(10), dp(10))
             minimumWidth = 0
             minimumHeight = 0
-            setBackgroundColor(Color.TRANSPARENT)
             setOnClickListener { onClick() }
         }
     }
@@ -396,8 +417,8 @@ class OverlayController(
         }
         return if (isCollapsed) {
             WindowManager.LayoutParams(
-                dp(160),
-                dp(76),
+                dp(138),
+                dp(66),
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -410,7 +431,7 @@ class OverlayController(
         } else {
             WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                dp(130),
+                dp(110),
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,

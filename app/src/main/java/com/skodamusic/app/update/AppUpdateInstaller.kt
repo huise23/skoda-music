@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.skodamusic.app.system.RootShellHelper
 import java.io.File
 
 class AppUpdateInstaller(
@@ -38,7 +39,6 @@ class AppUpdateInstaller(
         }
 
         // Fast-path: Check if root / shell silent install is available (common on car head units).
-        val hasRoot = File("/system/xbin/su").exists() || File("/system/bin/su").exists()
         val silentResult = trySilentInstall(prepared.installFile)
         if (silentResult) {
             log("silent install succeeded via su/pm")
@@ -49,18 +49,7 @@ class AppUpdateInstaller(
                 message = "silent install succeeded"
             )
         }
-
-        // On rooted car head units (e.g. YunOS), system package installer is blocked by broken unknown sources setting.
-        // If root is available, do not fall back to system installer to avoid the dead-end loop.
-        if (hasRoot) {
-            log("root detected but silent install failed, preventing fallback to broken system installer")
-            return prepared.copy(
-                success = false,
-                errorCode = "ROOT_SILENT_INSTALL_FAILED",
-                message = "Root 静默安装未返回成功，已拦截调起原厂受限安装器",
-                failedStage = "root_silent_install"
-            )
-        }
+        log("silent install not available or unconfirmed, continuing with standard package installer dispatch")
 
         if (Build.VERSION.SDK_INT >= 26) {
             val allowInstall = runCatching {
@@ -138,41 +127,14 @@ class AppUpdateInstaller(
     }
 
     private fun trySilentInstall(targetApk: File): Boolean {
-        val apkPath = targetApk.absolutePath
-
-        // 1. Ensure system settings allows non-market apps via root
-        runCatching {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure install_non_market_apps 1")).waitFor()
-        }
-
-        // 2. Chmod world readable/executable on target APK so pm daemon can read it
-        runCatching {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 \"$apkPath\"")).waitFor()
-        }
-
-        val candidateCommands = listOf(
-            arrayOf("su", "-c", "pm install -r \"$apkPath\""),
-            arrayOf("su", "-c", "pm install -r -d \"$apkPath\""),
-            arrayOf("pm", "install", "-r", apkPath)
-        )
-
-        for (cmd in candidateCommands) {
-            try {
-                val proc = Runtime.getRuntime().exec(cmd)
-                val out = proc.inputStream.bufferedReader().use { it.readText() }
-                val err = proc.errorStream.bufferedReader().use { it.readText() }
-                val exitCode = proc.waitFor()
-                log("trySilentInstall cmd=${cmd.joinToString(" ")} exit=$exitCode out=${out.trim()} err=${err.trim()}")
-                if (exitCode == 0 && (out.contains("Success", ignoreCase = true) || err.contains("Success", ignoreCase = true))) {
-                    // Re-launch main activity after successful replacement
-                    runCatching {
-                        Runtime.getRuntime().exec(arrayOf("su", "-c", "am start -n com.skodamusic.app/.MainActivity"))
-                    }
-                    return true
-                }
-            } catch (e: Exception) {
-                log("trySilentInstall cmd=${cmd.first()} exception=${e.javaClass.simpleName}:${e.message}")
+        log("attempting silent install via RootShellHelper...")
+        val (ok, detail) = RootShellHelper.installApkViaRoot(targetApk)
+        log("RootShellHelper silent install result: ok=$ok, detail=$detail")
+        if (ok) {
+            runCatching {
+                RootShellHelper.runCommand("am start -n com.skodamusic.app/.MainActivity", 5000L)
             }
+            return true
         }
         return false
     }

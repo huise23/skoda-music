@@ -3,6 +3,7 @@ package com.skodamusic.app.bridge
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
+import com.skodamusic.app.system.RootShellHelper
 import java.io.File
 
 /**
@@ -110,32 +111,28 @@ object CarVoiceDriverHelper {
         val frozenFile = candidateFiles.firstOrNull { it.exists() }
         if (frozenFile != null) {
             val target = File("/system/app/SpeechAdapt.apk")
-            val remountCmd = "mount -o remount,rw /system && mv ${frozenFile.absolutePath} ${target.absolutePath} && chmod 644 ${target.absolutePath} && mount -o remount,ro /system"
-            runCatching {
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", remountCmd))
-                p.waitFor()
-                if (target.exists()) {
-                    logs.add("已恢复 SpeechAdapt.apk 文件")
-                    success = true
-                }
-            }
-        }
-
-        // 2. Enable package via pm
-        runCatching {
-            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm enable $PKG_SPEECH_ADAPT"))
-            val out = p.inputStream.bufferedReader().use { it.readText() }.trim()
-            val exit = p.waitFor()
-            if (exit == 0 || out.contains("new state") || out.contains("enabled")) {
-                logs.add("已解冻启用 $PKG_SPEECH_ADAPT")
+            val cmds = listOf(
+                "mount -o remount,rw /system",
+                "mv ${frozenFile.absolutePath} ${target.absolutePath}",
+                "chmod 644 ${target.absolutePath}",
+                "mount -o remount,ro /system"
+            )
+            val res = RootShellHelper.runCommands(cmds)
+            if (target.exists()) {
+                logs.add("已恢复 SpeechAdapt.apk 文件")
                 success = true
             }
         }
 
-        // 3. Keep the noisy old iFlytek UI (SpeechClient) disabled so it never pops up
-        runCatching {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "pm disable $PKG_IFLYTEK_CLIENT"))
+        // 2. Enable package via pm
+        val enableRes = RootShellHelper.runCommand("pm enable $PKG_SPEECH_ADAPT")
+        if (enableRes.isSuccess || enableRes.stdout.contains("new state") || enableRes.stdout.contains("enabled")) {
+            logs.add("已解冻启用 $PKG_SPEECH_ADAPT")
+            success = true
         }
+
+        // 3. Keep the noisy old iFlytek UI (SpeechClient) disabled so it never pops up
+        RootShellHelper.runCommand("pm disable $PKG_IFLYTEK_CLIENT")
 
         return if (success) {
             true to "驱动恢复成功: ${logs.joinToString("; ")}。原车方控按键信号已恢复！"

@@ -18,6 +18,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
         private const val TAG = "BootCompletedReceiver"
         const val PREFS_BOOT = "boot_prefs"
         const val KEY_AUTO_START_ON_BOOT = "auto_start_on_boot"
+        const val KEY_BOOT_AUTO_PLAY = "boot_auto_play"
         const val KEY_BOOT_START_MODE = "boot_start_mode"
         const val BOOT_MODE_DOCK = "dock"
         const val BOOT_MODE_FOREGROUND = "foreground"

@@ -8,6 +8,7 @@ import android.os.Looper
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.skodamusic.app.system.RootShellHelper
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -119,37 +120,17 @@ object Amap65Manager {
     }
 
     /**
-     * Executes root silent install via pm install -r.
+     * Executes root silent install via RootShellHelper (copies to /data/local/tmp to avoid permission denial).
      */
     fun installSilentViaRoot(apkFile: File): Pair<Boolean, String> {
-        val path = apkFile.absolutePath
-        if (!apkFile.exists()) {
-            return false to "安装包文件不存在: $path"
-        }
+        return RootShellHelper.installApkViaRoot(apkFile)
+    }
 
-        try {
-            // Ensure settings allows non-market apps
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure install_non_market_apps 1")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 \"$path\"")).waitFor()
-
-            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm install -r \"$path\""))
-            val stdout = proc.inputStream.bufferedReader().use { it.readText() }
-            val stderr = proc.errorStream.bufferedReader().use { it.readText() }
-            val exitCode = proc.waitFor()
-
-            Log.i(TAG, "Root pm install exitCode=$exitCode, out=$stdout, err=$stderr")
-            val output = "$stdout $stderr".trim()
-            val isSuccess = exitCode == 0 && output.contains("Success", ignoreCase = true)
-
-            return if (isSuccess) {
-                true to "安装成功！"
-            } else {
-                false to "pm install 退出码 $exitCode: $output"
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "installSilentViaRoot failed: ${e.message}", e)
-            return false to (e.message ?: "执行 Root 命令失败")
-        }
+    /**
+     * Fallback: Launches Android system PackageInstaller.
+     */
+    fun installViaSystemPackageInstaller(context: Context, apkFile: File): Boolean {
+        return RootShellHelper.installViaSystemPackageInstaller(context, apkFile)
     }
 
     /**

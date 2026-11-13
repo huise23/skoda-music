@@ -61,13 +61,10 @@ object SystemDiagnosticManager {
 
     private fun testSuExecution(): Pair<Boolean, String> {
         return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            val out = proc.inputStream.bufferedReader().use { it.readText() }.trim()
-            val err = proc.errorStream.bufferedReader().use { it.readText() }.trim()
-            proc.waitFor()
-            val output = if (out.isNotEmpty()) out else err
-            val isRoot = out.contains("uid=0")
-            Pair(isRoot, output)
+            val res = RootShellHelper.runCommand("id", 8000L)
+            val output = res.stdout.ifBlank { res.stderr }
+            val isRoot = res.isSuccess && (output.contains("uid=0") || output.contains("root"))
+            Pair(isRoot, output.ifBlank { "执行退出码: ${res.exitCode}" })
         } catch (e: Throwable) {
             Pair(false, "执行异常: ${e.javaClass.simpleName}: ${e.message}")
         }
@@ -75,21 +72,15 @@ object SystemDiagnosticManager {
 
     private fun testRemountRw(): Pair<Boolean, String> {
         return try {
-            val proc = Runtime.getRuntime().exec(
-                arrayOf("su", "-c", "mount -o remount,rw /system && mount")
-            )
-            val out = proc.inputStream.bufferedReader().use { it.readText() }
-            proc.waitFor()
-            // Check if /system is mounted rw
-            val hasSystemRw = out.lines().any { line ->
+            val res = RootShellHelper.runCommand("mount -o remount,rw /system && mount", 10000L)
+            val hasSystemRw = res.stdout.lines().any { line ->
                 line.contains("/system") && line.contains("rw")
             }
-            // Remount back to ro for safety
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "mount -o remount,ro /system")).waitFor()
+            RootShellHelper.runCommand("mount -o remount,ro /system", 5000L)
             if (hasSystemRw) {
                 Pair(true, "支持读写重挂载 (remount rw/ro 校验成功)")
             } else {
-                Pair(false, "未检测到 /system rw 挂载标志")
+                Pair(false, "未检测到 /system rw 挂载标志 (退出码 ${res.exitCode}: ${res.stderr})")
             }
         } catch (e: Throwable) {
             Pair(false, "挂载测试异常: ${e.message}")

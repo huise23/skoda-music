@@ -1504,6 +1504,27 @@
                         android:textSize="14sp" />
 
                     <Button
+                        android:id="@+id/btn_convert_to_system_app"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/button_secondary"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="一键将本应用固化为系统应用 (/system/app)"
+                        android:textAllCaps="false"
+                        android:textColor="@color/brand_primary"
+                        android:textSize="17sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:fontFamily="sans-serif"
+                        android:text="提示：通过 Root 将本应用复制到系统分区并赋予 644 权限，彻底解决开机不自启与熄火休眠被杀问题"
+                        android:textColor="@color/text_muted"
+                        android:textSize="13sp" />
+
+                    <Button
                         android:id="@+id/btn_open_system_debloat"
                         android:layout_width="match_parent"
                         android:layout_height="48dp"

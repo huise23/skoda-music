@@ -60,6 +60,7 @@ import com.skodamusic.app.model.LrcApiCredentials
 import com.skodamusic.app.model.LrcApiTestResult
 import com.skodamusic.app.model.MusicSource
 import com.skodamusic.app.model.PlaybackFailureCategory
+import com.skodamusic.app.system.RootShellHelper
 import com.skodamusic.app.system.SystemDiagnosticManager
 import com.skodamusic.app.system.SystemRestoreManager
 import com.skodamusic.app.system.SystemUpgradeManager
@@ -694,6 +695,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                         runCatching { moveTaskToBack(true) }
                     }, 800L)
                 }
+                val autoPlay = bootPrefs.getBoolean(BootCompletedReceiver.KEY_BOOT_AUTO_PLAY, true)
+                if (autoPlay) {
+                    uiProgressHandler.postDelayed({
+                        triggerBootAutoResume()
+                    }, 1800L)
+                }
             }
         }
     }
@@ -710,6 +717,33 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     runCatching { moveTaskToBack(true) }
                 }, 500L)
             }
+            val autoPlay = bootPrefs.getBoolean(BootCompletedReceiver.KEY_BOOT_AUTO_PLAY, true)
+            if (autoPlay) {
+                uiProgressHandler.postDelayed({
+                    triggerBootAutoResume()
+                }, 1500L)
+            }
+        }
+    }
+
+    private fun triggerBootAutoResume() {
+        appendRuntimeLog("triggerBootAutoResume: checking state...")
+        if (uiState.isPlaying) {
+            appendRuntimeLog("triggerBootAutoResume: already playing, skip")
+            return
+        }
+        val snapshot = playbackStateStore.readSnapshot()
+        if (activeSourceMode == MusicSource.KUGOU) {
+            val current = sourcePlaybackSession.currentKugouTrack()
+            if (current != null || (snapshot.hasActiveTrack && snapshot.trackId.isNotBlank())) {
+                appendRuntimeLog("triggerBootAutoResume: resuming kugou playback")
+                performPlayPauseAction(forcePlay = true, source = PlaybackActions.CMD_SOURCE_SERVICE, allowToast = false)
+            } else {
+                appendRuntimeLog("triggerBootAutoResume: requesting daily recommendation")
+                requestDailyRecommendPlayback(reason = "boot_autoplay", force = false)
+            }
+        } else {
+            maybeStartResumePlayback("boot-auto-resume")
         }
     }
 
@@ -1002,6 +1036,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val inspectRootButton = findViewById<Button>(R.id.btn_inspect_root_status)
         inspectRootButton?.setOnClickListener {
             promptRootInspection()
+        }
+
+        val convertSystemAppButton = findViewById<Button>(R.id.btn_convert_to_system_app)
+        convertSystemAppButton?.setOnClickListener {
+            promptConvertToSystemApp()
         }
 
         val factoryRestoreButton = findViewById<Button>(R.id.btn_system_factory_restore)
@@ -5424,6 +5463,34 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     .show()
             }
         }
+    }
+
+    private fun promptConvertToSystemApp() {
+        appendRuntimeLog("promptConvertToSystemApp requested")
+        AlertDialog.Builder(this)
+            .setTitle("固化为系统原生应用 (/system/app)")
+            .setMessage(
+                "本功能将利用 Root 权限将本应用复制到车机只读系统分区 (/system/app/SkodaMusic.apk)：\n\n" +
+                "• 拥有原生系统级常驻特权，彻底免疫系统内存清理与省电策略杀后台\n" +
+                "• 享有原生开机广播最高优先级，彻底解决开机/熄火唤醒不自启问题\n" +
+                "• 需要车机拥有有效 Root 权限 (uid=0) 及 /system 读写权限\n\n" +
+                "确定要立即固化为系统应用吗？"
+            )
+            .setPositiveButton("立即固化") { _, _ ->
+                showToastMessage("正在通过 Root 固化为系统应用，请稍候…")
+                backgroundExecutor.execute {
+                    val (ok, msg) = RootShellHelper.convertToSystemApp(this)
+                    runOnUiThread {
+                        AlertDialog.Builder(this)
+                            .setTitle(if (ok) "固化成功" else "固化失败")
+                            .setMessage(msg)
+                            .setPositiveButton("确定", null)
+                            .show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun promptFactoryRestore() {

@@ -177,7 +177,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         remoteControlBridge.updateMetadata(snapshot.trackTitle)
         updateAudioFocus(snapshot.isPlaying && snapshot.hasActiveTrack)
         startForeground(NOTIFICATION_ID, buildNotification())
-        if (appInForeground || !snapshot.hasActiveTrack) {
+        if (appInForeground) {
             overlayController.hide()
             return
         }

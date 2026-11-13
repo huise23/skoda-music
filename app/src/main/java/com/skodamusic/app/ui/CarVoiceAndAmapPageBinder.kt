@@ -368,15 +368,30 @@ class CarVoiceAndAmapPageBinder(
 
                 refreshAmapSection()
 
-                AlertDialog.Builder(activity)
-                    .setTitle(if (success) "高德地图车机版安装成功！" else "安装失败")
-                    .setMessage(msg)
-                    .setPositiveButton(if (success) "立即启动" else "知道了") { _, _ ->
-                        if (success) {
+                if (success) {
+                    AlertDialog.Builder(activity)
+                        .setTitle("高德地图车机版安装成功！")
+                        .setMessage(msg)
+                        .setPositiveButton("立即启动") { _, _ ->
                             Amap65Manager.launchAmap(activity)
                         }
-                    }
-                    .show()
+                        .show()
+                } else {
+                    val targetDir = activity.externalCacheDir ?: activity.cacheDir
+                    val targetFile = File(targetDir, Amap65Manager.TARGET_APK_FILENAME)
+                    AlertDialog.Builder(activity)
+                        .setTitle("Root 静默安装未成功")
+                        .setMessage("$msg\n\n提示：当前固件可能未包含有效 Root 权限(uid=0)。\n是否立即调起系统原厂安装界面手动安装？")
+                        .setPositiveButton("调起系统安装器") { _, _ ->
+                            if (targetFile.exists()) {
+                                Amap65Manager.installViaSystemPackageInstaller(activity, targetFile)
+                            } else {
+                                Toast.makeText(activity, "安装包不存在", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
             }
         )
     }
@@ -398,13 +413,22 @@ class CarVoiceAndAmapPageBinder(
                     val (success, msg) = Amap65Manager.installSilentViaRoot(localApk)
                     btnAmapScan.isEnabled = true
                     refreshAmapSection()
-                    AlertDialog.Builder(activity)
-                        .setTitle(if (success) "安装成功" else "安装失败")
-                        .setMessage(msg)
-                        .setPositiveButton(if (success) "启动" else "知道了") { _, _ ->
-                            if (success) Amap65Manager.launchAmap(activity)
-                        }
-                        .show()
+                    if (success) {
+                        AlertDialog.Builder(activity)
+                            .setTitle("安装成功")
+                            .setMessage(msg)
+                            .setPositiveButton("启动") { _, _ -> Amap65Manager.launchAmap(activity) }
+                            .show()
+                    } else {
+                        AlertDialog.Builder(activity)
+                            .setTitle("Root 静默安装未成功")
+                            .setMessage("$msg\n\n提示：Root 提权未返回成功，是否立即调起系统原厂安装器进行安装？")
+                            .setPositiveButton("调起系统安装器") { _, _ ->
+                                Amap65Manager.installViaSystemPackageInstaller(activity, localApk)
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
+                    }
                 }
                 .setNegativeButton("取消", null)
                 .show()

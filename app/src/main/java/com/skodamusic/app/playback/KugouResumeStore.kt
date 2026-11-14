@@ -6,17 +6,21 @@ import com.skodamusic.app.model.SourcePlaybackRef
 import com.skodamusic.app.model.SourceTrack
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 
 /**
  * Persists and restores Kugou playback state across head-unit reboots,
- * preventing queue restart from index 0 on each car drive.
+ * preventing queue restart from index 0 on each car drive within the same day.
+ *
+ * Rules:
+ * 1. The playlist is reset daily (valid only for the current calendar day).
+ * 2. Intra-song progress is not saved (songs resume from 00:00).
  */
 class KugouResumeStore(context: Context) {
     data class Snapshot(
         val tracks: List<SourceTrack>,
         val currentIndex: Int,
         val currentTrack: SourceTrack,
-        val positionMs: Long,
         val sourceContext: String,
         val savedAtMs: Long
     )
@@ -26,7 +30,6 @@ class KugouResumeStore(context: Context) {
     fun save(
         tracks: List<SourceTrack>,
         currentTrack: SourceTrack?,
-        positionMs: Long = 0L,
         sourceContext: String = ""
     ) {
         if (tracks.isEmpty() || currentTrack == null) {
@@ -44,22 +47,21 @@ class KugouResumeStore(context: Context) {
             .putString(KEY_QUEUE_JSON, queueJson)
             .putString(KEY_CURRENT_TRACK_JSON, trackJson)
             .putInt(KEY_INDEX, safeIndex)
-            .putLong(KEY_POSITION_MS, positionMs.coerceAtLeast(0L))
             .putString(KEY_SOURCE_CONTEXT, sourceContext)
             .putLong(KEY_SAVED_AT_MS, System.currentTimeMillis())
             .apply()
     }
 
-    fun updatePosition(positionMs: Long) {
-        if (positionMs >= 0L) {
-            prefs.edit()
-                .putLong(KEY_POSITION_MS, positionMs)
-                .putLong(KEY_SAVED_AT_MS, System.currentTimeMillis())
-                .apply()
-        }
-    }
-
     fun read(): Snapshot? {
+        val savedAtMs = prefs.getLong(KEY_SAVED_AT_MS, 0L)
+        val now = System.currentTimeMillis()
+        if (!isSameDay(savedAtMs, now)) {
+            if (savedAtMs > 0L) {
+                clear()
+            }
+            return null
+        }
+
         val queueJson = prefs.getString(KEY_QUEUE_JSON, "").orEmpty()
         val trackJson = prefs.getString(KEY_CURRENT_TRACK_JSON, "").orEmpty()
         if (queueJson.isBlank() && trackJson.isBlank()) {
@@ -82,22 +84,31 @@ class KugouResumeStore(context: Context) {
         } else {
             tracks[safeIndex]
         }
-        val positionMs = prefs.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L)
         val sourceContext = prefs.getString(KEY_SOURCE_CONTEXT, "").orEmpty()
-        val savedAtMs = prefs.getLong(KEY_SAVED_AT_MS, 0L)
 
         return Snapshot(
             tracks = tracks,
             currentIndex = safeIndex,
             currentTrack = activeTrack,
-            positionMs = positionMs,
             sourceContext = sourceContext,
             savedAtMs = savedAtMs
         )
     }
 
+    fun isToday(timestampMs: Long = prefs.getLong(KEY_SAVED_AT_MS, 0L)): Boolean {
+        return isSameDay(timestampMs, System.currentTimeMillis())
+    }
+
     fun clear() {
         prefs.edit().clear().apply()
+    }
+
+    private fun isSameDay(t1: Long, t2: Long): Boolean {
+        if (t1 <= 0L || t2 <= 0L) return false
+        val cal1 = Calendar.getInstance().apply { timeInMillis = t1 }
+        val cal2 = Calendar.getInstance().apply { timeInMillis = t2 }
+        return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
     }
 
     private fun encodeTrack(track: SourceTrack): String {
@@ -183,7 +194,6 @@ class KugouResumeStore(context: Context) {
         private const val KEY_QUEUE_JSON = "kugou_queue_json"
         private const val KEY_CURRENT_TRACK_JSON = "kugou_current_track_json"
         private const val KEY_INDEX = "kugou_index"
-        private const val KEY_POSITION_MS = "kugou_position_ms"
         private const val KEY_SOURCE_CONTEXT = "kugou_source_context"
         private const val KEY_SAVED_AT_MS = "kugou_saved_at_ms"
     }

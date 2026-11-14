@@ -298,7 +298,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var downloadControllerThread: Thread? = null
     private lateinit var playbackResumeStore: PlaybackResumeStore
     private lateinit var kugouResumeStore: KugouResumeStore
-    private var pendingKugouResumePositionMs: Long = -1L
     private lateinit var playbackStateStore: PlaybackStateStore
     private lateinit var appUpdateManager: AppUpdateManager
     private lateinit var appUpdateCoordinator: AppUpdateCoordinator
@@ -741,9 +740,15 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         val snapshot = playbackStateStore.readSnapshot()
         if (activeSourceMode == MusicSource.KUGOU) {
+            if (!kugouResumeStore.isToday()) {
+                appendRuntimeLog("triggerBootAutoResume: kugou session expired, requesting daily recommendation for new day")
+                clearKugouContentState()
+                requestDailyRecommendPlayback(reason = "boot_new_day_reset", force = true)
+                return
+            }
             val current = sourcePlaybackSession.currentKugouTrack()
             if (current != null) {
-                appendRuntimeLog("triggerBootAutoResume: resuming kugou track=${current.title} pos=$pendingKugouResumePositionMs")
+                appendRuntimeLog("triggerBootAutoResume: resuming kugou track=${current.title}")
                 playKugouTrack(current)
             } else if (snapshot.hasActiveTrack && snapshot.trackId.isNotBlank()) {
                 appendRuntimeLog("triggerBootAutoResume: resuming kugou playback via service snapshot")
@@ -2082,12 +2087,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             return false
         }
         val targetTrack = snapshot.currentTrack
-        appendRuntimeLog("kugou resume hit: track=${targetTrack.title} index=${snapshot.currentIndex}/${snapshot.tracks.size} pos=${snapshot.positionMs}ms context=${snapshot.sourceContext}")
+        appendRuntimeLog("kugou resume hit: track=${targetTrack.title} index=${snapshot.currentIndex}/${snapshot.tracks.size} context=${snapshot.sourceContext}")
 
         kugouQueueManager.setupQueue(targetTrack, snapshot.tracks)
         sourcePlaybackSession.markKugouActive(targetTrack)
         previewArtistOverride = targetTrack.artist.ifBlank { null }
-        pendingKugouResumePositionMs = snapshot.positionMs
 
         updateState {
             it.copy(
@@ -2097,7 +2101,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 playPauseLabelRes = R.string.action_play,
                 playPauseEnabled = true,
                 nextEnabled = resolveKugouNextEnabled(),
-                feedbackText = "已恢复上次播放：${targetTrack.title}（第 ${snapshot.currentIndex + 1}/${snapshot.tracks.size} 首）"
+                feedbackText = "已恢复今日播放：${targetTrack.title}（第 ${snapshot.currentIndex + 1}/${snapshot.tracks.size} 首）"
             )
         }
         rebuildTrackLists()
@@ -2118,7 +2122,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         kugouResumeStore.save(
             tracks = kugouQueueManager.snapshot(),
             currentTrack = track,
-            positionMs = 0L,
             sourceContext = source
         )
         playKugouTrack(track)
@@ -2210,8 +2213,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         val queueSnapshot = currentKugouQueueSnapshot().ifEmpty { listOf(track) }
         kugouResumeStore.save(
             tracks = queueSnapshot,
-            currentTrack = track,
-            positionMs = if (pendingKugouResumePositionMs > 0L) pendingKugouResumePositionMs else 0L
+            currentTrack = track
         )
         val requestId = ++playbackRequestId
         pauseRequestedRequestId = -1
@@ -2412,11 +2414,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                                 "decoder" to "exo_remote_url"
                             )
                         )
-                        if (pendingKugouResumePositionMs > 5_000L) {
-                            appendRuntimeLog("kugou seek to resume position: $pendingKugouResumePositionMs ms")
-                            engine.seekTo(pendingKugouResumePositionMs)
-                            pendingKugouResumePositionMs = -1L
-                        }
                         engine.play()
                         runOnUiThread {
                             updateState {
@@ -5138,7 +5135,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         if (sourcePlaybackSession.isKugouActive()) {
             val kugouCurrent = sourcePlaybackSession.currentKugouTrack()
-            val pos = if (positionMs >= 0L) positionMs else (playbackEngine?.currentPositionMs() ?: 0L)
             if (kugouCurrent != null) {
                 val now = System.currentTimeMillis()
                 val queue = currentKugouQueueSnapshot().ifEmpty { listOf(kugouCurrent) }
@@ -5150,12 +5146,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     lastResumePersistAtMs = now
                     kugouResumeStore.save(
                         tracks = queue,
-                        currentTrack = kugouCurrent,
-                        positionMs = pos
+                        currentTrack = kugouCurrent
                     )
-                } else if (now - lastResumePersistAtMs >= RESUME_INDEX_PERSIST_INTERVAL_MS) {
-                    lastResumePersistAtMs = now
-                    kugouResumeStore.updatePosition(pos)
                 }
             }
             return
@@ -5882,9 +5874,6 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         lastReportedServiceDurationMs = durationMs
         lastReportedServiceLyric = currentLyric
         lastReportedServiceAtMs = nowMs
-        if (sourcePlaybackSession.isKugouActive() && isPlaying && positionMs > 0L) {
-            kugouResumeStore.updatePosition(positionMs)
-        }
         sendPlaybackServiceIntent(PlaybackActions.ACTION_STATE_UPDATE) {
             putExtra(PlaybackActions.EXTRA_TRACK_TITLE, trackTitle)
             putExtra(PlaybackActions.EXTRA_ARTIST, artist)

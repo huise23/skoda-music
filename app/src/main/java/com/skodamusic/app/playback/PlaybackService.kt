@@ -141,7 +141,7 @@ class PlaybackService : Service(), OverlayController.Listener {
 
     override fun onDestroy() {
         abandonAudioFocusIfHeld()
-        overlayController.hide()
+        overlayController.destroy()
         remoteControlBridge.release()
         runCatching { unregisterReceiver(carWakeupReceiver) }
         com.skodamusic.app.net.CarWifiAutoReconnectManager.release()

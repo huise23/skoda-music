@@ -22,6 +22,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import com.skodamusic.app.R
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackStateStore
@@ -30,7 +31,8 @@ import kotlin.math.abs
 /**
  * Bottom-docked immersive overlay for car head-units.
  * Stays docked at the bottom without blocking map guidance, displays single-line lyrics,
- * and supports manual collapse into a compact edge pill (no auto-timer).
+ * supports manual collapse into a compact edge pill, and adaptively inverts light/dark theme
+ * based on AutoNavi (Amap Auto) and vehicle system dark mode.
  */
 class OverlayController(
     private val context: Context,
@@ -45,6 +47,9 @@ class OverlayController(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = context.getSharedPreferences(PREFS_OVERLAY, Context.MODE_PRIVATE)
 
+    val themeCoordinator = OverlayThemeCoordinator(context)
+    private var currentThemeMode = themeCoordinator.resolveCurrentTheme()
+
     private var isCollapsed: Boolean = prefs.getBoolean(KEY_IS_COLLAPSED, false)
     private var rootView: FrameLayout? = null
     private var dockView: View? = null
@@ -54,11 +59,23 @@ class OverlayController(
     private var lyricView: TextView? = null
     private var progressBar: ProgressBar? = null
     private var playPauseButton: ImageButton? = null
+    private var prevButton: ImageButton? = null
+    private var nextButton: ImageButton? = null
+    private var closeButton: ImageButton? = null
+    private var collapseButton: TextView? = null
+    private var pillTextView: TextView? = null
     private var currentLayoutParams: WindowManager.LayoutParams? = null
 
     private var pillDragDownY: Float = 0f
     private var pillDragStartY: Int = 0
     private var pillDragging: Boolean = false
+
+    init {
+        themeCoordinator.onThemeChanged = { mode ->
+            applyTheme(mode)
+        }
+        themeCoordinator.register()
+    }
 
     fun canDraw(): Boolean {
         return if (Build.VERSION.SDK_INT >= 23) {
@@ -103,6 +120,16 @@ class OverlayController(
         playPauseButton?.setImageResource(
             if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         )
+        if (currentThemeMode == OverlayThemeCoordinator.ThemeMode.LIGHT) {
+            playPauseButton?.setColorFilter(Color.parseColor("#0F172A"))
+        } else {
+            playPauseButton?.clearColorFilter()
+        }
+    }
+
+    fun destroy() {
+        hide()
+        themeCoordinator.unregister()
     }
 
     fun hide() {
@@ -139,6 +166,183 @@ class OverlayController(
         }
     }
 
+    fun applyTheme(mode: OverlayThemeCoordinator.ThemeMode) {
+        currentThemeMode = mode
+        if (rootView == null) {
+            return
+        }
+
+        if (mode == OverlayThemeCoordinator.ThemeMode.LIGHT) {
+            // Light theme (used when Amap/system is Dark/Night, inverted high contrast)
+            dockView?.background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#80FFFFFF"), Color.parseColor("#F5F8FAFC"))
+            )
+
+            val bgDrawable = GradientDrawable().apply {
+                setColor(Color.parseColor("#29000000"))
+            }
+            val fgDrawable = GradientDrawable().apply {
+                setColor(Color.parseColor("#059669"))
+            }
+            val clipFg = ClipDrawable(fgDrawable, Gravity.START, ClipDrawable.HORIZONTAL)
+            val progressLayer = LayerDrawable(arrayOf(bgDrawable, clipFg)).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
+            progressBar?.progressDrawable = progressLayer
+
+            collapseButton?.apply {
+                setTextColor(Color.parseColor("#1E293B"))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#1A000000"))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.parseColor("#3394A3B8"))
+                }
+            }
+
+            titleView?.apply {
+                setTextColor(Color.parseColor("#0F172A"))
+                setShadowLayer(2f, 0f, 1f, Color.parseColor("#80FFFFFF"))
+            }
+
+            artistView?.apply {
+                setTextColor(Color.parseColor("#475569"))
+                setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+            }
+
+            lyricView?.apply {
+                setTextColor(Color.parseColor("#047857"))
+                setShadowLayer(3f, 0f, 1f, Color.parseColor("#80FFFFFF"))
+            }
+
+            val btnBg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#1A000000"))
+            }
+            val playBg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#24000000"))
+            }
+            prevButton?.apply {
+                background = btnBg
+                setColorFilter(Color.parseColor("#0F172A"))
+            }
+            playPauseButton?.apply {
+                background = playBg
+                setColorFilter(Color.parseColor("#0F172A"))
+            }
+            nextButton?.apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#1A000000"))
+                }
+                setColorFilter(Color.parseColor("#0F172A"))
+            }
+            closeButton?.apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#1A000000"))
+                }
+                setColorFilter(Color.parseColor("#64748B"))
+            }
+
+            pillView?.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F5F8FAFC"))
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1), Color.parseColor("#0284C7"))
+            }
+            pillTextView?.apply {
+                setTextColor(Color.parseColor("#0F172A"))
+                setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+            }
+        } else {
+            // Dark theme (used when Amap/system is Light/Day)
+            dockView?.background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#440A0F1D"), Color.parseColor("#F50A0F1D"))
+            )
+
+            val bgDrawable = GradientDrawable().apply {
+                setColor(Color.parseColor("#33FFFFFF"))
+            }
+            val fgDrawable = GradientDrawable().apply {
+                setColor(Color.parseColor("#10B981"))
+            }
+            val clipFg = ClipDrawable(fgDrawable, Gravity.START, ClipDrawable.HORIZONTAL)
+            val progressLayer = LayerDrawable(arrayOf(bgDrawable, clipFg)).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
+            progressBar?.progressDrawable = progressLayer
+
+            collapseButton?.apply {
+                setTextColor(Color.parseColor("#E2E8F0"))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#40334155"))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.parseColor("#33475569"))
+                }
+            }
+
+            titleView?.apply {
+                setTextColor(Color.WHITE)
+                setShadowLayer(4f, 0f, 2f, Color.BLACK)
+            }
+
+            artistView?.apply {
+                setTextColor(Color.parseColor("#CBD5E1"))
+                setShadowLayer(3f, 0f, 1f, Color.BLACK)
+            }
+
+            lyricView?.apply {
+                setTextColor(Color.parseColor("#4ADE80"))
+                setShadowLayer(5f, 0f, 2f, Color.BLACK)
+            }
+
+            val btnBg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#26FFFFFF"))
+            }
+            val playBg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#26FFFFFF"))
+            }
+            prevButton?.apply {
+                background = btnBg
+                clearColorFilter()
+            }
+            playPauseButton?.apply {
+                background = playBg
+                clearColorFilter()
+            }
+            nextButton?.apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#26FFFFFF"))
+                }
+                clearColorFilter()
+            }
+            closeButton?.apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#26FFFFFF"))
+                }
+                setColorFilter(Color.parseColor("#94A3B8"))
+            }
+
+            pillView?.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E60A0F1D"))
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1), Color.parseColor("#38BDF8"))
+            }
+            pillTextView?.apply {
+                setTextColor(Color.WHITE)
+                setShadowLayer(3f, 0f, 1f, Color.BLACK)
+            }
+        }
+    }
+
     private fun ensureView() {
         if (rootView != null) {
             return
@@ -157,6 +361,8 @@ class OverlayController(
         rootView = root
         dockView = dock
         pillView = pill
+
+        applyTheme(themeCoordinator.resolveCurrentTheme())
     }
 
     private fun buildDockView(): View {
@@ -209,6 +415,16 @@ class OverlayController(
                 setStroke(dp(1), Color.parseColor("#33475569"))
             }
             setOnClickListener { setCollapsed(true) }
+            setOnLongClickListener {
+                val next = themeCoordinator.cycleThemeConfig()
+                val msg = when (next) {
+                    OverlayThemeCoordinator.ThemeConfig.AUTO -> "浮窗模式：自动跟随高德反色"
+                    OverlayThemeCoordinator.ThemeConfig.FORCE_DARK -> "浮窗模式：强制深色"
+                    OverlayThemeCoordinator.ThemeConfig.FORCE_LIGHT -> "浮窗模式：强制浅色"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                true
+            }
         }
         val collapseParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -309,6 +525,10 @@ class OverlayController(
         lyricView = lyric
         progressBar = progress
         playPauseButton = playBtn
+        prevButton = prevBtn
+        nextButton = nextBtn
+        closeButton = closeBtn
+        collapseButton = collapseBtn
 
         return container
     }
@@ -334,6 +554,7 @@ class OverlayController(
             setShadowLayer(3f, 0f, 1f, Color.BLACK)
         }
         pill.addView(pillText)
+        pillTextView = pillText
 
         bindPillTouch(pill)
         return pill

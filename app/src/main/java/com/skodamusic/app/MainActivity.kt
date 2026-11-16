@@ -275,7 +275,21 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private val uiProgressTicker = object : Runnable {
         override fun run() {
             refreshProgressMetrics()
+            maybeCheckPendingAutoResume()
             uiProgressHandler.postDelayed(this, UI_PROGRESS_REFRESH_MS)
+        }
+    }
+
+    private fun maybeCheckPendingAutoResume() {
+        val pending = pendingAutoResumeTrack ?: return
+        if (uiState.isPlaying) {
+            pendingAutoResumeTrack = null
+            return
+        }
+        if (wifiNetworkGate.ensureWifiConnectedForNetworkRequest(requestTag = "pending_auto_resume", promptUser = false)) {
+            appendRuntimeLog("network available -> auto-resuming pending track=${pending.title}")
+            pendingAutoResumeTrack = null
+            playKugouTrack(pending)
         }
     }
     @Volatile private var lastKnownBitrateBps: Long = DEFAULT_ESTIMATED_BITRATE_BPS
@@ -298,6 +312,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
     private var downloadControllerThread: Thread? = null
     private lateinit var playbackResumeStore: PlaybackResumeStore
     private lateinit var kugouResumeStore: KugouResumeStore
+    private var pendingAutoResumeTrack: SourceTrack? = null
     private lateinit var playbackStateStore: PlaybackStateStore
     private lateinit var appUpdateManager: AppUpdateManager
     private lateinit var appUpdateCoordinator: AppUpdateCoordinator
@@ -365,6 +380,11 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         playbackStateStore = PlaybackStateStore(applicationContext)
         backgroundExecutor = AppBackgroundExecutor(ioThreads = 3)
         wifiNetworkGate = WifiNetworkGate(this) { message -> appendRuntimeLog(message) }
+        com.skodamusic.app.net.CarWifiAutoReconnectManager.onWifiConnectedCallback = {
+            uiProgressHandler.post {
+                maybeCheckPendingAutoResume()
+            }
+        }
         kugouLoginRecoveryCoordinator = KugouLoginRecoveryCoordinator(
             context = applicationContext,
             showLoginDialog = { reason ->
@@ -672,6 +692,12 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 triggerKugouDailyVip(reason = "cached_session")
                 if (!kugouRestored) {
                     requestDailyRecommendPlayback(reason = "cached_session", force = false)
+                } else {
+                    val current = sourcePlaybackSession.currentKugouTrack()
+                    if (current != null) {
+                        appendRuntimeLog("startup: auto-resuming restored kugou track=${current.title}")
+                        playKugouTrack(current)
+                    }
                 }
             }
             refreshDownloadCacheInfoUi()
@@ -772,6 +798,17 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
             eventName = "app_foreground"
         )
         reportPlaybackStateToService(force = true)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
+        reportPlaybackStateToService(force = true)
+    }
+
+    override fun onPause() {
+        sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_BACKGROUND)
+        super.onPause()
     }
 
     override fun onStop() {
@@ -1143,6 +1180,19 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         if (sourcePlaybackSession.isKugouActive()) {
             return performKugouPlayPauseAction(forcePlay, source, allowToast)
         }
+        if (activeSourceMode == MusicSource.KUGOU) {
+            val restoredTrack = sourcePlaybackSession.currentKugouTrack()
+            if (restoredTrack != null) {
+                appendRuntimeLog("$source kugou resume from saved track=${restoredTrack.title}")
+                playKugouTrack(restoredTrack)
+                return true
+            }
+            if (hasKugouSession()) {
+                appendRuntimeLog("$source kugou empty queue -> requesting daily recommendation")
+                requestDailyRecommendPlayback(reason = "overlay_play_trigger", force = true)
+                return true
+            }
+        }
         if (loadedTracks.isEmpty()) {
             updateState { it.copy(feedbackText = getString(R.string.feedback_need_emby)) }
             return false
@@ -1202,6 +1252,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                 showToast(R.string.toast_playing)
             }
         } else {
+            pendingAutoResumeTrack = null
             appendRuntimeLog("$source kugou play/pause -> pause")
             pauseRequestedRequestId = playbackRequestId
             playbackEngine?.pause()
@@ -2192,6 +2243,7 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         }
         if (!ensureWifiConnectedForNetworkRequest(requestTag = "kugou_play_url", promptUser = false)) {
             appendRuntimeLog("kugou play paused: network offline, retaining track=${track.title}")
+            pendingAutoResumeTrack = track
             sourcePlaybackSession.markKugouActive(track)
             refreshCurrentPlaybackViews("kugou_offline_paused")
             updateState {
@@ -2202,12 +2254,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     playPauseLabelRes = R.string.action_play,
                     playPauseEnabled = true,
                     nextEnabled = resolveKugouNextEnabled(),
-                    feedbackText = "网络未连通，等待恢复后点按播放"
+                    feedbackText = "网络未连通，已保留曲目，连网后将自动续播"
                 )
             }
-            showToastMessage("网络未连通，等待恢复后点按播放")
+            showToastMessage("网络未连通，连网后将自动续播")
             return
         }
+        pendingAutoResumeTrack = null
         sourcePlaybackSession.markKugouActive(track)
         refreshCurrentPlaybackViews("kugou_current_changed")
         val queueSnapshot = currentKugouQueueSnapshot().ifEmpty { listOf(track) }

@@ -59,9 +59,14 @@ class OverlayThemeCoordinator(private val context: Context) {
             // AutoNavi AmapAuto status broadcasts
             addAction("AUTONAVI_STANDARD_BROADCAST_SEND")
             addAction("AUTONAVI_STANDARD_BROADCAST_RECV")
+            addAction("com.autonavi.amapauto.DAY_NIGHT_MODE")
+            addAction("com.autonavi.amapauto.DAY_NIGHT")
 
-            // Android system configuration changes (night mode toggle)
+            // Android system configuration and time changes
             addAction(Intent.ACTION_CONFIGURATION_CHANGED)
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
 
             // Car head-unit headlight & illumination signals across various head-unit vendors
             addAction("android.intent.action.HEADLIGHT_ON")
@@ -70,6 +75,18 @@ class OverlayThemeCoordinator(private val context: Context) {
             addAction("com.yecon.action.HEADLIGHT_OFF")
             addAction("android.intent.action.ILLUMINATION_CHANGED")
             addAction("fyt.action.ILL_STATE")
+            addAction("com.syu.ms.ILL_STATE")
+            addAction("com.syu.action.ILL_STATE")
+            addAction("com.microntek.headlight_on")
+            addAction("com.microntek.headlight_off")
+            addAction("xy.android.intent.action.HEADLIGHT_ON")
+            addAction("xy.android.intent.action.HEADLIGHT_OFF")
+            addAction("action.hct.headlight")
+            addAction("com.ts.headlight")
+            addAction("com.autochips.intent.action.HEADLIGHT_ON")
+            addAction("com.autochips.intent.action.HEADLIGHT_OFF")
+            addAction("com.yunos.action.HEADLIGHT_ON")
+            addAction("com.yunos.action.HEADLIGHT_OFF")
             addAction("com.android.server.service.headlight")
         }
         try {
@@ -120,45 +137,71 @@ class OverlayThemeCoordinator(private val context: Context) {
         return next
     }
 
+    fun checkThemePeriodic(reason: String = "periodic") {
+        if (themeConfig != ThemeConfig.AUTO) return
+        val currentGuess = initialSystemDarkGuess()
+        if (currentGuess != isSystemDark) {
+            updateSystemDark(currentGuess, "$reason(time_or_setting)")
+        }
+    }
+
     private fun handleBroadcast(action: String, intent: Intent) {
         when (action) {
             "AUTONAVI_STANDARD_BROADCAST_SEND",
-            "AUTONAVI_STANDARD_BROADCAST_RECV" -> {
+            "AUTONAVI_STANDARD_BROADCAST_RECV",
+            "com.autonavi.amapauto.DAY_NIGHT_MODE",
+            "com.autonavi.amapauto.DAY_NIGHT" -> {
                 val keyType = intent.getIntExtra("KEY_TYPE", -1)
-                if (keyType == 10019) {
-                    val mode = intent.getIntExtra("EXTRA_DAY_NIGHT_MODE", -1)
-                    val extraType = intent.getIntExtra("EXTRA_TYPE", -1)
-                    val value = if (mode != -1) mode else extraType
-                    if (value == 38 || value == 2) {
-                        updateSystemDark(true, "amap_10019_night($value)")
-                    } else if (value == 37 || value == 1 || value == 0) {
-                        updateSystemDark(false, "amap_10019_day($value)")
-                    }
-                } else if (intent.hasExtra("EXTRA_DAY_NIGHT_MODE")) {
-                    val mode = intent.getIntExtra("EXTRA_DAY_NIGHT_MODE", -1)
-                    if (mode == 38 || mode == 2) {
-                        updateSystemDark(true, "amap_extra_night($mode)")
-                    } else if (mode == 37 || mode == 1) {
-                        updateSystemDark(false, "amap_extra_day($mode)")
+                val mode = when {
+                    intent.hasExtra("EXTRA_DAY_NIGHT_MODE") -> intent.getIntExtra("EXTRA_DAY_NIGHT_MODE", -1)
+                    intent.hasExtra("DAY_NIGHT_MODE") -> intent.getIntExtra("DAY_NIGHT_MODE", -1)
+                    intent.hasExtra("EXTRA_TYPE") -> intent.getIntExtra("EXTRA_TYPE", -1)
+                    else -> -1
+                }
+                if (keyType == 10019 || keyType == 10048 || mode != -1) {
+                    when (mode) {
+                        38, 2 -> updateSystemDark(true, "amap_night($mode)")
+                        37, 1 -> updateSystemDark(false, "amap_day($mode)")
+                        0 -> updateSystemDark(initialSystemDarkGuess(), "amap_auto(fallback_time)")
                     }
                 }
             }
             Intent.ACTION_CONFIGURATION_CHANGED -> {
                 val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-                val isDark = uiMode == Configuration.UI_MODE_NIGHT_YES
-                updateSystemDark(isDark, "ui_mode_config_changed")
+                if (uiMode == Configuration.UI_MODE_NIGHT_YES) {
+                    updateSystemDark(true, "ui_mode_config_changed_dark")
+                } else {
+                    checkThemePeriodic("ui_mode_config_changed")
+                }
+            }
+            Intent.ACTION_TIME_TICK,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED -> {
+                checkThemePeriodic(action)
             }
             "android.intent.action.HEADLIGHT_ON",
-            "com.yecon.action.HEADLIGHT_ON" -> {
+            "com.yecon.action.HEADLIGHT_ON",
+            "com.microntek.headlight_on",
+            "xy.android.intent.action.HEADLIGHT_ON",
+            "com.autochips.intent.action.HEADLIGHT_ON",
+            "com.yunos.action.HEADLIGHT_ON" -> {
                 updateSystemDark(true, action)
             }
             "android.intent.action.HEADLIGHT_OFF",
-            "com.yecon.action.HEADLIGHT_OFF" -> {
+            "com.yecon.action.HEADLIGHT_OFF",
+            "com.microntek.headlight_off",
+            "xy.android.intent.action.HEADLIGHT_OFF",
+            "com.autochips.intent.action.HEADLIGHT_OFF",
+            "com.yunos.action.HEADLIGHT_OFF" -> {
                 updateSystemDark(false, action)
             }
             "android.intent.action.ILLUMINATION_CHANGED",
-            "fyt.action.ILL_STATE" -> {
-                val state = intent.getIntExtra("state", -1)
+            "fyt.action.ILL_STATE",
+            "com.syu.ms.ILL_STATE",
+            "com.syu.action.ILL_STATE",
+            "action.hct.headlight",
+            "com.ts.headlight" -> {
+                val state = intent.getIntExtra("state", intent.getIntExtra("state_ill", -1))
                 if (state == 1) {
                     updateSystemDark(true, "$action=1")
                 } else if (state == 0) {
@@ -191,17 +234,29 @@ class OverlayThemeCoordinator(private val context: Context) {
     }
 
     private fun initialSystemDarkGuess(): Boolean {
-        // 1. Check system Configuration
+        // 1. Check system Configuration (Android 10+ or custom ROMs with night mode support)
         val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         if (uiMode == Configuration.UI_MODE_NIGHT_YES) {
             return true
         }
-        if (uiMode == Configuration.UI_MODE_NIGHT_NO) {
-            return false
+
+        // 2. Check head unit hardware / system settings keys
+        val illumKeys = arrayOf("illum_state", "headlight_state", "is_light_on", "night_mode", "car_ill", "headlight")
+        for (key in illumKeys) {
+            try {
+                val state = android.provider.Settings.System.getInt(context.contentResolver, key, -1)
+                if (state == 1) return true
+                if (state == 0) return false
+            } catch (_: Exception) {}
         }
-        // 2. Fallback to time-of-day
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        return hour >= 18 || hour < 7
+
+        // 3. Time-of-day calculation (18:00 - 06:30 is night time for navigation)
+        val cal = Calendar.getInstance()
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        val minute = cal.get(Calendar.MINUTE)
+        val timeMinutes = hour * 60 + minute
+        // Night is 18:00 (1080 min) to 06:30 (390 min)
+        return timeMinutes >= 18 * 60 || timeMinutes < 6 * 60 + 30
     }
 
     companion object {

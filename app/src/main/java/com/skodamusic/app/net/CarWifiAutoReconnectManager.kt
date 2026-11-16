@@ -37,6 +37,9 @@ object CarWifiAutoReconnectManager {
     private const val RESET_COOLDOWN_MS = 25000L
     private const val WAKEUP_CHECK_DELAY_MS = 9000L
 
+    @Volatile
+    var onWifiConnectedCallback: (() -> Unit)? = null
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isRegistered = false
     private var lastResetTimestampMs = 0L
@@ -71,6 +74,9 @@ object CarWifiAutoReconnectManager {
                     if (isWifiConnected(context)) {
                         Log.d(TAG, "Wi-Fi is connected, canceling any pending healing checks.")
                         cancelDelayedCheck()
+                        try {
+                            onWifiConnectedCallback?.invoke()
+                        } catch (_: Exception) {}
                     }
                 }
             }

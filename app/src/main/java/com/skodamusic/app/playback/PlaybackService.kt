@@ -25,7 +25,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     private var audioManager: AudioManager? = null
     private var hasAudioFocus: Boolean = false
 
-    private var appInForeground: Boolean = true
+    private var appInForeground: Boolean = false
     private var snapshot: PlaybackStateStore.Snapshot = PlaybackStateStore.Snapshot(
         trackTitle = "",
         trackId = "",
@@ -43,6 +43,7 @@ class PlaybackService : Service(), OverlayController.Listener {
                 return
             }
             stateStore.setOverlayDismissedByUser(false)
+            appInForeground = false
             updatePresentation()
             com.skodamusic.app.bridge.CarBridgeManager.start(applicationContext)
             com.skodamusic.app.net.CarWifiAutoReconnectManager.onWakeup(applicationContext)
@@ -181,10 +182,9 @@ class PlaybackService : Service(), OverlayController.Listener {
             overlayController.hide()
             return
         }
-        if (stateStore.isOverlayDismissedByUser()) {
-            overlayController.hide()
-            return
-        }
+        // Always show the floating window whenever the app is not in the foreground,
+        // ensuring the driver has a constant single-click portal to enter the app
+        // regardless of whether music is playing or a playlist has finished loading.
         if (!overlayController.show(snapshot)) {
             overlayController.hide()
         } else {

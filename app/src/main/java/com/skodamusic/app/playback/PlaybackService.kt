@@ -25,7 +25,7 @@ class PlaybackService : Service(), OverlayController.Listener {
     private var audioManager: AudioManager? = null
     private var hasAudioFocus: Boolean = false
 
-    private var appInForeground: Boolean = false
+    private var appInForeground: Boolean = true
     private var snapshot: PlaybackStateStore.Snapshot = PlaybackStateStore.Snapshot(
         trackTitle = "",
         trackId = "",
@@ -97,11 +97,13 @@ class PlaybackService : Service(), OverlayController.Listener {
             PlaybackActions.ACTION_APP_FOREGROUND -> {
                 appInForeground = true
                 stateStore.setOverlayDismissedByUser(false)
+                overlayController.setCollapsed(true)
                 overlayController.hide()
                 updatePresentation()
             }
             PlaybackActions.ACTION_APP_BACKGROUND -> {
                 appInForeground = false
+                overlayController.setCollapsed(false)
                 updatePresentation()
             }
             PlaybackActions.ACTION_STATE_UPDATE -> {
@@ -163,6 +165,9 @@ class PlaybackService : Service(), OverlayController.Listener {
     }
 
     override fun onTrackTitleClicked() {
+        appInForeground = true
+        overlayController.setCollapsed(true)
+        overlayController.hide()
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -179,6 +184,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         updateAudioFocus(snapshot.isPlaying && snapshot.hasActiveTrack)
         startForeground(NOTIFICATION_ID, buildNotification())
         if (appInForeground) {
+            overlayController.setCollapsed(true)
             overlayController.hide()
             return
         }

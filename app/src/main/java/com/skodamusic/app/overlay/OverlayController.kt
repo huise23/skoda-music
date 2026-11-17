@@ -22,17 +22,16 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import com.skodamusic.app.R
 import com.skodamusic.app.playback.PlaybackActions
 import com.skodamusic.app.playback.PlaybackStateStore
 import kotlin.math.abs
 
 /**
- * Bottom-docked immersive overlay for car head-units.
- * Stays docked at the bottom without blocking map guidance, displays single-line lyrics,
- * supports manual collapse into a compact edge pill, and adaptively inverts light/dark theme
- * based on AutoNavi (Amap Auto) and vehicle system dark mode.
+ * Bottom-docked translucent overlay for car head-units.
+ * Stays docked at the bottom with high transparency so map navigation remains clearly visible.
+ * Features a 3-segment single row layout with sunken lyrics, driver-side manual collapse button,
+ * blind-friendly playback controls, and auto-collapse when entering the main application.
  */
 class OverlayController(
     private val context: Context,
@@ -46,9 +45,6 @@ class OverlayController(
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = context.getSharedPreferences(PREFS_OVERLAY, Context.MODE_PRIVATE)
-
-    val themeCoordinator = OverlayThemeCoordinator(context)
-    private var currentThemeMode = themeCoordinator.resolveCurrentTheme()
 
     private var isCollapsed: Boolean = prefs.getBoolean(KEY_IS_COLLAPSED, false)
     private var rootView: FrameLayout? = null
@@ -69,13 +65,6 @@ class OverlayController(
     private var pillDragDownY: Float = 0f
     private var pillDragStartY: Int = 0
     private var pillDragging: Boolean = false
-
-    init {
-        themeCoordinator.onThemeChanged = { mode ->
-            applyTheme(mode)
-        }
-        themeCoordinator.register()
-    }
 
     fun canDraw(): Boolean {
         return if (Build.VERSION.SDK_INT >= 23) {
@@ -106,20 +95,13 @@ class OverlayController(
     }
 
     fun update(snapshot: PlaybackStateStore.Snapshot) {
-        ensureView()
-        themeCoordinator.checkThemePeriodic("overlay_update")
-        val expectedTheme = themeCoordinator.resolveCurrentTheme()
-        if (currentThemeMode != expectedTheme) {
-            applyTheme(expectedTheme)
-        }
-
         val titleText = if (snapshot.trackTitle.isNotBlank()) snapshot.trackTitle else "Skoda Music"
         titleView?.text = titleText
         artistView?.text = if (snapshot.artist.isNotBlank()) snapshot.artist else "车载高保真"
         lyricView?.text = when {
             snapshot.currentLyric.isNotBlank() -> snapshot.currentLyric
             snapshot.trackTitle.isNotBlank() -> if (snapshot.isPlaying) "♪ 正在享受高保真音乐 ♪" else "Skoda Music 随车播控"
-            else -> "点击进入应用 开启音乐"
+            else -> "点击开启音乐"
         }
         val durationMs = snapshot.durationMs.coerceAtLeast(0L)
         val positionMs = snapshot.positionMs.coerceAtLeast(0L)
@@ -128,16 +110,10 @@ class OverlayController(
         playPauseButton?.setImageResource(
             if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         )
-        if (currentThemeMode == OverlayThemeCoordinator.ThemeMode.LIGHT) {
-            playPauseButton?.setColorFilter(Color.parseColor("#0F172A"))
-        } else {
-            playPauseButton?.clearColorFilter()
-        }
     }
 
     fun destroy() {
         hide()
-        themeCoordinator.unregister()
     }
 
     fun hide() {
@@ -174,185 +150,6 @@ class OverlayController(
         }
     }
 
-    fun applyTheme(mode: OverlayThemeCoordinator.ThemeMode) {
-        currentThemeMode = mode
-        if (rootView == null) {
-            return
-        }
-
-        if (mode == OverlayThemeCoordinator.ThemeMode.LIGHT) {
-            // Light theme (used when Amap/system is Dark/Night, inverted high contrast)
-            dockView?.background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#E6FFFFFF"), Color.parseColor("#F8F8FAFC"))
-            ).apply {
-                setStroke(dp(1), Color.parseColor("#CBD5E1"))
-            }
-
-            val bgDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#29000000"))
-            }
-            val fgDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#059669"))
-            }
-            val clipFg = ClipDrawable(fgDrawable, Gravity.START, ClipDrawable.HORIZONTAL)
-            val progressLayer = LayerDrawable(arrayOf(bgDrawable, clipFg)).apply {
-                setId(0, android.R.id.background)
-                setId(1, android.R.id.progress)
-            }
-            progressBar?.progressDrawable = progressLayer
-
-            collapseButton?.apply {
-                setTextColor(Color.parseColor("#1E293B"))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#1A000000"))
-                    cornerRadius = dp(8).toFloat()
-                    setStroke(dp(1), Color.parseColor("#3394A3B8"))
-                }
-            }
-
-            titleView?.apply {
-                setTextColor(Color.parseColor("#0F172A"))
-                setShadowLayer(2f, 0f, 1f, Color.parseColor("#80FFFFFF"))
-            }
-
-            artistView?.apply {
-                setTextColor(Color.parseColor("#475569"))
-                setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
-            }
-
-            lyricView?.apply {
-                setTextColor(Color.parseColor("#047857"))
-                setShadowLayer(3f, 0f, 1f, Color.parseColor("#80FFFFFF"))
-            }
-
-            val btnBg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#1A000000"))
-            }
-            val playBg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#24000000"))
-            }
-            prevButton?.apply {
-                background = btnBg
-                setColorFilter(Color.parseColor("#0F172A"))
-            }
-            playPauseButton?.apply {
-                background = playBg
-                setColorFilter(Color.parseColor("#0F172A"))
-            }
-            nextButton?.apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#1A000000"))
-                }
-                setColorFilter(Color.parseColor("#0F172A"))
-            }
-            closeButton?.apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#1A000000"))
-                }
-                setColorFilter(Color.parseColor("#64748B"))
-            }
-
-            pillView?.background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F5F8FAFC"))
-                cornerRadius = dp(26).toFloat()
-                setStroke(dp(1), Color.parseColor("#0284C7"))
-            }
-            pillTextView?.apply {
-                setTextColor(Color.parseColor("#0F172A"))
-                setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
-            }
-        } else {
-            // Dark theme (used when Amap/system is Light/Day)
-            dockView?.background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#E60A0F1D"), Color.parseColor("#F50A0F1D"))
-            )
-
-            val bgDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#33FFFFFF"))
-            }
-            val fgDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#10B981"))
-            }
-            val clipFg = ClipDrawable(fgDrawable, Gravity.START, ClipDrawable.HORIZONTAL)
-            val progressLayer = LayerDrawable(arrayOf(bgDrawable, clipFg)).apply {
-                setId(0, android.R.id.background)
-                setId(1, android.R.id.progress)
-            }
-            progressBar?.progressDrawable = progressLayer
-
-            collapseButton?.apply {
-                setTextColor(Color.parseColor("#E2E8F0"))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#40334155"))
-                    cornerRadius = dp(8).toFloat()
-                    setStroke(dp(1), Color.parseColor("#33475569"))
-                }
-            }
-
-            titleView?.apply {
-                setTextColor(Color.WHITE)
-                setShadowLayer(4f, 0f, 2f, Color.BLACK)
-            }
-
-            artistView?.apply {
-                setTextColor(Color.parseColor("#CBD5E1"))
-                setShadowLayer(3f, 0f, 1f, Color.BLACK)
-            }
-
-            lyricView?.apply {
-                setTextColor(Color.parseColor("#4ADE80"))
-                setShadowLayer(5f, 0f, 2f, Color.BLACK)
-            }
-
-            val btnBg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#26FFFFFF"))
-            }
-            val playBg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#26FFFFFF"))
-            }
-            prevButton?.apply {
-                background = btnBg
-                clearColorFilter()
-            }
-            playPauseButton?.apply {
-                background = playBg
-                clearColorFilter()
-            }
-            nextButton?.apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#26FFFFFF"))
-                }
-                clearColorFilter()
-            }
-            closeButton?.apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#26FFFFFF"))
-                }
-                setColorFilter(Color.parseColor("#94A3B8"))
-            }
-
-            pillView?.background = GradientDrawable().apply {
-                setColor(Color.parseColor("#E60A0F1D"))
-                cornerRadius = dp(26).toFloat()
-                setStroke(dp(1), Color.parseColor("#38BDF8"))
-            }
-            pillTextView?.apply {
-                setTextColor(Color.WHITE)
-                setShadowLayer(3f, 0f, 1f, Color.BLACK)
-            }
-        }
-    }
-
     private fun ensureView() {
         if (rootView != null) {
             return
@@ -371,16 +168,15 @@ class OverlayController(
         rootView = root
         dockView = dock
         pillView = pill
-
-        applyTheme(themeCoordinator.resolveCurrentTheme())
     }
 
     private fun buildDockView(): View {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            // Highly transparent dark gradient so the navigation map underneath remains clearly visible
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#E60A0F1D"), Color.parseColor("#F50A0F1D"))
+                intArrayOf(Color.parseColor("#150A0F1D"), Color.parseColor("#500A0F1D"))
             )
             isClickable = true
             setOnClickListener { listener.onTrackTitleClicked() }
@@ -391,7 +187,7 @@ class OverlayController(
             max = PROGRESS_MAX
             progress = 0
             val bgDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#33FFFFFF"))
+                setColor(Color.parseColor("#26FFFFFF"))
             }
             val fgDrawable = GradientDrawable().apply {
                 setColor(Color.parseColor("#10B981"))
@@ -405,63 +201,53 @@ class OverlayController(
         }
         container.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(3)))
 
-        // Top content row: Collapse button + Title/Artist on left, Controls on right (51dp height)
-        val topRow = LinearLayout(context).apply {
+        // Dock content row: 89dp height, comfortable 3-segment single row layout
+        val contentRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(3), dp(10), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             isClickable = true
             setOnClickListener { listener.onTrackTitleClicked() }
         }
-        container.addView(topRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(51)))
+        container.addView(contentRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(89)))
 
-        // Leftmost: Manual collapse button ("收起 ▾") on driver's side
+        // 1. Leftmost: Manual collapse button ("收起 ▾") on driver's side
         val collapseBtn = TextView(context).apply {
             text = "收起 ▾"
             setTextColor(Color.parseColor("#E2E8F0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setTypeface(Typeface.DEFAULT_BOLD)
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#40334155"))
+                setColor(Color.parseColor("#33334155"))
                 cornerRadius = dp(8).toFloat()
                 setStroke(dp(1), Color.parseColor("#33475569"))
             }
             setOnClickListener { setCollapsed(true) }
-            setOnLongClickListener {
-                val next = themeCoordinator.cycleThemeConfig()
-                val msg = when (next) {
-                    OverlayThemeCoordinator.ThemeConfig.AUTO -> "浮窗模式：自动跟随高德反色"
-                    OverlayThemeCoordinator.ThemeConfig.FORCE_DARK -> "浮窗模式：强制深色"
-                    OverlayThemeCoordinator.ThemeConfig.FORCE_LIGHT -> "浮窗模式：强制浅色"
-                }
-                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                true
-            }
         }
         val collapseParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            leftMargin = dp(2)
-            rightMargin = dp(8)
+            leftMargin = dp(4)
+            rightMargin = dp(10)
         }
-        topRow.addView(collapseBtn, collapseParams)
+        contentRow.addView(collapseBtn, collapseParams)
 
         // Left section: Track title & Artist
         val leftSection = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2), 0, dp(6), 0)
+            setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnClickListener { listener.onTrackTitleClicked() }
         }
-        topRow.addView(leftSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f))
+        contentRow.addView(leftSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f))
 
         val title = TextView(context).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 21f)
             setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -472,30 +258,52 @@ class OverlayController(
 
         val artist = TextView(context).apply {
             setTextColor(Color.parseColor("#CBD5E1"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             text = "车载高保真"
             setShadowLayer(3f, 0f, 1f, Color.BLACK)
         }
         leftSection.addView(artist, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(1)
+            topMargin = dp(3)
         })
 
-        // Right controls (Prev, Play/Pause, Next, Close)
+        // 2. Center section: Floating lyric placed in the middle and sunken to the bottom
+        val centerLyricSection = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            setPadding(dp(6), 0, dp(6), dp(12))
+            isClickable = true
+            setOnClickListener { listener.onTrackTitleClicked() }
+        }
+        contentRow.addView(centerLyricSection, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.8f))
+
+        val lyric = TextView(context).apply {
+            setTextColor(Color.parseColor("#4ADE80"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(Typeface.DEFAULT_BOLD)
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            text = "Skoda Music 随车播控"
+            setShadowLayer(5f, 0f, 2f, Color.BLACK)
+        }
+        centerLyricSection.addView(lyric, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        // 3. Right controls (Prev, Play/Pause, Next, Close)
         val rightRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        topRow.addView(rightRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT))
+        contentRow.addView(rightRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT))
 
-        val prevBtn = createControlButton(android.R.drawable.ic_media_previous, dp(44), dp(44), dp(2)) {
+        val prevBtn = createControlButton(android.R.drawable.ic_media_previous, dp(50), dp(50), dp(3)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PREV)
         }
-        val playBtn = createControlButton(android.R.drawable.ic_media_play, dp(50), dp(50), dp(3)) {
+        val playBtn = createControlButton(android.R.drawable.ic_media_play, dp(58), dp(58), dp(4)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_PLAY_PAUSE)
         }
-        val nextBtn = createControlButton(android.R.drawable.ic_media_next, dp(44), dp(44), dp(2)) {
+        val nextBtn = createControlButton(android.R.drawable.ic_media_next, dp(50), dp(50), dp(3)) {
             listener.onCommand(PlaybackActions.ACTION_CMD_NEXT)
         }
         rightRow.addView(prevBtn)
@@ -507,32 +315,10 @@ class OverlayController(
             setCollapsed(true)
             listener.onDismissByUser()
         }
-        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
-            leftMargin = dp(6)
-            rightMargin = dp(2)
+        rightRow.addView(closeBtn, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+            leftMargin = dp(8)
+            rightMargin = dp(4)
         })
-
-        // Bottom section: Single-line lyric bar at the bottom! (38dp height)
-        val bottomLyricRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(2), dp(12), dp(4))
-            isClickable = true
-            setOnClickListener { listener.onTrackTitleClicked() }
-        }
-        container.addView(bottomLyricRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(38)))
-
-        val lyric = TextView(context).apply {
-            setTextColor(Color.parseColor("#4ADE80"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            setTypeface(Typeface.DEFAULT_BOLD)
-            gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            text = "Skoda Music 随车播控"
-            setShadowLayer(5f, 0f, 2f, Color.BLACK)
-        }
-        bottomLyricRow.addView(lyric, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         titleView = title
         artistView = artist
@@ -553,7 +339,7 @@ class OverlayController(
             gravity = Gravity.CENTER
             setPadding(dp(14), dp(10), dp(14), dp(10))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#E60A0F1D"))
+                setColor(Color.parseColor("#660A0F1D"))
                 cornerRadius = dp(26).toFloat()
                 setStroke(dp(1), Color.parseColor("#38BDF8"))
             }

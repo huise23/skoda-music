@@ -755,6 +755,8 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
                     triggerBootAutoResume()
                 }, 1500L)
             }
+        } else {
+            sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
         }
     }
 
@@ -804,6 +806,13 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         super.onResume()
         sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
         reportPlaybackStateToService(force = true)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            sendPlaybackServiceIntent(PlaybackActions.ACTION_APP_FOREGROUND)
+        }
     }
 
     override fun onPause() {

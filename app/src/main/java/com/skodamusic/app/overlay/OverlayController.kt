@@ -59,6 +59,8 @@ class OverlayController(
     private var nextButton: ImageButton? = null
     private var closeButton: ImageButton? = null
     private var collapseButton: TextView? = null
+    private var dockWifiButton: ImageButton? = null
+    private var pillWifiIcon: ImageView? = null
     private var pillTextView: TextView? = null
     private var currentLayoutParams: WindowManager.LayoutParams? = null
 
@@ -110,6 +112,20 @@ class OverlayController(
         playPauseButton?.setImageResource(
             if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         )
+        updateWifiState(com.skodamusic.app.net.CarWifiAutoReconnectManager.isWifiConnected(context))
+    }
+
+    fun updateWifiState(isConnected: Boolean) {
+        val iconRes = if (isConnected) R.drawable.ic_overlay_wifi_full else R.drawable.ic_overlay_wifi_off
+        val color = if (isConnected) Color.parseColor("#10B981") else Color.parseColor("#EF4444")
+        dockWifiButton?.post {
+            dockWifiButton?.setImageResource(iconRes)
+            dockWifiButton?.setColorFilter(color)
+        }
+        pillWifiIcon?.post {
+            pillWifiIcon?.setImageResource(iconRes)
+            pillWifiIcon?.setColorFilter(color)
+        }
     }
 
     fun destroy() {
@@ -210,6 +226,33 @@ class OverlayController(
             setOnClickListener { listener.onTrackTitleClicked() }
         }
         container.addView(contentRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(89)))
+
+        // 0. Top-left network indicator (Wi-Fi full / Wi-Fi off)
+        val isWifiConnected = com.skodamusic.app.net.CarWifiAutoReconnectManager.isWifiConnected(context)
+        val wifiBtn = ImageButton(context).apply {
+            setImageResource(if (isWifiConnected) R.drawable.ic_overlay_wifi_full else R.drawable.ic_overlay_wifi_off)
+            setColorFilter(if (isWifiConnected) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#26FFFFFF"))
+            }
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setOnClickListener {
+                val connected = com.skodamusic.app.net.CarWifiAutoReconnectManager.isWifiConnected(context)
+                if (!connected) {
+                    android.widget.Toast.makeText(context, "Wi-Fi 未连接，正在尝试重置并重新搜索...", android.widget.Toast.LENGTH_SHORT).show()
+                    com.skodamusic.app.net.CarWifiAutoReconnectManager.manualResetWifi(context)
+                } else {
+                    android.widget.Toast.makeText(context, "Wi-Fi 已连通", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        val wifiParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+            leftMargin = dp(2)
+            rightMargin = dp(6)
+        }
+        contentRow.addView(wifiBtn, wifiParams)
 
         // 1. Leftmost: Manual collapse button ("收起 ▾") on driver's side
         val collapseBtn = TextView(context).apply {
@@ -329,6 +372,7 @@ class OverlayController(
         nextButton = nextBtn
         closeButton = closeBtn
         collapseButton = collapseBtn
+        dockWifiButton = wifiBtn
 
         return container
     }
@@ -337,13 +381,25 @@ class OverlayController(
         val pill = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(12), dp(10), dp(14), dp(10))
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#660A0F1D"))
                 cornerRadius = dp(26).toFloat()
                 setStroke(dp(1), Color.parseColor("#38BDF8"))
             }
         }
+
+        val isWifiConnected = com.skodamusic.app.net.CarWifiAutoReconnectManager.isWifiConnected(context)
+        val pillWifi = ImageView(context).apply {
+            setImageResource(if (isWifiConnected) R.drawable.ic_overlay_wifi_full else R.drawable.ic_overlay_wifi_off)
+            setColorFilter(if (isWifiConnected) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        val pillWifiParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
+            rightMargin = dp(6)
+        }
+        pill.addView(pillWifi, pillWifiParams)
+        pillWifiIcon = pillWifi
 
         val pillText = TextView(context).apply {
             text = "🎵 展开 ▴"

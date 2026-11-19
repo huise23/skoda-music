@@ -85,6 +85,9 @@ class PlaybackService : Service(), OverlayController.Listener {
             addAction("com.yunos.action.accstat")
         }
         registerReceiver(carWakeupReceiver, wakeupFilter)
+        com.skodamusic.app.net.CarWifiAutoReconnectManager.onNetworkStateChanged = { isConnected ->
+            overlayController.updateWifiState(isConnected)
+        }
         com.skodamusic.app.net.CarWifiAutoReconnectManager.init(applicationContext)
     }
 
@@ -147,6 +150,7 @@ class PlaybackService : Service(), OverlayController.Listener {
         overlayController.destroy()
         remoteControlBridge.release()
         runCatching { unregisterReceiver(carWakeupReceiver) }
+        com.skodamusic.app.net.CarWifiAutoReconnectManager.onNetworkStateChanged = null
         com.skodamusic.app.net.CarWifiAutoReconnectManager.release()
         com.skodamusic.app.bridge.CarBridgeHeartbeatManager.stop()
         com.skodamusic.app.bridge.CarBridgeManager.stop()

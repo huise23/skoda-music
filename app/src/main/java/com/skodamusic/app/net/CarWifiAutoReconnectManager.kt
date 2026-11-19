@@ -2,6 +2,7 @@ package com.skodamusic.app.net
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -40,6 +41,9 @@ object CarWifiAutoReconnectManager {
     @Volatile
     var onWifiConnectedCallback: (() -> Unit)? = null
 
+    @Volatile
+    var onNetworkStateChanged: ((Boolean) -> Unit)? = null
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isRegistered = false
     private var lastResetTimestampMs = 0L
@@ -71,12 +75,19 @@ object CarWifiAutoReconnectManager {
                 }
                 ConnectivityManager.CONNECTIVITY_ACTION,
                 WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
-                    if (isWifiConnected(context)) {
+                    val wifiConnected = isWifiConnected(context)
+                    notifyNetworkStateChanged(wifiConnected)
+                    if (wifiConnected) {
                         Log.d(TAG, "Wi-Fi is connected, canceling any pending healing checks.")
                         cancelDelayedCheck()
                         try {
                             onWifiConnectedCallback?.invoke()
                         } catch (_: Exception) {}
+                    } else {
+                        if (isBluetoothConnected()) {
+                            Log.i(TAG, "Wi-Fi disconnected while Bluetooth is active. Scheduling 8s Wi-Fi verification check.")
+                            scheduleDelayedCheck()
+                        }
                     }
                 }
             }
@@ -102,6 +113,11 @@ object CarWifiAutoReconnectManager {
             Log.i(TAG, "CarWifiAutoReconnectManager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register radio receiver: ${e.message}", e)
+        }
+
+        if (isBluetoothConnected() && !isWifiConnected(app)) {
+            Log.i(TAG, "Init active probe: Bluetooth already connected but Wi-Fi disconnected. Scheduling 8s check.")
+            scheduleDelayedCheck()
         }
     }
 
@@ -145,6 +161,27 @@ object CarWifiAutoReconnectManager {
     fun isWifiEnabled(context: Context): Boolean {
         val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return false
         return wm.isWifiEnabled
+    }
+
+    fun isBluetoothConnected(): Boolean {
+        return try {
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return false
+            if (!adapter.isEnabled) return false
+            val a2dp = adapter.getProfileConnectionState(BluetoothProfile.A2DP)
+            val headset = adapter.getProfileConnectionState(BluetoothProfile.HEADSET)
+            a2dp == BluetoothProfile.STATE_CONNECTED || headset == BluetoothProfile.STATE_CONNECTED
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to check bluetooth connection state: ${e.message}")
+            false
+        }
+    }
+
+    private fun notifyNetworkStateChanged(isConnected: Boolean) {
+        mainHandler.post {
+            try {
+                onNetworkStateChanged?.invoke(isConnected)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun scheduleDelayedCheck() {

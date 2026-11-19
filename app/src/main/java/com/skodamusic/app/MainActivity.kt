@@ -382,7 +382,18 @@ class MainActivity : AppCompatActivity(), PlaybackControlBus.Controller {
         wifiNetworkGate = WifiNetworkGate(this) { message -> appendRuntimeLog(message) }
         com.skodamusic.app.net.CarWifiAutoReconnectManager.onWifiConnectedCallback = {
             uiProgressHandler.post {
+                appendRuntimeLog("network: Wi-Fi connected callback received")
                 maybeCheckPendingAutoResume()
+                if (hasKugouSession()) {
+                    triggerKugouDailyVip(reason = "wifi_reconnected")
+                    val snapshot = if (this::kugouContentBinder.isInitialized) {
+                        kugouContentBinder.recommendedTracksSnapshot()
+                    } else emptyList()
+                    if (snapshot.isEmpty()) {
+                        appendRuntimeLog("network: recommend tracks empty -> requestDailyRecommendPlayback")
+                        requestDailyRecommendPlayback(reason = "wifi_reconnected", force = false)
+                    }
+                }
             }
         }
         kugouLoginRecoveryCoordinator = KugouLoginRecoveryCoordinator(

@@ -23,6 +23,9 @@ class KugouDailyVipCoordinator(
             return
         }
         val today = KugouDirectUserClient.todayString()
+        if (reason == "wifi_reconnected") {
+            prefs.edit().remove(nextRetryKey(cleanUserId, today)).apply()
+        }
         synchronized(lock) {
             if (inFlight || isCoolingDownLocked(cleanUserId, today)) {
                 return
@@ -42,6 +45,14 @@ class KugouDailyVipCoordinator(
     }
 
     fun reset() {
+        synchronized(lock) {
+            inFlight = false
+        }
+    }
+
+    fun resetCooldown(userId: String) {
+        val today = KugouDirectUserClient.todayString()
+        prefs.edit().remove(nextRetryKey(userId, today)).apply()
         synchronized(lock) {
             inFlight = false
         }
